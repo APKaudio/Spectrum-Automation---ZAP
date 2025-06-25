@@ -8,10 +8,10 @@ import sys
 
 # Define constants for better readability and easier modification
 MHZ_TO_HZ = 1_000_000  # Conversion factor from MHz to Hz
-DEFAULT_SEGMENT_WIDTH_HZ = 10_000_000  # 10 MHz segment for sweeping (Corrected from 0_000_000)
+DEFAULT_SEGMENT_WIDTH_HZ = 20_000_000  # 10 MHz segment for sweeping (Corrected from 0_000_000)
 DEFAULT_STEP_SIZE_HZ = 25000  # 25 kHz step size
-DEFAULT_CYCLE_WAIT_TIME_SECONDS = 30  # 5 minutes wait between full scan cycles
-DEFAULT_MAXHOLD_TIME_SECONDS = 10
+DEFAULT_CYCLE_WAIT_TIME_SECONDS = 10  # 5 minutes wait between full scan cycles
+DEFAULT_MAXHOLD_TIME_SECONDS = 1
 
 # Define the frequency bands to scan
 # Frequencies are stored in MHz for readability, will be converted to Hz for instrument commands
@@ -301,6 +301,7 @@ def main():
     while True:
         run_scan_cycle(args)
         wait_with_interrupt(DEFAULT_CYCLE_WAIT_TIME_SECONDS)
+        args = setup_arguments()
 
 if __name__ == "__main__":
     main()
