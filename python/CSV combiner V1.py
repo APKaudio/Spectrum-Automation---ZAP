@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 # Use raw string to avoid issues with backslashes
-folder_path = r"C:\Users\4483\N9340 Scans"
+folder_path = r"C:\Users\4483\OneDrive\Documents\GitHub\Spectrum-Automation---ZAP\python\N9340 Scans"
 
 print("🔍 Scanning folder for CSV files...")
 csv_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.csv')]
