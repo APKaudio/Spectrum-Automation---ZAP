@@ -10,20 +10,21 @@ import sys
 MHZ_TO_HZ = 1_000_000  # Conversion factor from MHz to Hz
 DEFAULT_SEGMENT_WIDTH_HZ = 10_000_000  # 10 MHz segment for sweeping (Corrected from 0_000_000)
 DEFAULT_STEP_SIZE_HZ = 25000  # 25 kHz step size
-DEFAULT_CYCLE_WAIT_TIME_SECONDS = 30  # 5 minutes wait between full scan cycles
+DEFAULT_CYCLE_WAIT_TIME_SECONDS = 10  # 5 minutes wait between full scan cycles
 DEFAULT_MAXHOLD_TIME_SECONDS = 10
+
 
 # Define the frequency bands to scan
 # Frequencies are stored in MHz for readability, will be converted to Hz for instrument commands
 BAND_RANGES = [
-    {"Band Name": "Low VHF+FM", "Start MHz": 54.000, "Stop MHz": 109.000},
-    {"Band Name": "High VHF+216", "Start MHz": 174.000, "Stop MHz": 218.000},
+    {"Band Name": "Low VHF+FM", "Start MHz": 50.000, "Stop MHz": 110.000},
+    {"Band Name": "High VHF+216", "Start MHz": 170.000, "Stop MHz": 220.000},
     {"Band Name": "UHF -1", "Start MHz": 400.000, "Stop MHz": 700.000},
     {"Band Name": "UHF -2", "Start MHz": 700.000, "Stop MHz": 900.000},
-    {"Band Name": "900 ISM-STL", "Start MHz": 900.000, "Stop MHz": 962.000},
-    {"Band Name": "AFTRCC-1", "Start MHz": 1435.000, "Stop MHz": 1535.000},
+    {"Band Name": "900 ISM-STL", "Start MHz": 900.000, "Stop MHz": 970.000},
+    {"Band Name": "AFTRCC-1", "Start MHz": 1430.000, "Stop MHz": 1540.000},
     {"Band Name": "DECT-ALL", "Start MHz": 1880.000, "Stop MHz": 2000.000},
-    {"Band Name": "2 GHz Cams", "Start MHz": 2000.000, "Stop MHz": 2395.000},
+    {"Band Name": "2 GHz Cams", "Start MHz": 2000.000, "Stop MHz": 2390.000},
 ]
 
 VISA_ADDRESSES = {
@@ -122,8 +123,10 @@ def perform_segment_sweep(inst, segment_start_freq, segment_stop_freq, step_size
     print(f"  Sweeping segment: {segment_start_freq / MHZ_TO_HZ:.3f} MHz to {segment_stop_freq / MHZ_TO_HZ:.3f} MHz")
 
     # Set the start and stop frequencies for the instrument's sweep for this segment.
-    inst.write(f":FREQ:START {segment_start_freq}")
+    
     inst.write(f":FREQ:STOP {segment_stop_freq}")
+    inst.write(f":FREQ:START {segment_start_freq}")
+    
 
     # Enable MAX hold on Trace 1
     inst.write(":TRACe1:MODE MAXHold")
@@ -208,15 +211,20 @@ def run_scan_cycle(args):
                 current_band_start_freq = int(band_info["Start MHz"] * MHZ_TO_HZ)
                 current_band_stop_freq = int(band_info["Stop MHz"] * MHZ_TO_HZ)
 
-                print(f"\nScanning Band: {band_name}")
+                print(f"\nScanning NEW Band: {band_name}")
                 print(f"Full Band Range: {current_band_start_freq / MHZ_TO_HZ:.3f} MHz to {current_band_stop_freq / MHZ_TO_HZ:.3f} MHz")
 
                 current_block_start = current_band_start_freq
+                
                 scan_limit = current_band_stop_freq
+                current_block_stop = min(current_block_start + DEFAULT_SEGMENT_WIDTH_HZ, scan_limit)
 
                 # Loop through frequency blocks until the end frequency of the current band is reached.
                 while current_block_start < scan_limit:
+                                       
                     current_block_stop = min(current_block_start + DEFAULT_SEGMENT_WIDTH_HZ, scan_limit)
+                    print(f"BW Range: {current_block_start / MHZ_TO_HZ:.3f} MHz to {current_block_stop / MHZ_TO_HZ:.3f} MHz")
+                    
                     perform_segment_sweep(inst, current_block_start, current_block_stop, step_hz, band_name, writer)
                     current_block_start = current_block_stop # Move to the start of the next block.
 
@@ -301,6 +309,7 @@ def main():
     while True:
         run_scan_cycle(args)
         wait_with_interrupt(DEFAULT_CYCLE_WAIT_TIME_SECONDS)
+        args = setup_arguments()
 
 if __name__ == "__main__":
     main()
