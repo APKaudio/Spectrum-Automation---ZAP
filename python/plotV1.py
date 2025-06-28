@@ -12,7 +12,7 @@ import numpy as np # For numerical operations, especially mean
 # If running locally, make sure the path is correct.
 # If you've uploaded it, please specify the exact filename (e.g., 'your_data.csv').
 try:
-    df = pd.read_csv(r'C:\Users\4483\N9340 Scans\Daytime\Mashed-20250626-221427.csv')
+    df = pd.read_csv(r'C:\Users\4483\N9340 Scans\IKE - V4 N9340 Scans\N9340 Scans\Mashed-20250627-183030.csv')
 except FileNotFoundError:
     print("ERROR: CSV file not found! Please ensure the path is correct or upload the file.")
     # Exit or handle the error appropriately if running non-interactively
@@ -48,6 +48,9 @@ df['Average Amplitude'] = df[amplitude_columns].mean(axis=1, numeric_only=True)
 # We'll include all original amplitude columns plus the new 'Average Amplitude' column.
 columns_to_plot = amplitude_columns + ['Average Amplitude']
 
+
+
+
 # --- Create Interactive Plot with Plotly Express ---
 fig = px.line(df,
               x=frequency_column_name,
@@ -70,6 +73,8 @@ fig.update_xaxes(type="log",
 #     tickmode='array',
 #     tickvals=[10**i for i in range(int(np.log10(df[frequency_column_name].min())), int(np.log10(df[frequency_column_name].max())) + 1)]
 # )
+# --- Apply Dark Mode Theme ---
+fig.update_layout(template="plotly_dark")
 
 
 # --- Set Y-axis (Amplitude) Maximum to 0 dBm ---
@@ -84,7 +89,7 @@ fig.update_yaxes(range=[y_min if y_min < 0 else -100, 0], # Ensure y-axis goes u
 # Plotly automatically assigns distinct colors. If you want specific colors or line styles,
 # you can use fig.update_traces or pass a color_discrete_map to px.line.
 # Example: Make the 'Average Amplitude' line thicker or dashed
-fig.for_each_trace(lambda trace: trace.update(line=dict(width=4, dash='dash')) if trace.name == 'Average Amplitude' else ())
+fig.for_each_trace(lambda trace: trace.update(line=dict(width=6)) if trace.name == 'Average Amplitude' else ())
 
 # This will open the interactive plot in your default web browser if run as a Python script,
 # or display it directly in a Jupyter Notebook/Lab environment.
