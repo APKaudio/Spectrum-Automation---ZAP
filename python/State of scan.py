@@ -12,6 +12,8 @@ import plotly.express as px # Import plotly for interactive plotting
 # Define constants for better readability and easier modification
 MHZ_TO_HZ = 1_000_000  # Conversion factor from MHz to Hz
 DEFAULT_SEGMENT_WIDTH_HZ = 10_000_000  # 10 MHz segment for sweeping (this constant is now less relevant for auto-segmenting)
+
+
 DEFAULT_RBW_STEP_SIZE_HZ = 10000  # 10 kHz RBW resolution desired per data point
 DEFAULT_CYCLE_WAIT_TIME_SECONDS = 10  # 10 seconds wait between full scan cycles
 DEFAULT_MAXHOLD_TIME_SECONDS = 3 # Default max hold time for the new argument
@@ -74,17 +76,17 @@ def setup_arguments():
     """
     parser = argparse.ArgumentParser(description="Spectrum Analyzer Sweep and CSV Export")
 
-    parser.add_argument('--SCANname', type=str, default="25kz scan ",
+    parser.add_argument('--name', type=str, default="Scan ",
                         help='Prefix for the output CSV filename')
-    parser.add_argument('--startFreq', type=float, default=None,
+    parser.add_argument('--start', type=float, default=None,
                         help='Start frequency in Hz (overrides default bands if provided with --endFreq)')
-    parser.add_argument('--endFreq', type=float, default=None,
+    parser.add_argument('--end', type=float, default=None,
                         help='End frequency in Hz (overrides default bands if provided with --startFreq)')
-    parser.add_argument('--stepSize', type=float, default=DEFAULT_RBW_STEP_SIZE_HZ, # Updated to new variable name
+    parser.add_argument('--rbw', type=float, default=DEFAULT_RBW_STEP_SIZE_HZ, # Updated to new variable name
                         help='Step size in Hz')
     parser.add_argument('--user', type=str, choices=['apk', 'zap'], default='zap',
                         help='Specify who is running the program: "apk" or "zap". Default is "zap".')
-    parser.add_argument('--maxHoldTime', type=float, default=DEFAULT_MAXHOLD_TIME_SECONDS,
+    parser.add_argument('--hold', type=float, default=DEFAULT_MAXHOLD_TIME_SECONDS,
                         help='Duration in seconds for which MAX Hold should be active during scans. Set to 0 to disable. (Note: Instrument\'s MAX Hold is typically a continuous mode; this value serves as a flag for enablement during the entire scan duration).')
 
     return parser.parse_args()
@@ -130,7 +132,7 @@ def initialize_instrument(visa_address):
         
         print("Display set to logarithmic scale, reference level -30 dBm, and Markers 1-6 enabled.")
 
-        time.sleep(2) # Allow instrument to settle
+       
         return inst
     except pyvisa.VisaIOError as e:
         print(f"VISA Error: Could not connect to or communicate with the instrument at {visa_address}: {e}")
@@ -140,7 +142,7 @@ def initialize_instrument(visa_address):
         print(f"An unexpected error occurred during instrument initialization: {e}")
         return None
 
-def scan_bands(inst, csv_writer, max_hold_time):
+def scan_bands(inst, csv_writer, max_hold_time, rbw):
     """
     Iterates through predefined frequency bands, sets the start/stop frequencies,
     reduces RBW to 10000 Hz, and triggers a sweep for each band.
@@ -186,7 +188,7 @@ def scan_bands(inst, csv_writer, max_hold_time):
     # Calculate the optimal span for each segment to achieve desired RBW per point
     # We want (Segment Span / (Actual Points - 1)) = Desired RBW
     # So, Segment Span = Desired RBW * (Actual Points - 1)
-    optimal_segment_span_hz = DEFAULT_RBW_STEP_SIZE_HZ * (actual_sweep_points - 1)
+    optimal_segment_span_hz = rbw * (actual_sweep_points - 1)
     print(f"Optimal segment span to achieve {DEFAULT_RBW_STEP_SIZE_HZ/1000:.0f} kHz effective RBW per point: {optimal_segment_span_hz / MHZ_TO_HZ:.3f} MHz.")
 
 
@@ -272,49 +274,7 @@ def scan_bands(inst, csv_writer, max_hold_time):
 
                 trace_data = list(struct.unpack('<' + 'f' * num_values_received, raw_bytes))
 
-                # --- Peak Table Implementation ---
-                # 1. Enable Peak Table State
-                write_safe(inst, ":CALC:MARK:PEAK:TABLe:STATE ON")
-                # 2. Set Peak Table Threshold and Max Peaks
-                write_safe(inst, ":CALC:MARK:PEAK:TABLe:THReshold -90DBM") # Set threshold to -90 dBm
-                write_safe(inst, ":CALC:MARK:PEAK:TABLe:MAX 6") # Limit to max 6 peaks
-                # 3. Generate Peak Table (find all peaks based on instrument settings)
-                write_safe(inst, ":CALC:MARK:PEAK:TABLe:ALL")
-                # 4. Query Peak Table Data
-                peak_table_data_str = query_safe(inst, ":CALC:MARK:PEAK:TABLe:DATA?")
 
-                segment_found_peaks = []
-                # Parse the peak table data string (e.g., "F1,A1,F2,A2,...")
-                if peak_table_data_str and peak_table_data_str != "[Not Supported or Timeout]":
-                    try:
-                        peak_values = [float(x) for x in peak_table_data_str.split(',')]
-                        for j in range(0, len(peak_values), 2):
-                            if j + 1 < len(peak_values):
-                                segment_found_peaks.append({"freq": peak_values[j], "level": peak_values[j+1]})
-                    except ValueError:
-                        print(f"    Warning: Could not parse peak table data string: '{peak_table_data_str}'.")
-
-                # Assign the found peaks from the peak table to the available markers (up to 6)
-                # The markers were already turned ON and set to POS mode in initialize_instrument
-                for idx, peak_info in enumerate(segment_found_peaks[:6]): # Take up to the first 6 peaks
-                    marker_num = idx + 1
-                    write_safe(inst, f":CALC:MARK{marker_num}:X {peak_info['freq']}")
-                    write_safe(inst, f":CALC:MARK{marker_num}:Y {peak_info['level']}")
-                
-                # Optionally, turn off unused markers if fewer than 6 peaks are found
-                for idx in range(len(segment_found_peaks), 6):
-                    marker_num = idx + 1
-                    write_safe(inst, f":CALC:MARK{marker_num}:STATe OFF")
-
-                # 5. Disable Peak Table State after using its data to assign markers
-                write_safe(inst, ":CALC:MARK:PEAK:TABLe:STATE OFF")
-                
-                if segment_found_peaks:
-                    print(f"    Peaks found in segment {segment_counter}:")
-                    for p in segment_found_peaks:
-                        print(f"      Frequency: {p['freq']/MHZ_TO_HZ:.3f} MHz, Level: {p['level']:.2f} dBm")
-                else:
-                    print("    No peaks found in this segment's peak table.")
 
 
                 # Use the actual number of points received for frequency calculation for this segment
@@ -331,20 +291,14 @@ def scan_bands(inst, csv_writer, max_hold_time):
                 for i, amp_value in enumerate(trace_data):
                     current_freq_for_point_hz = current_segment_start_freq_hz + (i * freq_step_per_point_actual)
                     
-                    peak_indicator = ""
-                    # Check if this point is a peak from the peak table
-                    for found_peak in segment_found_peaks:
-                        # Use a small tolerance for floating point comparison (e.g., half the step size)
-                        if abs(current_freq_for_point_hz - found_peak["freq"]) < (freq_step_per_point_actual / 2.0):
-                            peak_indicator = "Peak from Table"
-                            break # Mark only once if multiple peaks are very close
+       
 
                     # Append to list for plotting later
                     all_scan_data.append({
                         "Frequency (MHz)": current_freq_for_point_hz / MHZ_TO_HZ, # Store in MHz for DataFrame consistency
                         "Level (dBm)": amp_value,
                         "Band Name": band_name,
-                        "Peak Indicator": peak_indicator # Add the new column
+                        
                     })
                     
                     # Write directly to CSV file with desired order and units
@@ -352,7 +306,7 @@ def scan_bands(inst, csv_writer, max_hold_time):
                         f"{current_freq_for_point_hz / MHZ_TO_HZ:.2f}",  # Frequency in MHz
                         f"{amp_value:.2f}",                               # Level in dBm
                         band_name,                                        # Band Name
-                        peak_indicator                                    # Peak Indicator
+                        
                     ])
                 
             except pyvisa.VisaIOError as e:
@@ -394,7 +348,7 @@ def plot_spectrum_data(df, output_html_filename):
                   # Adjust hover_data to reflect the new DataFrame structure if needed,
                   # but for now, it matches 'Frequency (MHz)' and 'Level (dBm)' which are already plotted.
                   # Added Band Name to hover_data explicitly.
-                  hover_data={"Frequency (MHz)": ':.2f', "Level (dBm)": ':.2f', "Band Name": True, "Peak Indicator": True}
+                  hover_data={"Frequency (MHz)": ':.2f', "Level (dBm)": ':.2f', "Band Name": True}
                  )
 
     # Set X-axis (Frequency) to Logarithmic Scale
@@ -446,19 +400,19 @@ def main():
     scan_dir = os.path.join(os.getcwd(), "N9340 Scans")
     os.makedirs(scan_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
-    csv_filename = os.path.join(scan_dir, f"{args.SCANname.strip()}_{timestamp}.csv")
-    html_plot_filename = os.path.join(scan_dir, f"{args.SCANname.strip()}_{timestamp}.html")
+    csv_filename = os.path.join(scan_dir, f"{args.name.strip()}_{timestamp}.csv")
+    html_plot_filename = os.path.join(scan_dir, f"{args.name.strip()}_{timestamp}.html")
 
     try:
         print(f"Opening CSV file for writing: {csv_filename}")
         with open(csv_filename, mode='w', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
             # Write header row to CSV with desired order and units
-            csv_writer.writerow(["Frequency (MHz)", "Level (dBm)", "Band Name", "Peak Indicator"])
+            csv_writer.writerow(["Frequency (MHz)", "Level (dBm)", "Band Name"])
 
             # After successful initialization, proceed with scanning bands
             # scan_bands now takes the csv_writer and still returns the collected data for plotting
-            all_scan_data = scan_bands(inst, csv_writer, args.maxHoldTime) # Pass maxHoldTime argument
+            all_scan_data = scan_bands(inst, csv_writer, args.hold, args.rbw) # Pass maxHoldTime argument
 
         if not all_scan_data:
             print("No scan data collected. Skipping plotting.")
