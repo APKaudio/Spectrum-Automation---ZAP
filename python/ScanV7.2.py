@@ -529,8 +529,9 @@ def plot_spectrum_data(df, output_html_filename):
             type="line",
             x0=band["Start MHz"],
             y0=y_range_min, # Span full Y-axis range
-            x1=band["Start MHz"],
+            x1=band["Stop MHz"],
             y1=y_range_max, # Span full Y-axis range
+                      
             line=dict(
                 color=marker_line_color,
                 width=0.15, # Slightly thicker line
@@ -538,11 +539,12 @@ def plot_spectrum_data(df, output_html_filename):
             ),
             layer="below", # Draw below the trace lines
         )
+        
         # Add text markers for band names at the start frequency
         fig.add_annotation(
-            x=band["Start MHz"] / 1000, # Position at the start of the band
+            x=float(band["Start MHz"] /100),  # Ensures float division
             # Calculate Y position relative to the overall plot Y-range, 10% down from the top
-            y=-80,
+            y=-20,
             text=band["Band Name"],
             showarrow=False,
             font=dict(
@@ -550,8 +552,9 @@ def plot_spectrum_data(df, output_html_filename):
                 color=marker_text_color # Use bright yellow for text
             ),
             # Keep text rotated for better readability with many markers
-            textangle=-90
+            textangle=90
         )
+  
 
 
     # Set X-axis (Frequency) to Logarithmic Scale
