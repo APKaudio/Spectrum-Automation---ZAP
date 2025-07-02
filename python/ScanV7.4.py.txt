@@ -17,7 +17,7 @@ MHZ_TO_HZ = 1_000_000 # Conversion factor from MHz to Hz
 # Updated wait time variable and its usage for the continuous loop
 DEFAULT_RBW_STEP_SIZE_HZ = 10000 # 10 kHz RBW resolution desired per data point
 DEFAULT_CYCLE_WAIT_TIME_SECONDS = 300 # 5 minutes wait (300 seconds) between full scan cycles
-DEFAULT_MAXHOLD_TIME_SECONDS = 3 # Default max hold time for the new argument
+DEFAULT_MAXHOLD_TIME_SECONDS = 5 # Default max hold time for the new argument
 
 
 # Define the frequency bands to *SCAN* (User's specified bands for instrument operation)
@@ -302,6 +302,11 @@ def initialize_instrument(visa_address):
                 query_safe(inst, "*OPC?") # Wait for operations to complete
                 print("Instrument cleared and reset.")
 
+                print("Set RBW to 1 kHz ")
+                inst.write(":SENSE:BAND:RES 1KHZ") # Set RBW to 1 kHz
+                print("Set BW to 1 kHz ")
+                inst.write(":SENSE:BAND:VID 1KHZ") # Set VBW to 1 kHz 
+
                 # Configure preamplifier for high sensitivity
                 write_safe(inst, ":SENS:POW:GAIN ON") # Equivalent to ':POWer:GAIN 1' for most Keysight instruments
                 print("Preamplifier turned ON for high sensitivity.")
@@ -342,7 +347,7 @@ def initialize_instrument(visa_address):
     print(f"Failed to initialize instrument after {max_retries} attempts. Please check connection and instrument status.")
     return None
 
-def scan_bands(inst, csv_writer, max_hold_time, rbw):
+def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
     """
     Iterates through predefined frequency bands, sets the start/stop frequencies,
     reduces RBW to 10000 Hz, and triggers a sweep for each band.
@@ -351,17 +356,26 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
     This function now dynamically segments bands to maintain a consistent
     effective resolution bandwidth per trace point.
     It also displays the time of day for each band scanned.
+    
+    Added last_scanned_band_index to resume from where it left off.
 
     Args:
         inst (pyvisa.resources.Resource): The PyVISA instrument object.
         csv_writer (csv.writer): The CSV writer object to write data to.
         max_hold_time (float): Duration in seconds for which MAX Hold should be active.
                                 If > 0, MAX Hold mode is enabled for the scan.
+        rbw (float): Resolution Bandwidth for segmenting bands.
+        last_scanned_band_index (int): Index of the band to start scanning from.
+                                        Used for resuming scans after an error.
     Returns:
-        list: A list of dictionaries, where each dictionary represents a data point
-              with 'Band Name', 'Frequency (Hz)', and 'Level (dBm)'.
+        tuple: (list: all_scan_data, int: last_successful_band_index)
+                all_scan_data: A list of dictionaries, where each dictionary represents a data point
+                               with 'Band Name', 'Frequency (Hz)', and 'Level (dBm)'.
+                last_successful_band_index: The index of the last band that was fully
+                                            or partially scanned successfully.
     """
     all_scan_data = [] # To store all data points across all bands for plotting
+    last_successful_band_index = last_scanned_band_index
 
     print("\n--- Starting Band Scan ---")
 
@@ -384,7 +398,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
 
     if actual_sweep_points <= 1: # Ensure we have at least 2 points to calculate a span
         print(f"Warning: Instrument returned {actual_sweep_points} sweep points. Cannot effectively segment bands. Skipping scan.")
-        return []
+        return [], 0
 
     # Calculate the optimal span for each segment to achieve desired RBW per point
     # We want (Segment Span / (Actual Points - 1)) = Desired RBW
@@ -410,7 +424,9 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
     inst.encoding = 'latin-1'
 
     # *** Use SCAN_BAND_RANGES for scanning the instrument ***
-    for band in SCAN_BAND_RANGES:
+    # Iterate through bands starting from last_scanned_band_index
+    for i in range(last_scanned_band_index, len(SCAN_BAND_RANGES)):
+        band = SCAN_BAND_RANGES[i]
         band_name = band["Band Name"]
         band_start_freq_hz = band["Start MHz"] * MHZ_TO_HZ
         band_stop_freq_hz = band["Stop MHz"] * MHZ_TO_HZ
@@ -453,8 +469,8 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
             # Add settling time for max hold values to show up, if max hold is enabled
             if max_hold_time > 0:
                 print(f"Waiting {max_hold_time} seconds for MAX hold to settle...", end='')
-                for i in range(int(max_hold_time), 0, -1):
-                    print(f"\rWaiting {i} seconds for MAX hold to settle...     ", end='') # \r to overwrite line
+                for sec_wait in range(int(max_hold_time), 0, -1):
+                    print(f"\rWaiting {sec_wait} seconds for MAX hold to settle...     ", end='') # \r to overwrite line
                     time.sleep(1)
                 print("\rMAX hold settle time complete.                              ") # Clear the line after countdown
 
@@ -488,8 +504,8 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
                     freq_step_per_point_actual = 0 # No points
 
                 # Loop to append data to all_scan_data and write to CSV
-                for i, amp_value in enumerate(trace_data):
-                    current_freq_for_point_hz = current_segment_start_freq_hz + (i * freq_step_per_point_actual)
+                for j, amp_value in enumerate(trace_data):
+                    current_freq_for_point_hz = current_segment_start_freq_hz + (j * freq_step_per_point_actual)
 
                     # Append to list for plotting later
                     all_scan_data.append({
@@ -506,10 +522,17 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
                         band_name,                                         # Band Name
 
                     ])
+                
+                # Update last_successful_band_index after successfully processing a band
+                last_successful_band_index = i
 
             except pyvisa.VisaIOError as e:
                 print(f"    Error reading trace data (PyVISA IO Error): {e}")
                 print(f"    Raw bytes potentially causing error: {raw_bytes[:100]}...")
+                # Restore original read_termination and encoding before re-raising or handling
+                inst.read_termination = original_read_termination
+                inst.encoding = original_encoding
+                raise # Re-raise the exception to be caught by the main loop for recovery
             except ValueError as e:
                 print(f"    Error processing binary data (ValueError): {e}")
                 print(f"    Raw bytes for struct unpack: {raw_bytes[:100]}...")
@@ -525,7 +548,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw):
     inst.read_termination = original_read_termination
     inst.encoding = original_encoding
     print("\n--- Band Scan Complete ---")
-    return all_scan_data # Return the collected data
+    return all_scan_data, last_successful_band_index # Return the collected data and last successful index
 
 
 def plot_spectrum_data(df, output_html_filename):
@@ -590,7 +613,7 @@ def plot_spectrum_data(df, output_html_filename):
         
         # Add text markers for band names at the start frequency
         fig.add_annotation(
-            x=float(band["Start MHz"] /100),  # Ensures float division
+            x=float(band["Start MHz"] /1000),  # Ensures float division
             # Calculate Y position relative to the overall plot Y-range, 10% down from the top
             y=-20,
             text=band["Band Name"],
@@ -738,33 +761,25 @@ def main():
         return
 
     inst = None
+    scan_cycle_count = 0
+    # Keep track of the last successfully scanned band index for recovery
+    last_successful_band_index = 0
+
     try:
-        scan_cycle_count = 0
         while True: # This loop makes the program repeat indefinitely
             scan_cycle_count += 1
             print(f"\n--- Starting Scan Cycle #{scan_cycle_count} ---")
-
-            # Restart the instrument at the beginning of each scan cycle
-            # This is done to ensure the USB connection does not die
-         #   print("\nAttempting to restart the instrument to ensure stable USB connection...")
-          ##  if inst and inst.session: # Close existing connection if any
-         #       inst.close()
-         #       print("Previous instrument session closed.")
             
-            # Send the restart command. This is a non-query command.
-            # We will then attempt to re-establish connection in initialize_instrument.
-            # Note: Directly sending SYSTem:POWer:RESet might not work if the connection is already unstable.
-            # The best approach is to try to send it, then loop on initialize_instrument.
-
+            # This flag controls if we should skip to plotting/waiting or re-run the scan
+            restart_scan_from_beginning_of_band = False 
 
             # Initialize/re-initialize the instrument. This function now handles retries.
             inst = initialize_instrument(instrument_address)
 
             if inst is None:
-                print(f"Instrument initialization failed after restart attempt in cycle #{scan_cycle_count}. Skipping this cycle.")
-                # If initialization fails, we might want to wait before trying again
+                print(f"Instrument initialization failed in cycle #{scan_cycle_count}. Waiting and retrying...")
                 wait_with_interrupt(args.wait)
-                continue # Skip to the next cycle
+                continue # Skip to the next cycle attempt
 
             # File & directory setup for CSV and HTML plot
             # Base directory for all N9340 scans
@@ -789,29 +804,64 @@ def main():
             csv_filename = os.path.join(scan_dir, f"{args.name.strip()}_{timestamp}.csv")
             html_plot_filename = os.path.join(scan_dir, f"{args.name.strip()}_{timestamp}.html")
 
+            # Open CSV file outside the inner try-except for the scan to ensure it remains open
+            # if an instrument error causes re-initialization within the same file.
+            # For simplicity in this recovery, we'll reopen/append if needed or just create a new file
+            # if we can't recover easily. For "pickup where it leaves off" with CSV,
+            # you might need a more complex file handling that appends to an existing file
+            # or tracks which file to continue writing to. For this example, we'll create a new CSV
+            # for each *successful full cycle* or *recovered segment*.
+
+            all_scan_data_current_cycle = [] # Collect data for the current cycle's plot
+
             try:
                 print(f"Opening CSV file for writing: {csv_filename}")
                 with open(csv_filename, mode='w', newline='') as csvfile:
                     csv_writer = csv.writer(csvfile)
-                    # Write header row to CSV with desired order and units
-                    csv_writer.writerow(["Frequency (MHz)", "Level (dBm)", "Band Name"])
+                    csv_writer.writerow(["Frequency (MHz)", "Level (dBm)", "Band Name"]) # Write header
 
-                    # After successful initialization, proceed with scanning bands
-                    # scan_bands now takes the csv_writer and still returns the collected data for plotting
-                    all_scan_data = scan_bands(inst, csv_writer, args.hold, args.rbw)
+                    # Pass the last_successful_band_index to scan_bands
+                    all_scan_data_current_cycle, last_successful_band_index = \
+                        scan_bands(inst, csv_writer, args.hold, args.rbw, last_successful_band_index)
+                
+                # If scan_bands completes without raising an error, reset last_successful_band_index
+                # for the next full cycle.
+                last_successful_band_index = 0 
 
-                if not all_scan_data:
+                if not all_scan_data_current_cycle:
                     print("No scan data collected in this cycle. Skipping plotting.")
                 else:
                     # Convert collected data to pandas DataFrame
-                    df = pd.DataFrame(all_scan_data)
+                    df = pd.DataFrame(all_scan_data_current_cycle)
                     # Call the plotting function
                     plot_spectrum_data(df, html_plot_filename)
 
-            except Exception as e:
-                print(f"An error occurred during scan cycle #{scan_cycle_count}: {e}")
-                # For now, it will log and continue to the wait period.
+            except pyvisa.VisaIOError as e:
+                print(f"!!! CRITICAL VISA I/O ERROR during scan: {e} !!!")
+                print("Attempting to close instrument, re-initialize, and resume scan from last successful point.")
+                if inst:
+                    try:
+                        inst.close()
+                        print("Instrument connection closed.")
+                    except Exception as close_e:
+                        print(f"Error closing instrument connection: {close_e}")
+                inst = None # Ensure inst is None so initialize_instrument will try to open a new one
+                
+                # If an error occurs, the last_successful_band_index will indicate
+                # where to resume from in the next iteration.
+                # No need to explicitly set restart_scan_from_beginning_of_band here;
+                # the loop's natural flow will re-initialize and then scan_bands will use the index.
+                # The program will skip directly to the `continue` and re-enter the loop.
+                print("Will attempt to re-initialize and continue scan in the next cycle.")
+                time.sleep(5) # Short delay before re-attempting connection
+                continue # Immediately go to the next cycle to try and reconnect/resume
 
+            except Exception as e:
+                print(f"An unexpected error occurred during scan cycle #{scan_cycle_count}: {e}")
+                # For any other unexpected error, we'll log it and proceed to the wait period.
+                print("Proceeding to wait period.")
+
+            # If the scan completed (either fully or after an error that didn't stop the loop)
             # CALLING THE INTERRUPTIBLE WAIT FUNCTION
             wait_with_interrupt(args.wait) # Uses the wait time from command-line arguments
 
@@ -823,6 +873,7 @@ def main():
         if inst and inst.session: # Check if inst object exists and has an active session
             inst.close()
             print("\nConnection to N9340B closed.")
+
 
 if __name__ == '__main__':
     main()

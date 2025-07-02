@@ -12,7 +12,7 @@ import numpy as np # For numerical operations, especially mean
 # If running locally, make sure the path is correct.
 # If you've uploaded it, please specify the exact filename (e.g., 'your_data.csv').
 try:
-    df = pd.read_csv(r'C:\Users\4483\N9340 Scans\IKE - V4 N9340 Scans\N9340 Scans\Mashed-20250627-183030.csv')
+    df = pd.read_csv(r'C:\Users\4483\N9340 Scans\No_header\Mashed-20250702-110847.csv')
 except FileNotFoundError:
     print("ERROR: CSV file not found! Please ensure the path is correct or upload the file.")
     # Exit or handle the error appropriately if running non-interactively
@@ -89,7 +89,7 @@ fig.update_yaxes(range=[y_min if y_min < 0 else -100, 0], # Ensure y-axis goes u
 # Plotly automatically assigns distinct colors. If you want specific colors or line styles,
 # you can use fig.update_traces or pass a color_discrete_map to px.line.
 # Example: Make the 'Average Amplitude' line thicker or dashed
-fig.for_each_trace(lambda trace: trace.update(line=dict(width=6)) if trace.name == 'Average Amplitude' else ())
+fig.for_each_trace(lambda trace: trace.update(line=dict(width=2)) if trace.name == 'Average Amplitude' else ())
 
 # This will open the interactive plot in your default web browser if run as a Python script,
 # or display it directly in a Jupyter Notebook/Lab environment.

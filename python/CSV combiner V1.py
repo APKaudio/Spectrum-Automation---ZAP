@@ -83,7 +83,7 @@ if __name__ == "__main__":
     # Use a raw string (r"...") to avoid issues with backslashes in Windows paths.
     # For example: r"C:\Users\YourUser\Documents\MyCSVFiles"
     # Or for macOS/Linux: "/Users/YourUser/Documents/MyCSVFiles"
-    my_folder_path = r"C:\Users\4483\N9340 Scans\IKE - V4 N9340 Scans\N9340 Scans"
+    my_folder_path = r"C:\Users\4483\N9340 Scans\No_header"
 
     # Call the function to process the CSV files
     process_csv_files(my_folder_path)
