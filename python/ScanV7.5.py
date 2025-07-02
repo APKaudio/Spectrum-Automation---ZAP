@@ -619,22 +619,25 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
 
 
 
-def plot_spectrum_data(df, output_html_filename):
+def plot_spectrum_data(df: pd.DataFrame, output_html_filename: str):
     """
     Generates an interactive Plotly Express line plot from the spectrum analyzer data.
     The plot is saved as an HTML file.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing 'Frequency (MHz)', 'Level (dBm)',
+                           and 'Band Name' columns.
+        output_html_filename (str): The name of the HTML file to save the plot to.
     """
     print(f"\n--- Generating Interactive Plot: {output_html_filename} ---")
 
-    # The DataFrame already contains 'Frequency (MHz)'
     # Create Interactive Plot with Plotly Express
     fig = px.line(df,
                   x="Frequency (MHz)",
                   y="Level (dBm)",
-                  color="Band Name", # Differentiate lines by band name
+                  color="Band Name",  # Differentiate lines by band name
                   title="Spectrum Analyzer Scans: Amplitude vs Frequency",
                   labels={"Frequency (MHz)": "Frequency (MHz)", "Level (dBm)": "Amplitude (dBm)"},
-                  # Added Band Name to hover_data explicitly.
                   hover_data={"Frequency (MHz)": ':.2f', "Level (dBm)": ':.2f', "Band Name": True}
                  )
 
@@ -643,129 +646,122 @@ def plot_spectrum_data(df, output_html_filename):
     y_max_data = df['Level (dBm)'].max()
 
     # Set fixed Y-axis range for the plot and for the band rectangles
-    y_range_min = -100 # A reasonable lower bound for spectrum data
-    y_range_max = 0    # As per your desired reference level max
+    y_range_min = -100  # A reasonable lower bound for spectrum data
+    y_range_max = 0     # As per your desired reference level max
 
     # Adjust y_range_min if data goes lower than -100 dBm
     if y_min_data < y_range_min:
-        y_range_min = y_min_data - 10 # Provide some padding below the lowest point
+        y_range_min = y_min_data - 10  # Provide some padding below the lowest point
 
     # Set Y-axis (Amplitude) Maximum to 0 dBm and apply range
     fig.update_yaxes(range=[y_range_min, y_range_max],
                      title="Amplitude (dBm)",
                      showgrid=True, gridwidth=1)
 
-    # Define colors for the TVmarkers and text
-    marker_line_color = "rgba(255, 255, 0, 0.7)" # Bright yellow, semi-transparent
-    marker_text_color = "yellow"
-    band_fill_color = "rgba(255, 255, 0, 0.05)" # Very light yellow, highly transparent fill
+    # --- Add TV Band Markers ---
+    # Define colors for the TV band markers and text
+    tv_marker_line_color = "rgba(255, 255, 0, 0.7)"  # Bright yellow, semi-transparent
+    tv_marker_text_color = "yellow"
+    tv_band_fill_color = "rgba(255, 255, 0, 0.05)"   # Very light yellow, highly transparent fill
 
     for band in TV_PLOT_BAND_MARKERS:
         # Add a shaded rectangle to represent the frequency band allocation
         fig.add_shape(
-            type="rect", # Corrected type to "rect" to draw a shaded rectangular area
+            type="rect",
             x0=band["Start MHz"],
-            y0=y_range_min, # Span full Y-axis range
+            y0=y_range_min,  # Span full Y-axis range
             x1=band["Stop MHz"],
-            y1=y_range_max, # Span full Y-axis range
+            y1=y_range_max,  # Span full Y-axis range
             line=dict(
-                color=marker_line_color,
-                width=0.15, # Slightly thicker line for the border of the rectangle
-                dash="dot", # Use a dotted line for the rectangle border
+                color=tv_marker_line_color,
+                width=0.3,
+                dash="dot",
             ),
-            fillcolor=band_fill_color, # Added fill color to make it a shaded band
-            layer="below", # Draw below the trace lines
+            fillcolor=tv_band_fill_color,
+            layer="below",
         )
-        
-        # Add text markers using go.Scatter with mode='text'
-        # Calculate the x-position for the center of the band for text
-        x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
-        # Calculate Y position near the top of the plot
-        y_text_position = y_range_max - (y_range_max - y_range_min) * 0.05 
 
-        fig.add_trace(go.Scatter( # Corrected indentation to be inside the for loop
+        # Add text markers using go.Scatter with mode='text'
+        x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
+        y_text_position = y_range_max - (y_range_max - y_range_min) * 0.05
+
+        fig.add_trace(go.Scatter(
             x=[x_center],
             y=[y_text_position],
             mode='text',
             text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
             textfont=dict(
                 size=8,
-                color=marker_text_color
+                color=tv_marker_text_color
             ),
-            showlegend=False, # Do not show these text traces in the legend
-            hoverinfo='text', # Show text on hover
-            name=f"Band Label: {band['Band Name']}" # Name for internal reference, not shown if showlegend=False
+            showlegend=False,
+            hoverinfo='text',
+            name=f"Band Label: {band['Band Name']}"
         ))
 
-        # Define colors for the markers and text
-        marker_line_color = "rgba(255, 0, 0, 0.9)" # Red, semi-transparent
-        marker_text_color = "red"
-        band_fill_color = "rgba(255, 0, 0, 0.1)" # Very light red, highly transparent fill
+    # --- Add Government Band Markers ---
+    # Define colors for the Government band markers and text
+    gov_marker_line_color = "rgba(255, 0, 0, 0.9)"  # Red, semi-transparent
+    gov_marker_text_color = "red"
+    gov_band_fill_color = "rgba(255, 0, 0, 0.1)"    # Very light red, highly transparent fill
 
-        # Define the four y-offsets for staggering
-        y_offset_level_1 = 0.20
-        y_offset_level_2 = 0.25
-        y_offset_level_3 = 0.30
-        y_offset_level_4 = 0.35
+    # Define the four y-offsets for staggering
+    y_offset_level_1 = 0.20
+    y_offset_level_2 = 0.25
+    y_offset_level_3 = 0.30
+    y_offset_level_4 = 0.35
+    y_offset_levels = [y_offset_level_1, y_offset_level_2, y_offset_level_3, y_offset_level_4]
 
-        # Create a list of offset levels for easier access
-        y_offset_levels = [y_offset_level_1, y_offset_level_2, y_offset_level_3, y_offset_level_4]
+    for i, band in enumerate(GOV_PLOT_BAND_MARKERS):
+        # Add a shaded rectangle to represent the frequency band allocation
+        fig.add_shape(
+            type="rect",
+            x0=band["Start MHz"],
+            y0=y_range_min,
+            x1=band["Stop MHz"],
+            y1=y_range_max,
+            line=dict(
+                color=gov_marker_line_color,
+                width=0.3,
+                dash="dot",
+            ),
+            fillcolor=gov_band_fill_color,
+            layer="below",
+        )
 
-        # Use enumerate to get an index for staggering
-        for i, band in enumerate(GOV_PLOT_BAND_MARKERS):
-            # Add a shaded rectangle to represent the frequency band allocation
-            fig.add_shape(
-                type="rect",
-                x0=band["Start MHz"],
-                y0=y_range_min, # Span full Y-axis range
-                x1=band["Stop MHz"],
-                y1=y_range_max, # Span full Y-axis range
-                line=dict(
-                    color=marker_line_color,
-                    width=0.15,
-                    dash="dot",
-                ),
-                fillcolor=band_fill_color,
-                layer="below",
-            )
-            
-            # Calculate the x-position for the center of the band for text
-            x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
-            
-            # Determine the Y position based on staggering using modulo for 4 levels
-            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
-                
-            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+        # Calculate the x-position for the center of the band for text
+        x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
 
-            fig.add_trace(go.Scatter(
-                x=[x_center],
-                y=[y_text_position],
-                mode='text',
-                text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
-                textfont=dict(
-                    size=8,
-                    color=marker_text_color
-                ),
-                showlegend=False,
-                hoverinfo='text',
-                name=f"Band Label: {band['Band Name']}"
-            ))
+        # Determine the Y position based on staggering using modulo for 4 levels
+        current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+        y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
 
+        fig.add_trace(go.Scatter(
+            x=[x_center],
+            y=[y_text_position],
+            mode='text',
+            text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
+            textfont=dict(
+                size=8,
+                color=gov_marker_text_color
+            ),
+            showlegend=False,
+            hoverinfo='text',
+            name=f"Band Label: {band['Band Name']}"
+        ))
 
-
-
-  
     # Set X-axis (Frequency) to Logarithmic Scale
     fig.update_xaxes(type="log",
                      title="Frequency (MHz)",
                      showgrid=True, gridwidth=1,
-                     tickformat = None) # Setting tickformat to None or "" often helps prevent scientific notation
+                     tickformat=None)
 
     # Apply Dark Mode Theme
     fig.update_layout(template="plotly_dark")
 
+    # Save the plot as an HTML file
     fig.write_html(output_html_filename, auto_open=True)
-    print(f"\n--- Plotly Express Interactive Plot Generated and saved to {output_html_filename} ---")
+    print(f"--- Plotly Express Interactive Plot Generated and saved to {output_html_filename} ---")
 
 
 def wait_with_interrupt(wait_time_seconds):
