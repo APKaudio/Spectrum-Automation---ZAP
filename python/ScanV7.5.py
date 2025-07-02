@@ -103,141 +103,140 @@ for band_info in frequency_TV_Channel_bands_full_list:
 # Declare the comprehensive frequency_bands array (for PLOTTING MARKERS ONLY)
 # This array will be used to define the PLOT_BAND_MARKERS for plotting.
 gov_frequency_bands_full_list = [
- 
-    [50.0, 54.0, 'AMATEURend '],
-    [54.0, 72.0, 'BROADCASTINGend '],
-    [72.0, 73.0, 'FIXEDend  MOBILEend '],
-    [73.0, 74.6, 'RADIO ASTRONOMYend '],
-    [74.6, 74.8, 'FIXEDend  MOBILEend '],
-    [74.8, 75.2, 'AERONAUTICAL RADIONAVIGATIONend  5.180'],
-    [75.2, 76.0, 'FIXEDend  MOBILEend '],
-    [76.0, 108.0, 'BROADCASTINGend '],
-    [108.0, 117.975, 'AERONAUTICAL RADIONAVIGATIONend  5.197A'],
-    [117.975, 137.0, 'AERONAUTICAL MOBILEend  (R) 5.111 5.200'],
-    [137.0, 138.0, 'METEOROLOGICAL-SATELLITEend  (space-to-Earth) MOBILE-SATELLITEend  (space-to-Earth) 5.208A 5.208B 5.209 SPACE OPERATIONend  (space-to-Earth) 5.203C 5.209A SPACE RESEARCHend  (space-to-Earth) 5.208'],
-    [138.0, 144.0, 'FIXEDend  LAND MOBILEend  Space research (space-to-Earth)'],
-    [144.0, 146.0, 'AMATEURend  AMATEUR-SATELLITEend '],
-    [146.0, 148.0, 'AMATEURend '],
-    [148.0, 149.9, 'FIXEDend  LAND MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.209 C26 5.218 5.218A 5.219'],
-    [149.9, 150.05, 'MOBILE-SATELLITEend  (Earth-to-space) 5.209 5.220'],
-    [150.05, 156.4875, 'MOBILEend  Fixed 5.226'],
-    [156.4875, 156.5625, 'MARITIME MOBILEend  (distress and calling via DSCend ) 5.111 5.226 C32'],
-    [156.5625, 156.7625, 'MOBILEend  Fixed 5.226'],
-    [156.7625, 156.7875, 'MARITIME MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.111 5.226 5.228'],
-    [156.7875, 156.8125, 'MARITIME MOBILEend  (distress and calling) 5.111 5.226'],
-    [156.8125, 156.8375, 'MARITIME MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.111 5.226 5.228'],
-    [156.8375, 157.1875, 'MOBILEend  Fixed 5.226'],
-    [157.1875, 157.3375, 'MOBILEend  Fixed Maritime mobile-satellite 5.208A 5.208B 5.228AB 5.228AC 5.226'],
-    [157.3375, 161.7875, 'MOBILEend  Fixed 5.226'],
-    [161.7875, 161.9375, 'MOBILEend  Fixed Maritime mobile-satellite 5.208A 5.208B 5.228AB 5.228AC 5.226'],
-    [161.9375, 161.9625, 'MOBILEend  Fixed Maritime mobile-satellite (Earth-to-space) 5.228AA 5.226'],
-    [161.9625, 161.9875, 'AERONAUTICAL MOBILEend  (ORend ) MARITIME MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.228C 5.228D C53'],
-    [161.9875, 162.0125, 'MOBILEend  Fixed Maritime mobile-satellite (Earth-to-space) 5.228AA 5.226'],
-    [162.0125, 162.0375, 'AERONAUTICAL MOBILEend  (ORend ) MARITIME MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.228C 5.228D C53'],
-    [162.0375, 174.0, 'MOBILEend  Fixed 5.226'],
-    [174.0, 216.0, 'BROADCASTINGend '],
-    [216.0, 219.0, 'FIXEDend  MARITIME MOBILEend  LAND MOBILEend  5.242'],
-    [219.0, 220.0, 'FIXEDend  MARITIME MOBILEend  LAND MOBILEend  5.242 Amateur C11'],
-    [220.0, 222.0, 'FIXEDend  MOBILEend  Amateur C11'],
-    [222.0, 225.0, 'AMATEURend '],
-    [225.0, 312.0, 'FIXEDend  MOBILEend  5.111 5.254 5.256 C5'],
-    [312.0, 315.0, 'FIXEDend  MOBILEend  Mobile-satellite (Earth-to-space) 5.254 5.255 C5'],
-    [315.0, 328.6, 'FIXEDend  MOBILEend  5.254 C5'],
-    [328.6, 335.4, 'AERONAUTICAL RADIONAVIGATIONend  5.258'],
-    [335.4, 387.0, 'FIXEDend  MOBILEend  5.254 C5'],
-    [387.0, 390.0, 'FIXEDend  MOBILEend  Mobile-satellite (space-to-Earth) 5.208A 5.208B 5.254 5.255 C5'],
-    [390.0, 399.9, 'FIXEDend  MOBILEend  5.254 C5'],
-    [399.9, 400.05, 'MOBILE-SATELLITEend  (Earth-to-space) 5.209 5.220 5.260A 5.260B C19'],
-    [400.05, 400.15, 'STANDARD FREQUENCY AND TIME SIGNAL-SATELLITEend  (400.1 MHz) 5.261'],
-    [400.15, 401.0, 'METEOROLOGICAL AIDSend  METEOROLOGICAL-SATELLITEend  (space-to-Earth) MOBILE-SATELLITEend  (space-to-Earth) 5.208A 5.208B 5.209 SPACE OPERATIONend  (space-to-Earth) 5.203C 5.209A SPACE RESEARCHend  (space-to-Earth) 5.208'],
-    [401.0, 402.0, 'METEOROLOGICAL AIDSend  SPACE OPERATIONend  (space-to-Earth) EARTH EXPLORATION-SATELLITEend  (Earth-to-space) METEOROLOGICAL-SATELLITEend  (Earth-to-space) Fixed Mobile except aeronautical mobile 5.264A 5.264B'],
-    [402.0, 403.0, 'METEOROLOGICAL AIDSend  EARTH EXPLORATION-SATELLITEend  (Earth-to-space) METEOROLOGICAL-SATELLITEend  (Earth-to-space) Fixed Mobile except aeronautical mobile 5.264A 5.264B'],
-    [403.0, 406.0, 'METEOROLOGICAL AIDSend  Fixed Mobile except aeronautical mobile 5.265'],
-    [406.0, 406.1, 'MOBILE-SATELLITEend  (Earth-to-space) 5.265 5.266 5.267'],
-    [406.1, 410.0, 'MOBILEend  except aeronautical mobile RADIO ASTRONOMYend  Fixed 5.149 5.265'],
-    [410.0, 414.0, 'MOBILEend  except aeronautical mobile SPACE RESEARCHend  (space-to-space) 5.268 Fixed'],
-    [414.0, 415.0, 'FIXEDend  SPACE RESEARCHend  (space-to-space) 5.268 Mobile except aeronautical mobile'],
-    [415.0, 419.0, 'MOBILEend  except aeronautical mobile SPACE RESEARCHend  (space-to-space) 5.268 Fixed'],
-    [419.0, 420.0, 'FIXEDend  SPACE RESEARCHend  (space-to-space) 5.268 Mobile except aeronautical mobile'],
-    [420.0, 430.0, 'MOBILEend  except aeronautical mobile Fixed C10'],
-    [430.0, 432.0, 'RADIOLOCATIONend  Amateur'],
-    [432.0, 438.0, 'RADIOLOCATIONend  Amateur Earth Exploration-Satellite (active) 5.279A 5.282'],
-    [438.0, 450.0, 'RADIOLOCATIONend  5.285 Amateur 5.284 5.286'],
-    [450.0, 455.0, 'MOBILEend  5.286AAend  C23 Fixed 5.209 5.286 5.286A 5.286B 5.286C 5.286D C26A C26B'],
-    [455.0, 456.0, 'FIXEDend  MOBILEend  5.286AAend  C23 MOBILE-SATELLITEend  (Earth-to-space) 5.209 5.286A 5.286B 5.286C C26A C26B'],
-    [456.0, 459.0, 'MOBILEend  5.286AAend  5.287 C23 Fixed'],
-    [459.0, 460.0, 'FIXEDend  MOBILEend  5.286AAend  C23 MOBILE-SATELLITEend  (Earth-to-space) 5.209 5.286A 5.286B 5.286C C26A C26B'],
-    [460.0, 470.0, 'MOBILEend  5.286AAend  5.287 C23 Fixed 5.289'],
-    [470.0, 608.0, 'BROADCASTINGend  5.293 5.295 5.297 C24 C24A'],
-    [608.0, 614.0, 'RADIO ASTRONOMYend  Mobile-satellite except aeronautical mobile-satellite (Earth-to-space)'],
-    [614.0, 698.0, 'FIXEDend  MOBILEend  BROADCASTINGend  5.293 5.308A C24 C24A'],
-    [698.0, 806.0, 'FIXEDend  MOBILEend  5.317A C7 BROADCASTINGend  5.293'],
-    [806.0, 890.0, 'MOBILEend  5.317A C7 Fixed 5.317 5.318'],
-    [890.0, 902.0, 'FIXEDend  MOBILEend  except aeronautical mobile 5.317A C7 Radiolocation C5A 5.318'],
-    [902.0, 928.0, 'FIXEDend  RADIOLOCATIONend  C5A Amateur Mobile except aeronautical mobile 5.150'],
-    [928.0, 929.0, 'FIXEDend  MOBILEend  except aeronautical mobile 5.317A C7 Radiolocation C5A'],
-    [929.0, 932.0, 'MOBILEend  except aeronautical mobile 5.317A C7 Fixed Radiolocation C5A'],
-    [932.0, 932.5, 'FIXEDend  MOBILEend  except aeronautical mobile 5.317A C7 Radiolocation C5A'],
-    [932.5, 935.0, 'FIXEDend  Mobile except aeronautical mobile 5.317A C7 Radiolocation C5A'],
-    [935.0, 941.0, 'MOBILEend  except aeronautical mobile 5.317A C7 Fixed Radiolocation C5A'],
-    [941.0, 941.5, 'FIXEDend  MOBILEend  except aeronautical mobile 5.317A C7 Radiolocation C5A'],
-    [941.5, 942.0, 'FIXEDend  Mobile except aeronautical mobile 5.317A C7 Radiolocation C5A'],
-    [942.0, 944.0, 'FIXEDend  Mobile 5.317A C7'],
-    [944.0, 952.0, 'FIXEDend  MOBILEend  5.317A C7'],
-    [952.0, 956.0, 'FIXEDend  MOBILEend  5.317A C7'],
-    [956.0, 960.0, 'FIXEDend  Mobile 5.317A C7'],
-    [960.0, 1164.0, 'AERONAUTICAL MOBILEend  (R) 5.327A AERONAUTICAL RADIONAVIGATIONend  5.328 5.328AA'],
-    [1164.0, 1215.0, 'AERONAUTICAL RADIONAVIGATIONend  5.328 RADIONAVIGATION-SATELLITEend  (space-to-Earth) (space-to-space)  5.328B 5.328A'],
-    [1215.0, 1240.0, 'EARTH EXPLORATION-SATELLITEend  (active) RADIOLOCATIONend  RADIONAVIGATION-SATELLITEend  (space-to-Earth) (space-to-space)  5.328B 5.329 5.329A SPACE RESEARCHend  (active) 5.332'],
-    [1240.0, 1300.0, 'EARTH EXPLORATION-SATELLITEend  (active) RADIOLOCATIONend  RADIONAVIGATION-SATELLITEend  (space-to-Earth) (space-to-space)  5.328B 5.329 5.329A SPACE RESEARCHend  (active) Amateur 5.282 5.331 5.332 5.335 5.335A'],
-    [1300.0, 1350.0, 'RADIOLOCATIONend  AERONAUTICAL RADIONAVIGATIONend  5.337 RADIONAVIGATION-SATELLITEend  (Earth-to-space) 5.149 5.337A'],
-    [1350.0, 1390.0, 'FIXEDend  MOBILEend  RADIOLOCATIONend  5.149 5.338A 5.339 C5 C27'],
-    [1390.0, 1400.0, 'FIXEDend  MOBILEend  5.149 5.339 C27B'],
-    [1400.0, 1427.0, 'EARTH EXPLORATION-SATELLITEend  (passive) RADIO ASTRONOMYend  SPACE RESEARCHend  (passive) 5.340 5.341'],
-    [1427.0, 1429.0, 'SPACE OPERATIONend  (Earth-to-space) FIXEDend  5.338A 5.341'],
-    [1429.0, 1452.0, 'FIXEDend  MOBILEend  5.338A 5.341'],
-    [1452.0, 1492.0, 'FIXEDend  MOBILEend  5.343 BROADCASTINGend  5.341 5.345'],
-    [1492.0, 1525.0, 'FIXEDend  MOBILEend  5.341'],
-    [1525.0, 1530.0, 'MOBILE-SATELLITEend  (space-to-Earth) 5.208B 5.351A Earth Exploration-Satellite Space operation (space-to-Earth) 5.341 5.351 5.354'],
-    [1530.0, 1535.0, 'MOBILE-SATELLITEend  (space-to-Earth) 5.208B 5.351A 5.353A Earth Exploration-Satellite 5.341 5.351 5.354'],
-    [1535.0, 1559.0, 'MOBILE-SATELLITEend  (space-to-Earth) 5.208B 5.351A 5.341 5.351 5.353A 5.354 5.356 5.357 5.357A'],
-    [1559.0, 1610.0, 'AERONAUTICAL RADIONAVIGATIONend  RADIONAVIGATION-SATELLITEend  (space-to-Earth) (space-to-space)  5.208B 5.328B 5.329A 5.341'],
-    [1610.0, 1610.6, 'MOBILE-SATELLITEend  (Earth-to-space) 5.351A AERONAUTICAL RADIONAVIGATIONend  5.341 5.364 5.366 5.367 5.368 5.372'],
-    [1610.6, 1613.8, 'MOBILE-SATELLITEend  (Earth-to-space) 5.351A RADIO ASTRONOMYend  AERONAUTICAL RADIONAVIGATIONend  5.149 5.341 5.364 5.366 5.367 5.368 5.372'],
-    [1613.8, 1621.35, 'MOBILE-SATELLITEend  (Earth-to-space) 5.351A AERONAUTICAL RADIONAVIGATIONend  Mobile-satellite (space-to-Earth) 5.208B 5.341 5.364 5.365 5.366 5.367 5.368 5.372'],
-    [1621.35, 1626.5, 'MARITIME MOBILE-SATELLITEend  (space-to-Earth) 5.373 5.373A MOBILE-SATELLITE (Earth-to-space)end  5.351A AERONAUTICAL RADIONAVIGATIONend  Mobile-satellite (space-to-Earth) except maritime mobile-satellite (space-to-Earth) 5.208B 5.341 5.364 5.365 5.366 5.367 5.368 5.372'],
-    [1626.5, 1660.0, 'MOBILE-SATELLITEend  (Earth-to-space) 5.351A 5.341 5.351 5.353A 5.354 5.357A 5.374 5.375 5.376'],
-    [1660.0, 1660.5, 'MOBILE-SATELLITEend  (Earth-to-space) 5.351A RADIO ASTRONOMYend  5.149 5.341 5.351 5.354 5.376A'],
-    [1660.5, 1668.0, 'RADIO ASTRONOMYend  SPACE RESEARCHend  (passive) Fixed 5.149 5.341 5.379A'],
-    [1668.0, 1668.4, 'RADIO ASTRONOMYend  SPACE RESEARCHend  (passive) Fixed 5.149 5.341 5.379A'],
-    [1668.4, 1670.0, 'METEOROLOGICAL AIDSend  FIXEDend  RADIO ASTRONOMYend  5.149 5.341 5.379D 5.379E'],
-    [1670.0, 1675.0, 'METEOROLOGICAL AIDSend  FIXEDend  METEOROLOGICAL-SATELLITEend  (space-to-Earth) MOBILEend  except aeronautical mobile 5.341 5.379D 5.379E'],
-    [1675.0, 1700.0, 'METEOROLOGICAL AIDSend  METEOROLOGICAL-SATELLITEend  (space-to-Earth) 5.289 5.341'],
-    [1700.0, 1710.0, 'FIXEDend  METEOROLOGICAL-SATELLITEend  (space-to-Earth) 5.289 5.341'],
-    [1710.0, 1755.0, 'FIXEDend  MOBILEend  5.384A 5.149 5.341 5.385 5.386'],
-    [1755.0, 1780.0, 'FIXEDend  MOBILE 5.384A 5.386'],
-    [1780.0, 1850.0, 'FIXEDend  Mobile 5.384A C5 5.386'],
-    [1850.0, 2000.0, 'FIXEDend  MOBILEend  5.384A 5.388A 5.388 5.389B C35'],
-    [2000.0, 2020.0, 'MOBILEend  MOBILE-SATELLITEend  (Earth-to-space) 5.351A 5.388 5.389A 5.389C 5.389E C36'],
-    [2020.0, 2025.0, 'FIXEDend  MOBILEend  5.388 C37'],
-    [2025.0, 2110.0, 'EARTH EXPLORATION-SATELLITEend  (Earth-to-space) (space-to-space) FIXEDend  SPACE OPERATIONend  (Earth-to-space) (space-to-space) SPACE RESEARCHend  (Earth-to-space) (space-to-space) Mobile 5.391 C5 5.392'],
-    [2110.0, 2120.0, 'FIXEDend  MOBILEend  5.388A SPACE RESEARCHend  (deep space) (Earth-to-space) 5.388'],
-    [2120.0, 2180.0, 'FIXEDend  MOBILEend  5.388A 5.388'],
-    [2180.0, 2200.0, 'MOBILEend  MOBILE-SATELLITEend  (space-to-Earth) 5.351A 5.388 5.389A C36'],
-    [2200.0, 2290.0, 'EARTH EXPLORATION-SATELLITEend  (space-to-Earth) (space-to-space) FIXEDend  SPACE OPERATIONend  (space-to-Earth) (space-to-space) SPACE RESEARCHend  (space-to-Earth) (space-to-space) Mobile 5.391 C5 5.392'],
-    [2290.0, 2300.0, 'FIXEDend  SPACE RESEARCHend  (deep space) (Earth-to-space) Mobile C5'],
-    [2300.0, 2450.0, 'FIXEDend  MOBILEend  5.384A 5.394 C34 RADIOLOCATIONend  Amateur 5.150 5.282 5.393 C12 C13 C13A C17'],
-    [2450.0, 2483.5, 'FIXEDend  MOBILEend  RADIOLOCATIONend  5.150'],
-    [2483.5, 2500.0, 'FIXEDend  C38 MOBILE-SATELLITEend  (space-to-Earth) 5.351A RADIOLOCATIONend  RADIODETERMINATION-SATELLITEend  (space-to-Earth) 5.398 5.150 5.402'],
-    [2500.0, 2596.0, 'FIXEDend  MOBILEend  except aeronautical mobile 5.384A 5.416'],
-    [2596.0, 2655.0, 'BROADCASTINGend  FIXEDend  MOBILEend  except aeronautical mobile 5.384A 5.339 5.416'],
-    [2655.0, 2686.0, 'BROADCASTINGend  FIXEDend  MOBILEend  except aeronautical mobile 5.384A Earth Exploration-Satellite (passive) Radio astronomy Space research (passive) 5.149 5.416'],
-    [2686.0, 2690.0, 'FIXEDend  MOBILEend  except aeronautical mobile 5.384A Earth Exploration-Satellite (passive) Radio astronomy Space research (passive) 5.149'],
-    [2690.0, 2700.0, 'EARTH EXPLORATION-SATELLITEend  (passive) RADIO ASTRONOMYend  SPACE RESEARCHend  (passive) 5.340'],
-    [2700.0, 2900.0, 'AERONAUTICAL RADIONAVIGATIONend  5.337 Radiolocation 5.423 5.424 C14 C54'],
-    [2900.0, 3100.0, 'RADIOLOCATIONend  5.424A RADIONAVIGATIONend  5.426 5.425 5.427'],
-    [3100.0, 3300.0, 'RADIOLOCATIONend  Earth Exploration-Satellite (active) Space research (active) 5.149'],
-    [3300.0, 3450.0, 'RADIOLOCATIONend  5.433 C5 Amateur 5.149 5.282'],
+    [50.0, 54.0, 'AMATEUR'],
+    [54.0, 72.0, 'BROADCASTING'],
+    [72.0, 73.0, 'FIXED MOBILE'],
+    [73.0, 74.6, 'RADIO ASTRONOMY'],
+    [74.6, 74.8, 'FIXED MOBILE'],
+    [74.8, 75.2, 'AERONAUTICAL RADIONAVIGATION'],
+    [75.2, 76.0, 'FIXED MOBILE'],
+    [76.0, 108.0, 'BROADCASTING'],
+    [108.0, 117.975, 'AERONAUTICAL RADIONAVIGATION'],
+    [117.975, 137.0, 'AERONAUTICAL MOBILE (R)'],
+    [137.0, 138.0, 'METEOROLOGICAL-SATELLITE (space-to-Earth) MOBILE-SATELLITE (space-to-Earth) SPACE OPERATION (space-to-Earth) SPACE RESEARCH (space-to-Earth)'],
+    [138.0, 144.0, 'FIXED LAND MOBILE Space research (space-to-Earth)'],
+    [144.0, 146.0, 'AMATEUR AMATEUR-SATELLITE'],
+    [146.0, 148.0, 'AMATEUR'],
+    [148.0, 149.9, 'FIXED LAND MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [149.9, 150.05, 'MOBILE-SATELLITE (Earth-to-space)'],
+    [150.05, 156.4875, 'MOBILE Fixed'],
+    [156.4875, 156.5625, 'MARITIME MOBILE (distress and calling via DSC )'],
+    [156.5625, 156.7625, 'MOBILE Fixed'],
+    [156.7625, 156.7875, 'MARITIME MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [156.7875, 156.8125, 'MARITIME MOBILE (distress and calling)'],
+    [156.8125, 156.8375, 'MARITIME MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [156.8375, 157.1875, 'MOBILE Fixed'],
+    [157.1875, 157.3375, 'MOBILE Fixed Maritime mobile-satellite'],
+    [157.3375, 161.7875, 'MOBILE Fixed'],
+    [161.7875, 161.9375, 'MOBILE Fixed Maritime mobile-satellite'],
+    [161.9375, 161.9625, 'MOBILE Fixed Maritime mobile-satellite (Earth-to-space)'],
+    [161.9625, 161.9875, 'AERONAUTICAL MOBILE (OR ) MARITIME MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [161.9875, 162.0125, 'MOBILE Fixed Maritime mobile-satellite (Earth-to-space)'],
+    [162.0125, 162.0375, 'AERONAUTICAL MOBILE (OR ) MARITIME MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [162.0375, 174.0, 'MOBILE Fixed'],
+    [174.0, 216.0, 'BROADCASTING'],
+    [216.0, 219.0, 'FIXED MARITIME MOBILE LAND MOBILE'],
+    [219.0, 220.0, 'FIXED MARITIME MOBILE LAND MOBILE Amateur'],
+    [220.0, 222.0, 'FIXED MOBILE Amateur'],
+    [222.0, 225.0, 'AMATEUR'],
+    [225.0, 312.0, 'FIXED MOBILE'],
+    [312.0, 315.0, 'FIXED MOBILE Mobile-satellite (Earth-to-space)'],
+    [315.0, 328.6, 'FIXED MOBILE'],
+    [328.6, 335.4, 'AERONAUTICAL RADIONAVIGATION'],
+    [335.4, 387.0, 'FIXED MOBILE'],
+    [387.0, 390.0, 'FIXED MOBILE Mobile-satellite (space-to-Earth)'],
+    [390.0, 399.9, 'FIXED MOBILE'],
+    [399.9, 400.05, 'MOBILE-SATELLITE (Earth-to-space)'],
+    [400.05, 400.15, 'STANDARD FREQUENCY AND TIME SIGNAL-SATELLITE (400.1 MHz)'],
+    [400.15, 401.0, 'METEOROLOGICAL AIDS METEOROLOGICAL-SATELLITE (space-to-Earth) MOBILE-SATELLITE (space-to-Earth) SPACE OPERATION (space-to-Earth) SPACE RESEARCH (space-to-Earth)'],
+    [401.0, 402.0, 'METEOROLOGICAL AIDS SPACE OPERATION (space-to-Earth) EARTH EXPLORATION-SATELLITE (Earth-to-space) METEOROLOGICAL-SATELLITE (Earth-to-space) Fixed Mobile except aeronautical mobile'],
+    [402.0, 403.0, 'METEOROLOGICAL AIDS EARTH EXPLORATION-SATELLITE (Earth-to-space) METEOROLOGICAL-SATELLITE (Earth-to-space) Fixed Mobile except aeronautical mobile'],
+    [403.0, 406.0, 'METEOROLOGICAL AIDS Fixed Mobile except aeronautical mobile'],
+    [406.0, 406.1, 'MOBILE-SATELLITE (Earth-to-space)'],
+    [406.1, 410.0, 'MOBILE except aeronautical mobile RADIO ASTRONOMY Fixed'],
+    [410.0, 414.0, 'MOBILE except aeronautical mobile SPACE RESEARCH (space-to-space) Fixed'],
+    [414.0, 415.0, 'FIXED SPACE RESEARCH (space-to-space) Mobile except aeronautical mobile'],
+    [415.0, 419.0, 'MOBILE except aeronautical mobile SPACE RESEARCH (space-to-space) Fixed'],
+    [419.0, 420.0, 'FIXED SPACE RESEARCH (space-to-space) Mobile except aeronautical mobile'],
+    [420.0, 430.0, 'MOBILE except aeronautical mobile Fixed'],
+    [430.0, 432.0, 'RADIOLOCATION Amateur'],
+    [432.0, 438.0, 'RADIOLOCATION Amateur Earth Exploration-Satellite (active)'],
+    [438.0, 450.0, 'RADIOLOCATION Amateur'],
+    [450.0, 455.0, 'MOBILE Fixed'],
+    [455.0, 456.0, 'FIXED MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [456.0, 459.0, 'MOBILE Fixed'],
+    [459.0, 460.0, 'FIXED MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [460.0, 470.0, 'MOBILE Fixed'],
+    [470.0, 608.0, 'BROADCASTING'],
+    [608.0, 614.0, 'RADIO ASTRONOMY Mobile-satellite except aeronautical mobile-satellite (Earth-to-space)'],
+    [614.0, 698.0, 'FIXED MOBILE BROADCASTING'],
+    [698.0, 806.0, 'FIXED MOBILE BROADCASTING'],
+    [806.0, 890.0, 'MOBILE Fixed'],
+    [890.0, 902.0, 'FIXED MOBILE except aeronautical mobile Radiolocation'],
+    [902.0, 928.0, 'FIXED RADIOLOCATION Amateur Mobile except aeronautical mobile'],
+    [928.0, 929.0, 'FIXED MOBILE except aeronautical mobile Radiolocation'],
+    [929.0, 932.0, 'MOBILE except aeronautical mobile Fixed Radiolocation'],
+    [932.0, 932.5, 'FIXED MOBILE except aeronautical mobile Radiolocation'],
+    [932.5, 935.0, 'FIXED Mobile except aeronautical mobile Radiolocation'],
+    [935.0, 941.0, 'MOBILE except aeronautical mobile Fixed Radiolocation'],
+    [941.0, 941.5, 'FIXED MOBILE except aeronautical mobile Radiolocation'],
+    [941.5, 942.0, 'FIXED Mobile except aeronautical mobile Radiolocation'],
+    [942.0, 944.0, 'FIXED Mobile'],
+    [944.0, 952.0, 'FIXED MOBILE'],
+    [952.0, 956.0, 'FIXED MOBILE'],
+    [956.0, 960.0, 'FIXED Mobile'],
+    [960.0, 1164.0, 'AERONAUTICAL MOBILE (R) AERONAUTICAL RADIONAVIGATION'],
+    [1164.0, 1215.0, 'AERONAUTICAL RADIONAVIGATION RADIONAVIGATION-SATELLITE (space-to-Earth) (space-to-space)'],
+    [1215.0, 1240.0, 'EARTH EXPLORATION-SATELLITE (active) RADIOLOCATION RADIONAVIGATION-SATELLITE (space-to-Earth) (space-to-space) SPACE RESEARCH (active)'],
+    [1240.0, 1300.0, 'EARTH EXPLORATION-SATELLITE (active) RADIOLOCATION RADIONAVIGATION-SATELLITE (space-to-Earth) (space-to-space) SPACE RESEARCH (active) Amateur'],
+    [1300.0, 1350.0, 'RADIOLOCATION AERONAUTICAL RADIONAVIGATION RADIONAVIGATION-SATELLITE (Earth-to-space)'],
+    [1350.0, 1390.0, 'FIXED MOBILE RADIOLOCATION'],
+    [1390.0, 1400.0, 'FIXED MOBILE'],
+    [1400.0, 1427.0, 'EARTH EXPLORATION-SATELLITE (passive) RADIO ASTRONOMY SPACE RESEARCH (passive)'],
+    [1427.0, 1429.0, 'SPACE OPERATION (Earth-to-space) FIXED'],
+    [1429.0, 1452.0, 'FIXED MOBILE'],
+    [1452.0, 1492.0, 'FIXED MOBILE BROADCASTING'],
+    [1492.0, 1525.0, 'FIXED MOBILE'],
+    [1525.0, 1530.0, 'MOBILE-SATELLITE (space-to-Earth) Earth Exploration-Satellite Space operation (space-to-Earth)'],
+    [1530.0, 1535.0, 'MOBILE-SATELLITE (space-to-Earth) Earth Exploration-Satellite'],
+    [1535.0, 1559.0, 'MOBILE-SATELLITE (space-to-Earth)'],
+    [1559.0, 1610.0, 'AERONAUTICAL RADIONAVIGATION RADIONAVIGATION-SATELLITE (space-to-Earth) (space-to-space)'],
+    [1610.0, 1610.6, 'MOBILE-SATELLITE (Earth-to-space) AERONAUTICAL RADIONAVIGATION'],
+    [1610.6, 1613.8, 'MOBILE-SATELLITE (Earth-to-space) RADIO ASTRONOMY AERONAUTICAL RADIONAVIGATION'],
+    [1613.8, 1621.35, 'MOBILE-SATELLITE (Earth-to-space) AERONAUTICAL RADIONAVIGATION Mobile-satellite (space-to-Earth)'],
+    [1621.35, 1626.5, 'MARITIME MOBILE-SATELLITE (space-to-Earth) MOBILE-SATELLITE (Earth-to-space) AERONAUTICAL RADIONAVIGATION Mobile-satellite (space-to-Earth) except maritime mobile-satellite (space-to-Earth)'],
+    [1626.5, 1660.0, 'MOBILE-SATELLITE (Earth-to-space)'],
+    [1660.0, 1660.5, 'MOBILE-SATELLITE (Earth-to-space) RADIO ASTRONOMY'],
+    [1660.5, 1668.0, 'RADIO ASTRONOMY SPACE RESEARCH (passive) Fixed'],
+    [1668.0, 1668.4, 'RADIO ASTRONOMY SPACE RESEARCH (passive) Fixed'],
+    [1668.4, 1670.0, 'METEOROLOGICAL AIDS FIXED RADIO ASTRONOMY'],
+    [1670.0, 1675.0, 'METEOROLOGICAL AIDS FIXED METEOROLOGICAL-SATELLITE (space-to-Earth) MOBILE except aeronautical mobile'],
+    [1675.0, 1700.0, 'METEOROLOGICAL AIDS METEOROLOGICAL-SATELLITE (space-to-Earth)'],
+    [1700.0, 1710.0, 'FIXED METEOROLOGICAL-SATELLITE (space-to-Earth)'],
+    [1710.0, 1755.0, 'FIXED MOBILE'],
+    [1755.0, 1780.0, 'FIXED MOBILE'],
+    [1780.0, 1850.0, 'FIXED Mobile'],
+    [1850.0, 2000.0, 'FIXED MOBILE'],
+    [2000.0, 2020.0, 'MOBILE MOBILE-SATELLITE (Earth-to-space)'],
+    [2020.0, 2025.0, 'FIXED MOBILE'],
+    [2025.0, 2110.0, 'EARTH EXPLORATION-SATELLITE (Earth-to-space) (space-to-space) FIXED SPACE OPERATION (Earth-to-space) (space-to-space) SPACE RESEARCH (Earth-to-space) (space-to-space) Mobile'],
+    [2110.0, 2120.0, 'FIXED MOBILE SPACE RESEARCH (deep space) (Earth-to-space)'],
+    [2120.0, 2180.0, 'FIXED MOBILE'],
+    [2180.0, 2200.0, 'MOBILE MOBILE-SATELLITE (space-to-Earth)'],
+    [2200.0, 2290.0, 'EARTH EXPLORATION-SATELLITE (space-to-Earth) (space-to-space) FIXED SPACE OPERATION (space-to-Earth) (space-to-space) SPACE RESEARCH (space-to-Earth) (space-to-space) Mobile'],
+    [2290.0, 2300.0, 'FIXED SPACE RESEARCH (deep space) (Earth-to-space) Mobile'],
+    [2300.0, 2450.0, 'FIXED MOBILE RADIOLOCATION Amateur'],
+    [2450.0, 2483.5, 'FIXED MOBILE RADIOLOCATION'],
+    [2483.5, 2500.0, 'FIXED MOBILE-SATELLITE (space-to-Earth) RADIOLOCATION RADIODETERMINATION-SATELLITE (space-to-Earth)'],
+    [2500.0, 2596.0, 'FIXED MOBILE except aeronautical mobile'],
+    [2596.0, 2655.0, 'BROADCASTING FIXED MOBILE except aeronautical mobile'],
+    [2655.0, 2686.0, 'BROADCASTING FIXED MOBILE except aeronautical mobile Earth Exploration-Satellite (passive) Radio astronomy Space research (passive)'],
+    [2686.0, 2690.0, 'FIXED MOBILE except aeronautical mobile Earth Exploration-Satellite (passive) Radio astronomy Space research (passive)'],
+    [2690.0, 2700.0, 'EARTH EXPLORATION-SATELLITE (passive) RADIO ASTRONOMY SPACE RESEARCH (passive)'],
+    [2700.0, 2900.0, 'AERONAUTICAL RADIONAVIGATION Radiolocation'],
+    [2900.0, 3100.0, 'RADIOLOCATION RADIONAVIGATION'],
+    [3100.0, 3300.0, 'RADIOLOCATION Earth Exploration-Satellite (active) Space research (active)'],
+    [3300.0, 3450.0, 'RADIOLOCATION Amateur'],
 ]
 
 # This list will be dynamically created for plotting purposes only, from frequency_bands_full_list
@@ -698,47 +697,59 @@ def plot_spectrum_data(df, output_html_filename):
             name=f"Band Label: {band['Band Name']}" # Name for internal reference, not shown if showlegend=False
         ))
 
-    marker_line_color = "rgba(255, 0, 0, 0.7)" # Red, semi-transparent
-    marker_text_color = "red"
-    band_fill_color = "rgba(255, 0, 0, 0.05)" # Very light red, highly transparent fill
+        # Define colors for the markers and text
+        marker_line_color = "rgba(255, 0, 0, 0.9)" # Red, semi-transparent
+        marker_text_color = "red"
+        band_fill_color = "rgba(255, 0, 0, 0.1)" # Very light red, highly transparent fill
 
-    
-    for band in GOV_PLOT_BAND_MARKERS:
-        # Add a shaded rectangle to represent the frequency band allocation
-        fig.add_shape(
-            type="rect", # Corrected type to "rect" to draw a shaded rectangular area
-            x0=band["Start MHz"],
-            y0=y_range_min, # Span full Y-axis range
-            x1=band["Stop MHz"],
-            y1=y_range_max, # Span full Y-axis range
-            line=dict(
-                color=marker_line_color,
-                width=0.15, # Slightly thicker line for the border of the rectangle
-                dash="dot", # Use a dotted line for the rectangle border
-            ),
-            fillcolor=band_fill_color, # Added fill color to make it a shaded band
-            layer="below", # Draw below the trace lines
-        )
-        
-        # Add text markers using go.Scatter with mode='text'
-        # Calculate the x-position for the center of the band for text
-        x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
-        # Calculate Y position near the top of the plot
-        y_text_position = y_range_max - (y_range_max - y_range_min) * 0.05 
+        # Define the four y-offsets for staggering
+        y_offset_level_1 = 0.20
+        y_offset_level_2 = 0.25
+        y_offset_level_3 = 0.30
+        y_offset_level_4 = 0.35
 
-        fig.add_trace(go.Scatter( # Corrected indentation to be inside the for loop
-            x=[x_center],
-            y=[y_text_position],
-            mode='text',
-            text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
-            textfont=dict(
-                size=8,
-                color=marker_text_color
-            ),
-            showlegend=False, # Do not show these text traces in the legend
-            hoverinfo='text', # Show text on hover
-            name=f"Band Label: {band['Band Name']}" # Name for internal reference, not shown if showlegend=False
-        ))
+        # Create a list of offset levels for easier access
+        y_offset_levels = [y_offset_level_1, y_offset_level_2, y_offset_level_3, y_offset_level_4]
+
+        # Use enumerate to get an index for staggering
+        for i, band in enumerate(GOV_PLOT_BAND_MARKERS):
+            # Add a shaded rectangle to represent the frequency band allocation
+            fig.add_shape(
+                type="rect",
+                x0=band["Start MHz"],
+                y0=y_range_min, # Span full Y-axis range
+                x1=band["Stop MHz"],
+                y1=y_range_max, # Span full Y-axis range
+                line=dict(
+                    color=marker_line_color,
+                    width=0.15,
+                    dash="dot",
+                ),
+                fillcolor=band_fill_color,
+                layer="below",
+            )
+            
+            # Calculate the x-position for the center of the band for text
+            x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
+            
+            # Determine the Y position based on staggering using modulo for 4 levels
+            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+                
+            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+
+            fig.add_trace(go.Scatter(
+                x=[x_center],
+                y=[y_text_position],
+                mode='text',
+                text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
+                textfont=dict(
+                    size=8,
+                    color=marker_text_color
+                ),
+                showlegend=False,
+                hoverinfo='text',
+                name=f"Band Label: {band['Band Name']}"
+            ))
 
 
 
