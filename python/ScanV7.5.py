@@ -528,9 +528,9 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
             write_safe(inst, f":SENS:FREQ:STAR {current_segment_start_freq_hz}")
             write_safe(inst, f":SENS:FREQ:STOP {segment_stop_freq_hz}")
             # Explicitly set span to ensure the instrument uses it for the sweep
-            write_safe(inst, f":SENS:FREQ:SPAN {actual_segment_span_hz}")
+            write_safe(inst, f":SENS:FREQ:STOP {segment_stop_freq_hz}")
 
-            time.sleep(0.1) # Small delay to ensure commands are processed
+            query_safe(inst, "*OPC?") # Wait for the sweep to completed
 
             # Add settling time for max hold values to show up, if max hold is enabled
             if max_hold_time > 0:
@@ -539,7 +539,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
                     print(f"\rWaiting {sec_wait} seconds for MAX hold to settle...     ", end='') # \r to overwrite line
                     time.sleep(1)
                 print("\rMAX hold settle time complete.                              ") # Clear the line after countdown
-
+            write_safe(inst, f":CALCulate:MARKer:ALL")
             query_safe(inst, "*OPC?") # Wait for the sweep to complete
             print(f"  Sweep completed for segment {segment_counter}.")
 
