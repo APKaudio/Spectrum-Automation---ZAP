@@ -21,13 +21,6 @@ DEFAULT_RBW_STEP_SIZE_HZ = 10000 # 10 kHz RBW resolution desired per data point
 DEFAULT_CYCLE_WAIT_TIME_SECONDS = 300 # 5 minutes wait (300 seconds) between full scan cycles
 DEFAULT_MAXHOLD_TIME_SECONDS = 5 # Default max hold time for the new argument
 
-# Define VISA addresses for different users/instruments
-# VISA_ADDRESSES = {
-#     'apk': 'USB0::0x0957::0xFFEF::CN03480580::0::INSTR',
-#     'zap': 'USB0::0x0957::0xFFEF::SG05300002::0::INSTR'    
-# }
-
-
 # Define the frequency bands to *SCAN* (User's specified bands for instrument operation)
 # This list will be used by the scan_bands function.
 SCAN_BAND_RANGES = [
@@ -579,7 +572,6 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
                     sys.stdout.write(display_text) # \r to overwrite line
                     sys.stdout.flush()
                     time.sleep(1)
-                sys.stdout.write("✅") # Clear the line and add newline
                 sys.stdout.flush()
             
             #write_safe(inst, f":CALCulate:MARKer:ALL")
@@ -590,10 +582,10 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, last_scanned_band_index=0):
             progress_percentage = (segment_counter / total_segments_in_band)
             bar_length = 20 # Total number of emojis in the bar
             filled_length = int(round(bar_length * progress_percentage))
-            progressbar = '✨' * filled_length + '⬜' * (bar_length - filled_length) # Filled and empty squares
+            progressbar = '█' * filled_length + '-' * (bar_length - filled_length) # Filled and empty squares
 
             # Combined print statement as per user request
-            print(f"{progressbar}🔍 Span:📊{actual_segment_span_hz/MHZ_TO_HZ:.3f} MHz--📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to 📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}.")
+            print(f"{progressbar} Span:📊{actual_segment_span_hz/MHZ_TO_HZ:.3f} MHz--📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to 📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}")
 
             # Read and process trace data
             trace_data = []
