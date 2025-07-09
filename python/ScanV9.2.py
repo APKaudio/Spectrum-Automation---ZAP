@@ -492,15 +492,14 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
             total_segments_in_band = int(np.ceil(full_band_span_hz / optimal_segment_span_hz))
             if total_segments_in_band == 0:
                 total_segments_in_band = 1
-
         print(f"🎯 Optimal segment span for instrument setting: {optimal_segment_span_hz / MHZ_TO_HZ:.3f} MHz.")
 
+        # Initialize a temporary list to hold all data points for the current band
+        current_band_data = []
 
         # Now, explicitly set the START and STOP for the *first segment* of this new band
         current_segment_start_freq_hz = band_start_freq_hz # Initialize for the loop
-        
         segment_counter = 0
-
         while current_segment_start_freq_hz < band_stop_freq_hz:
             segment_counter += 1
             segment_stop_freq_hz = min(current_segment_start_freq_hz + optimal_segment_span_hz, band_stop_freq_hz)
@@ -510,17 +509,17 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
             # This ensures it's always defined before the inner while loop's condition is checked.
             current_marker_base_freq = current_segment_start_freq_hz
 
-            if actual_segment_span_hz <= 0: # Avoid infinite loop if start == stop or negative span
+            if actual_segment_span_hz <= 0:
+                # Avoid infinite loop if start == stop or negative span
                 print(f"⚠️ Skipping segment due to zero or negative span: {current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz")
                 break # Exit this segment loop, move to next band or end scan
 
             # Set instrument frequency range for the current segment
             write_safe(inst, f":SENS:FREQ:STAR {current_segment_start_freq_hz}")
             write_safe(inst, f":SENS:FREQ:STOP {segment_stop_freq_hz}")
-            
+
             # Add a small delay after setting frequencies to allow instrument to configure
             time.sleep(0.1)
-
             query_safe(inst, "*OPC?") # Wait for the sweep to completed
             inst.clear() # Flush buffer after OPC query
             time.sleep(0.5) # Add a small delay for data processing within the instrument
@@ -534,25 +533,26 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
                     time.sleep(1)
                 sys.stdout.write("✅") # Clear the line and add newline
                 sys.stdout.flush()
-            
+
             query_safe(inst, "*OPC?") # Wait for the sweep to complete
             inst.clear() # Flush buffer after OPC query
-            
+
             # Calculate progress for the emoji bar - Using more compatible ASCII characters
             progress_percentage = (segment_counter / total_segments_in_band)
             bar_length = 20 # Total number of characters in the bar
             filled_length = int(round(bar_length * progress_percentage))
             # Using '█' (U+2588 Full Block) and '-' (Hyphen) for better compatibility
             progressbar = '█' * filled_length + '-' * (bar_length - filled_length)
-
+            
             # Combined print statement as per user request
-            print(f"{progressbar}  🔍   📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to 📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}.")
+            print(f"{progressbar} 🔍 📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to 📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz ✅{segment_counter} of {total_segments_in_band}.")
+
 
             # Read and process data using markers
             # The instrument has 401 points (0 to 400).
             # Quarter points are at 100, 200, 300, 400.
             # Marker positions are relative to the *current segment's start frequency*.
-            
+
             # Calculate the frequency step per display point for the current segment
             if (actual_sweep_points - 1) > 0:
                 freq_step_per_display_point = actual_segment_span_hz / (actual_sweep_points - 1)
@@ -560,7 +560,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
                 freq_step_per_display_point = 0 # Should not happen with actual_sweep_points = 401
 
             marker_offsets_percentage = [0.0, 0.2, 0.4, 0.6, 0.8] # Relative to current segment span
-            
+
             # Ensure rbw is not zero to prevent infinite loop
             if rbw <= 0:
                 print("🚫 RBW step size is zero or negative. Cannot collect marker data.")
@@ -576,17 +576,14 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
                     # --- Construct the concatenated command strings ---
                     set_commands = []
                     query_commands = []
-
                     for marker_idx in range(5):
                         marker_num = marker_idx + 1
-
                         # Calculate the frequency for the current marker (same as before)
                         marker_freq_hz = current_marker_base_freq + (marker_offsets_percentage[marker_idx] * actual_segment_span_hz)
-                        marker_freq_hz = min(marker_freq_hz, segment_stop_freq_hz)
+                        marker_freq_hz = min(marker_freq_hz, segment_stop_freq_hz) # Cap at segment stop frequency
 
                         # Append the set command
                         set_commands.append(f":CALC:MARK{marker_num}:X {marker_freq_hz}HZ")
-
                         # Append the query command for amplitude. Note the leading colon for absolute path.
                         # We want to query all Y values in a single string.
                         query_commands.append(f":CALC:MARK{marker_num}:Y?")
@@ -596,24 +593,15 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
                     full_query_command = ";".join(query_commands)
 
                     # --- Execute the commands ---
-
                     # 1. Send all marker frequency set commands in one go
                     write_safe(inst, full_set_command)
+                   
 
                     # 2. Query all marker amplitudes in one go
                     # The instrument is expected to return the values separated by semicolons.
-                    # E.g., "-10.123;-12.456;-8.901;-15.789"
-                    combined_amp_response_str = inst.query(full_query_command).strip()
-
-                    # --- Process the combined response ---
-
-                    # Split the response string by semicolon
-                    amp_values_str_list = combined_amp_response_str.split(';')
-
-                    # Ensure we received the expected number of values
-                    if len(amp_values_str_list) != 5:
-                        print(f"Warning: Expected 5 amplitude values, but received {len(amp_values_str_list)}. Raw response: {combined_amp_response_str}")
-                        # Handle this error appropriately, perhaps by raising an exception or returning None
+                    # E.g., "-10.123;-12.456;-8.901;-15.789;-20.500"
+                    amp_values_str = query_safe(inst, full_query_command)
+                    amp_values_str_list = amp_values_str.split(';')
 
                     # Now, iterate through the received amplitudes and the original marker calculations
                     for marker_idx in range(5):
@@ -634,36 +622,53 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
                             "Band Name": band_name,
                         })
 
+                    # Sort marker_data_points_temp by frequency before appending
+                    marker_data_points_temp.sort(key=lambda x: x["Frequency (MHz)"])
 
+                    # Add the sorted marker data points to the current_band_data
+                    current_band_data.extend(marker_data_points_temp)
 
-                    # Add all 4 marker data points to all_scan_data and CSV
-                    for data_point in marker_data_points_temp:
-                        all_scan_data.append(data_point)
-                        csv_writer.writerow([
-                            f"{data_point['Frequency (MHz)']:.2f}",
-                            f"{data_point['Level (dBm)']:.2f}",
-                        ])
+                    # Advance current_marker_base_freq by the step size
+                    current_marker_base_freq += rbw # Advance by the desired resolution bandwidth (step size)
 
-                except ValueError as e:
-                    print(f"🚫 Error parsing marker data for segment starting at {current_marker_base_freq / MHZ_TO_HZ:.3f} MHz: {e}")
-                    csv_writer.writerow([f"{current_marker_base_freq / MHZ_TO_HZ:.2f}_ERROR_FREQ", "ERROR_AMP"])
                 except pyvisa.VisaIOError as e:
-                    print(f"🛑 VISA Error querying markers for segment starting at {current_marker_base_freq / MHZ_TO_HZ:.3f} MHz: {e}")
-                    csv_writer.writerow([f"{current_marker_base_freq / MHZ_TO_HZ:.2f}_VISA_ERROR_FREQ", "VISA_ERROR_AMP"])
-                    raise # Re-raise the exception to be caught by the main loop for recovery
+                    print(f"❌ VISA Error during marker data collection: {e}")
+                    # Decide if this error is critical enough to stop the whole scan
+                    # For now, we'll just break out of the current marker loop and try the next segment/band
+                    break
+                except ValueError as e:
+                    print(f"❌ Data parsing error (e.g., non-float amplitude received): {e}. Raw: '{amp_values_str}'")
+                    # Break out of the current marker loop and try the next segment/band
+                    break
+                except IndexError as e:
+                    print(f"❌ Not enough marker amplitude values received: {e}. Raw: '{amp_values_str}'")
+                    # Break out of the current marker loop and try the next segment/band
+                    break
                 except Exception as e:
-                    print(f"🚨 An unexpected error occurred while processing markers for segment starting at {current_marker_base_freq / MHZ_TO_HZ:.3f} MHz: {e}")
-                    csv_writer.writerow([f"{current_marker_base_freq / MHZ_TO_HZ:.2f}_UNEXPECTED_ERROR_FREQ", "UNEXPECTED_ERROR_AMP"])
-                
-                current_marker_base_freq += rbw # Move the base frequency for the next set of 4 markers
+                    print(f"💥 An unexpected error occurred during marker data collection: {e}")
+                    break # Exit current marker loop, try next segment/band
 
-            # Update last_successful_band_index after successfully processing a band
+            # Advance to the next segment's start frequency
+            current_segment_start_freq_hz = segment_stop_freq_hz
+            # Update the last successfully scanned band index after each segment completes
             last_successful_band_index = i
 
-            current_segment_start_freq_hz = segment_stop_freq_hz # Move to the start of the next segment
+        # After processing all segments for the current band, sort current_band_data
+        current_band_data.sort(key=lambda x: x["Frequency (MHz)"])
 
-    print("\n--- 🎉 Band Scan Complete! ---") # Moved emoji
-    return all_scan_data, last_successful_band_index # Return the collected data and last successful index
+        # Write the sorted current_band_data to CSV and add to all_scan_data
+        for data_point in current_band_data:
+            all_scan_data.append(data_point) # Add to overall list for plotting
+            csv_writer.writerow([
+                f"{data_point['Frequency (MHz)']:.2f}",
+                f"{data_point['Level (dBm)']:.2f}",
+            ])
+        print(f"✅ Band '{band_name}' data collected, sorted, and written to CSV.") # Add confirmation
+
+    print("\n--- ✅ Band Scan Complete ---") # Moved emoji
+    return all_scan_data, last_successful_band_index
+
+
 
 
 def plot_spectrum_data(df: pd.DataFrame, output_html_filename: str, plot_title: str, include_gov_markers: bool, include_tv_markers: bool, open_html_after_complete: bool):
