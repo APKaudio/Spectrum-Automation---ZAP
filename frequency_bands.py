@@ -8,12 +8,17 @@ MHZ_TO_HZ = 1_000_000 # Conversion factor from MHz to Hz
 SCAN_BAND_RANGES = [
     {"Band Name": "Low VHF+FM", "Start MHz": 50.000, "Stop MHz": 110.000},
     {"Band Name": "High VHF+216", "Start MHz": 170.000, "Stop MHz": 220.000},
-    {"Band Name": "UHF -1", "Start MHz": 400.000, "Stop MHz": 700.000},
-    {"Band Name": "UHF -2", "Start MHz": 700.000, "Stop MHz": 900.000},
-    {"Band Name": "Custom 1", "Start MHz": 900.000, "Stop MHz": 1200.000},
-    {"Band Name": "Custom 2", "Start MHz": 1800.000, "Stop MHz": 2000.000},
-    {"Band Name": "Custom 3", "Start MHz": 2400.000, "Stop MHz": 2500.000},
+    {"Band Name": "UHF 400-500", "Start MHz": 400.000, "Stop MHz": 500.000},
+    {"Band Name": "UHF 500-600", "Start MHz": 500.000, "Stop MHz": 600.000},
+    {"Band Name": "UHF 600-700", "Start MHz": 600.000, "Stop MHz": 700.000},
+    {"Band Name": "UHF 700-800", "Start MHz": 700.000, "Stop MHz": 800.000},
+    {"Band Name": "UHF 800-900", "Start MHz": 800.000, "Stop MHz": 900.000},
+    {"Band Name": "ISM-STL 900-970", "Start MHz": 900.000, "Stop MHz": 970.000},
+    {"Band Name": "AFTRCC 1430-1540", "Start MHz": 1430.000, "Stop MHz": 1540.000},
+    {"Band Name": "DECT-ALL 1880-2000", "Start MHz": 1880.000, "Stop MHz": 2000.000},
+    {"Band Name": "Cams 2G-2.4G", "Start MHz": 2000.000, "Stop MHz": 2400.000},
 ]
+
 
 # North American TV Channel Bands (full list, for plotting)
 frequency_TV_Channel_bands_full_list = [
