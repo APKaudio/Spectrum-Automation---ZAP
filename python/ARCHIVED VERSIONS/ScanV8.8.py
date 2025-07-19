@@ -533,7 +533,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
             trace_data = []
             try:
                 # Query trace data as ASCII string
-                trace_data_str = query_safe(inst, ":TRAC1:DATA?")
+                trace_data_str = query_safe(inst, ":TRACe:DATA? TRACe1")
                 # Ensure the operation is complete
                 query_safe(inst, "*OPC?")
                 inst.clear() # Flush buffer after trace data query

@@ -306,9 +306,7 @@ def initialize_instrument(inst, clear_reset, preamplifier_on, display_log, ref_l
         if clear_reset:
             write_safe(inst, "*CLS")
             write_safe(inst, "*RST")
-            
-
-            #query_safe(inst, "*OPC?") # Wait for operations to complete
+            query_safe(inst, "*OPC?") # Wait for operations to complete
             inst.clear() # Flush buffer after OPC query
             print("✅ Instrument cleared and reset.")
 
@@ -359,7 +357,7 @@ def initialize_instrument(inst, clear_reset, preamplifier_on, display_log, ref_l
         return False
 
 
-def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanned_band_index=0, rbw_config_val="1000", vbw_config_val="1000"):
+def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanned_band_index=0, rbw_config_val="1KHZ", vbw_config_val="1KHZ"):
     """
     Iterates through predefined frequency bands, sets the start/stop frequencies,
     and triggers a sweep for each band. It collects data by moving Marker 1
@@ -409,7 +407,7 @@ def scan_bands(inst, csv_writer, max_hold_time, rbw, selected_bands, last_scanne
 
         # --- RE-ADDED: "Wake Up" and Initial Band Configuration ---
 
-      #  initialize_instrument(inst, 1, 1, 1, -30, 1, 1000)
+        initialize_instrument(inst, 1, 1, 1, -30, 1, 1000)
 
         # Force a narrow span at the band's start frequency to ensure it "wakes up" and tunes
         write_safe(inst, f":SENS:FREQ:CENT {band_start_freq_hz}")
@@ -940,8 +938,8 @@ class ScanApp:
 
         # New variables for instrument configuration controls
         self.clear_reset_var = tk.BooleanVar(value=True)
-        self.rbw_config_var = tk.StringVar(value="1000")
-        self.vbw_config_var = tk.StringVar(value="1000")
+        self.rbw_config_var = tk.StringVar(value="1KHZ")
+        self.vbw_config_var = tk.StringVar(value="1KHZ")
         self.preamplifier_var = tk.BooleanVar(value=True)
         self.display_log_var = tk.BooleanVar(value=True)
         self.ref_level_var = tk.StringVar(value="-30") # Default to -30 dBm
@@ -1020,7 +1018,7 @@ class ScanApp:
 
         tk.Checkbutton(config_frame, text="Clear and Reset Instrument (*CLS; *RST)", variable=self.clear_reset_var).pack(anchor="w")
 
-        tk.Label(config_frame, text="Set RBW (e.g., 1000, 10000):").pack(pady=(5, 2), anchor="w")
+        tk.Label(config_frame, text="Set RBW (e.g., 1KHZ, 10KHZ):").pack(pady=(5, 2), anchor="w")
         self.rbw_config_entry = tk.Entry(config_frame, textvariable=self.rbw_config_var, width=15)
         self.rbw_config_entry.pack(pady=2, anchor="w")
 
