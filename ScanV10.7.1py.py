@@ -240,16 +240,13 @@ def scan_bands(app_instance, csv_writer, selected_bands, scan_rbw_segmentation, 
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n📈 [{current_time}] Processing Band: {band_name} (Total Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)")
 
-        
-
-        
-        
-
-        # Query the actual number of sweep points from the instrument for *this band* THIS IS DIFFERENT ON THE N9430   it's actually 461
-        actual_sweep_points = 500 # Hardcoded as per user request
-
-        
-        print(f"📊 Using fixed {actual_sweep_points} sweep points per trace for {band_name}.")
+        # Determine actual_sweep_points based on instrument model
+        if app_instance.instrument_model == "N9340B":
+            actual_sweep_points = 461
+            print(f"📊 Using {actual_sweep_points} sweep points per trace for {band_name} (N9340B detected).")
+        else: # Default for N9342CN or unknown
+            actual_sweep_points = 500
+            print(f"📊 Using {actual_sweep_points} sweep points per trace for {band_name} (N9342CN or Unknown detected).")
 
 
         # Calculate the optimal span for each segment to achieve desired RBW per point for *this band*
@@ -353,11 +350,11 @@ def scan_bands(app_instance, csv_writer, selected_bands, scan_rbw_segmentation, 
             # Read and process trace data
             trace_data = []
             try:
-                # Query trace data as ASCII string
-                trace_data_str = query_safe(app_instance.inst, ":TRACe:DATA? TRACe2")
-                # Ensure the operation is complete
-                #query_safe(app_instance.inst, "*OPC?")
-                #app_instance.inst.clear() # Flush buffer after trace data query
+                # Conditional trace data query based on instrument model
+                if app_instance.instrument_model == "N9340B":
+                    trace_data_str = query_safe(app_instance.inst, ":TRAC1:DATA?")
+                else: # Default to N9342CN command or if model is unknown
+                    trace_data_str = query_safe(app_instance.inst, ":TRACe:DATA? TRACe2")
 
                 if trace_data_str is None or "[Not Supported or Timeout]" in trace_data_str or not trace_data_str.strip():
                     print("🚫 No valid trace data string received for this segment.")
@@ -417,7 +414,7 @@ def plot_single_scan_data(scanned_data, plot_title_suffix, include_tv_markers=Tr
     """
     if not scanned_data:
         print("No data to plot.")
-        return None
+        return None, None # Return None for both fig and filename
 
     # Ensure scanned_data is in the expected (Frequency_Hz, Power_dBm) tuple format
     df = pd.DataFrame(scanned_data, columns=['Frequency_Hz', 'Power_dBm'])
@@ -430,11 +427,14 @@ def plot_single_scan_data(scanned_data, plot_title_suffix, include_tv_markers=Tr
 
     # Determine Y-axis range for marker positioning
     y_range_min = df['Power_dBm'].min()
-    y_range_max = df['Power_dBm'].max()
-    # Add some padding to the y-range for better text visibility
+    # Set max Y-axis to 0 dBm as requested
+    y_range_max = 0 # Fixed maximum to 0 dBm
+    # Add some padding to the y-range for better text visibility (only to min, max is fixed)
     y_padding = (y_range_max - y_range_min) * 0.1
     y_range_min -= y_padding
-    y_range_max += y_padding
+    
+    fig.update_layout(yaxis_range=[y_range_min, y_range_max])
+
 
     # Determine X-axis range for marker visibility check
     x_min_data = df['Frequency_MHz'].min()
@@ -547,6 +547,139 @@ def plot_single_scan_data(scanned_data, plot_title_suffix, include_tv_markers=Tr
     # This function will now return the path to be saved by the calling function
     return fig, plot_filename # Return figure and suggested filename
 
+def plot_multi_trace_data(aggregated_df, plot_title_suffix, include_tv_markers=True, include_gov_markers=True, historical_dfs_with_names=None, output_html_path=None):
+    """
+    Generates an interactive Plotly HTML plot from aggregated scan data (Average, Median, Range),
+    including overlays for TV and Government frequency bands based on flags.
+    Optionally includes historical scan data as additional layers.
+
+    Args:
+        aggregated_df (pd.DataFrame): DataFrame with 'Frequency_Hz', 'Average_dBm', 'Median_dBm', 'Range_dBm'.
+        plot_title_suffix (str): Suffix for the plot title.
+        include_tv_markers (bool): Whether to include TV band markers.
+        include_gov_markers (bool): Whether to include Government band markers.
+        historical_dfs_with_names (list of tuple): Optional. List of (DataFrame, name) tuples for historical scans.
+        output_html_path (str): The full path including filename for the HTML output.
+    Returns:
+        tuple: (plotly.graph_objects.Figure, str) The Plotly figure object and the output HTML path.
+    """
+    if aggregated_df.empty and not historical_dfs_with_names:
+        print("No data to plot (neither aggregated nor historical).")
+        return None, None
+
+    fig = go.Figure()
+
+    # Add Average trace
+    if not aggregated_df.empty:
+        if 'Frequency_MHz' not in aggregated_df.columns:
+            aggregated_df['Frequency_MHz'] = aggregated_df['Frequency_Hz'] / MHZ_TO_HZ
+        fig.add_trace(go.Scatter(x=aggregated_df['Frequency_MHz'], y=aggregated_df['Average_dBm'],
+                                 mode='lines', name='Average Power (dBm)',
+                                 line=dict(color='cyan', width=3))) # Make average line thicker
+
+        # Add Median trace (now solid)
+        fig.add_trace(go.Scatter(x=aggregated_df['Frequency_MHz'], y=aggregated_df['Median_dBm'],
+                                 mode='lines', name='Median Power (dBm)',
+                                 line=dict(color='lightgreen', width=2))) # Removed dash='dot'
+
+        # Add Range trace (Max-Min difference) (now solid)
+        fig.add_trace(go.Scatter(x=aggregated_df['Frequency_MHz'], y=aggregated_df['Range_dBm'],
+                                 mode='lines', name='Range (Max - Min) (dB)',
+                                 line=dict(color='yellow', width=2))) # Removed dash='dash'
+
+    # Add historical data as additional layers
+    if historical_dfs_with_names:
+        for hist_df, hist_name in historical_dfs_with_names:
+            if 'Frequency_MHz' not in hist_df.columns:
+                hist_df['Frequency_MHz'] = hist_df['Frequency_Hz'] / MHZ_TO_HZ
+            fig.add_trace(go.Scatter(x=hist_df['Frequency_MHz'], y=hist_df['Power_dBm'],
+                                     mode='lines', name=f"Scan: {hist_name}",
+                                     line=dict(color='rgba(100, 100, 255, 0.5)', width=1, dash='dot'), # Lighter, thinner, dashed
+                                     showlegend=True)) # Ensure legend entry for each historical scan
+
+
+    fig.update_layout(title=f'RF Spectrum Scan - {plot_title_suffix}',
+                      xaxis_title='Frequency (MHz)',
+                      yaxis_title='Power / Range (dBm)', # Y-axis label accommodates range and power
+                      template="plotly_dark",
+                      hovermode="x unified")
+
+    # Determine Y-axis range for marker positioning, considering all plotted traces
+    all_y_values = []
+    if not aggregated_df.empty:
+        all_y_values.extend(aggregated_df['Average_dBm'].tolist())
+        all_y_values.extend(aggregated_df['Median_dBm'].tolist())
+        all_y_values.extend(aggregated_df['Range_dBm'].tolist()) # Include Range_dBm in max calculation
+    if historical_dfs_with_names:
+        for hist_df, _ in historical_dfs_with_names:
+            all_y_values.extend(hist_df['Power_dBm'].tolist())
+
+    if all_y_values:
+        # Calculate y_range_max as the maximum of all relevant y-values, ensuring it's at least 0
+        y_range_max = max(0, max(all_y_values))
+    else:
+        y_range_max = 0 # Default if no data
+
+    y_range_min = min(all_y_values) if all_y_values else -100 # Default if no data
+    y_padding = (y_range_max - y_range_min) * 0.1
+    y_range_min -= y_padding
+    
+    fig.update_layout(yaxis_range=[y_range_min, y_range_max]) # Apply the updated Y-axis range
+
+
+    # Determine X-axis range for marker visibility check
+    x_min_data = float('inf')
+    x_max_data = float('-inf')
+
+    if not aggregated_df.empty:
+        x_min_data = min(x_min_data, aggregated_df['Frequency_MHz'].min())
+        x_max_data = max(x_max_data, aggregated_df['Frequency_MHz'].max())
+    if historical_dfs_with_names:
+        for hist_df, _ in historical_dfs_with_names:
+            x_min_data = min(x_min_data, hist_df['Frequency_MHz'].min())
+            x_max_data = max(x_max_data, hist_df['Frequency_MHz'].max())
+
+    # --- Add TV Band Markers ---
+    if include_tv_markers:
+        tv_marker_line_color = "rgba(255, 255, 0, 0.7)"
+        tv_marker_text_color = "yellow"
+        tv_band_fill_color = "rgba(255, 255, 0, 0.05)"
+        for band in TV_PLOT_BAND_MARKERS:
+            if band["Start MHz"] < x_max_data and band["Stop MHz"] > x_min_data:
+                fig.add_shape(type="rect", x0=band["Start MHz"], y0=y_range_min, x1=band["Stop MHz"], y1=y_range_max,
+                              line=dict(color=tv_marker_line_color, width=0.3, dash="dot"),
+                              fillcolor=tv_band_fill_color, layer="below")
+                x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
+                y_text_position = y_range_max - (y_range_max - y_range_min) * 0.05
+                fig.add_trace(go.Scatter(x=[x_center], y=[y_text_position], mode='text',
+                                         text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
+                                         textfont=dict(size=8, color=tv_marker_text_color),
+                                         showlegend=False, hoverinfo='text', name=f"Band Label: {band['Band Name']}"))
+
+    # --- Add Government Band Markers ---
+    if include_gov_markers:
+        gov_marker_line_color = "rgba(255, 0, 0, 0.9)"
+        gov_marker_text_color = "red"
+        gov_band_fill_color = "rgba(255, 0, 0, 0.1)"
+        y_offset_levels = [0.20, 0.25, 0.30, 0.35] # Staggering text labels
+        for i, band in enumerate(GOV_PLOT_BAND_MARKERS):
+            if band["Start MHz"] < x_max_data and band["Stop MHz"] > x_min_data:
+                fig.add_shape(type="rect", x0=band["Start MHz"], y0=y_range_min, x1=band["Stop MHz"], y1=y_range_max,
+                              line=dict(color=gov_marker_line_color, width=0.3, dash="dot"),
+                              fillcolor=gov_band_fill_color, layer="below")
+                x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
+                current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+                y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+                fig.add_trace(go.Scatter(x=[x_center], y=[y_text_position], mode='text',
+                                         text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
+                                         textfont=dict(size=8, color=gov_marker_text_color),
+                                         showlegend=False, hoverinfo='text', name=f"Band Label: {band['Band Name']}"))
+
+    # Use the provided output_html_path for consistency, or generate a default one
+    plot_filename = output_html_path if output_html_path else f"spectrum_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+
+    return fig, plot_filename
+
 
 # --- GUI Classes ---
 
@@ -589,7 +722,8 @@ class TextRedirector(object):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("RF Spectrum Analyzer Controller")
+        # Initial title, will be updated upon connection
+        self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
         self.geometry("1400x780") # Increased width to accommodate new list
 
         self.rm = pyvisa.ResourceManager()
@@ -599,6 +733,8 @@ class App(tk.Tk):
         self.last_scan_data = None # Store the last scan data for plotting
         self.last_csv_file_path = None # Store path of last saved CSV
         self.current_csv_file = None # To hold the open CSV file object
+        self.collected_scans_dataframes = [] # To store pandas DataFrames of each completed scan
+        self.instrument_model = None # Initialize instrument model to None
 
         # Dictionary to hold Entry widgets for coloring
         self.desired_setting_entries = {}
@@ -933,8 +1069,13 @@ class App(tk.Tk):
             instrument_id = query_safe(self.inst, "*IDN?")
             if instrument_id:
                 print(f"✅ Connected to: {instrument_id.strip()}")
-                model_match = re.search(r'N9340B|N9342C|N9343C|N9344C', instrument_id)
-                instrument_model = model_match.group(0) if model_match else "Unknown Model"
+                # Updated regex to specifically match N9342CN or N9340B
+                model_match = re.search(r'(N9342CN|N9340B)', instrument_id) 
+                self.instrument_model = model_match.group(0) if model_match else "Unknown Model"
+                
+                # Update window title with detected model
+                self.title(f"RF Spectrum Analyzer Controller - {self.instrument_model} - {os.path.basename(sys.argv[0])}")
+
                 # Removed success dialog box: messagebox.showinfo("Connection Successful", f"Connected to: {instrument_id.strip()}")
                 
                 # No longer querying and displaying 'current' settings on GUI, but keeping the print for console
@@ -1009,6 +1150,7 @@ class App(tk.Tk):
             try:
                 self.inst.close()
                 self.inst = None
+                self.instrument_model = None # Reset model on disconnect
                 print("🔌 Instrument disconnected.")
                 # Removed success dialog box: messagebox.showinfo("Disconnected", "Instrument disconnected successfully.")
                 self.start_scan_button.config(state=tk.DISABLED)
@@ -1023,6 +1165,8 @@ class App(tk.Tk):
                 # The plot button is now always enabled, so no need to disable it here.
                 # After disconnecting, refresh the resource list to allow reconnection
                 self.populate_resources() 
+                # Revert title to default
+                self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
             except Exception as e:
                 messagebox.showerror("Disconnect Error", f"Error disconnecting instrument: {e}")
                 print(f"Error disconnecting: {e}")
@@ -1078,11 +1222,35 @@ class App(tk.Tk):
             print(f"  Reference Level (dBm): {query_safe(self.inst, ':DISPlay:WINDow:TRACe:Y:RLEVel?')}")
             print(f"  Preamplifier (ON/OFF): {query_safe(self.inst, ':SENSe:POWer:RF:GAIN:STATe?')}")
             print(f"  Display Scale (LOG/LIN): {query_safe(self.inst, ':DISPlay:WINDow:TRACe:Y:SCALe:SPACing?')}")
-            print(f"  RBW (Hz): {query_safe(self.inst, ':SENSe:BANDwidth:RESolution?')}")
+            
+            # Query RBW in Hz and convert to MHz for display
+            rbw_hz = query_safe(self.inst, ':SENSe:BANDwidth:RESolution?')
+            if rbw_hz:
+                try:
+                    print(f"  RBW: {float(rbw_hz) / MHZ_TO_HZ:.3f} MHz")
+                except ValueError:
+                    print(f"  RBW: {rbw_hz} (could not convert to MHz)")
+
             print(f"  VBW (Hz): {query_safe(self.inst, ':SENSe:BANDwidth:VIDeo?')}")
             print(f"  Sweep Time Auto (ON/OFF): {query_safe(self.inst, ':SENSe:SWEep:TIME:AUTO?')}")
-            print(f"  Start Freq (Hz): {query_safe(self.inst, ':SENSe:FREQuency:STARt?')}")
-            print(f"  Stop Freq (Hz): {query_safe(self.inst, ':SENSe:FREQuency:STOP?')}")
+            
+            # Query Start Freq in Hz and convert to MHz for display
+            start_freq_hz = query_safe(self.inst, ':SENSe:FREQuency:STARt?')
+            if start_freq_hz:
+                try:
+                    print(f"  Start Freq: {float(start_freq_hz) / MHZ_TO_HZ:.3f} MHz")
+                except ValueError:
+                    print(f"  Start Freq: {start_freq_hz} (could not convert to MHz)")
+            
+            # Query Stop Freq in Hz and convert to MHz for display
+            stop_freq_hz = query_safe(self.inst, ':SENSe:FREQuency:STOP?')
+            if stop_freq_hz:
+                try:
+                    print(f"  Stop Freq: {float(stop_freq_hz) / MHZ_TO_HZ:.3f} MHz")
+                    # For N9340B, the stop frequency might be the end of the span, not necessarily the actual stop.
+                    # This is more for general info, the actual scan logic handles spans.
+                except ValueError:
+                    print(f"  Stop Freq: {stop_freq_hz} (could not convert to MHz)")
             
             print("✅ Current instrument settings queried successfully.")
 
@@ -1206,8 +1374,31 @@ class App(tk.Tk):
         print(f"\nAttempting to load preset: {selected_preset_name}")
         try:
             if write_safe(self.inst, command):
-                # Removed success dialog box: messagebox.showinfo("Preset Loaded", f"Successfully loaded preset: {selected_preset_name}")
                 print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
+                
+                # Query and display current instrument settings after loading preset
+                print("\n--- Current Instrument Settings after Preset Load ---")
+                rbw_hz = query_safe(self.inst, ':SENSe:BANDwidth:RESolution?')
+                start_freq_hz = query_safe(self.inst, ':SENSe:FREQuency:STARt?')
+                stop_freq_hz = query_safe(self.inst, ':SENSe:FREQuency:STOP?')
+
+                if rbw_hz:
+                    try:
+                        print(f"  RBW: {float(rbw_hz) / MHZ_TO_HZ:.3f} MHz")
+                    except ValueError:
+                        print(f"  RBW: {rbw_hz} (could not convert to MHz)")
+                if start_freq_hz:
+                    try:
+                        print(f"  Start Freq: {float(start_freq_hz) / MHZ_TO_HZ:.3f} MHz")
+                    except ValueError:
+                        print(f"  Start Freq: {start_freq_hz} (could not convert to MHz)")
+                if stop_freq_hz:
+                    try:
+                        print(f"  Stop Freq: {float(stop_freq_hz) / MHZ_TO_HZ:.3f} MHz")
+                    except ValueError:
+                        print(f"  Stop Freq: {stop_freq_hz} (could not convert to MHz)")
+                print("--------------------------------------------------")
+
             else:
                 messagebox.showerror("Load Preset Failed", f"Failed to load preset: {selected_preset_name}. Check console for details.")
                 print(f"❌ Failed to load preset '{selected_preset_name}'.")
@@ -1276,14 +1467,14 @@ class App(tk.Tk):
         try:
             # Loop for continuous scanning
             while self.scanning:
-                # Get current scan name and timestamp
+                # Get current scan name and timestamp (time only)
                 scan_name = self.scan_name_var.get()
                 if not scan_name:
                     scan_name = "UnnamedScan" # Fallback if user leaves it blank
-                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                timestamp = datetime.now().strftime("%H%M%S") # Time only
                 
                 # CSV filename now includes the scan name and timestamp directly in the base folder
-                csv_filename = f"{scan_name}_{timestamp}.csv"
+                csv_filename = f"{scan_name}_{datetime.now().strftime('%Y%m%d')}-{timestamp}.csv" # Keep date in filename for uniqueness
                 current_csv_file_path = os.path.join(self.output_folder_var.get(), csv_filename)
                 self.last_csv_file_path = current_csv_file_path # Update for single plotting
 
@@ -1299,6 +1490,13 @@ class App(tk.Tk):
                             scan_rbw_segmentation, rbw_config_val, 
                             vbw_config_val, max_hold_time
                         ) 
+                        
+                        # Convert to DataFrame and append to collected scans for averaging
+                        if scanned_data:
+                            df_scan = pd.DataFrame(scanned_data, columns=['Frequency_Hz', 'Power_dBm'])
+                            self.collected_scans_dataframes.append(df_scan)
+                            print(f"✅ Stored scan data for averaging. Total scans collected: {len(self.collected_scans_dataframes)}")
+
                         self.last_scan_data = scanned_data # Store for single plot
                         
                         print(f"Cycle scan finished. Data saved to: {current_csv_file_path}")
@@ -1307,6 +1505,11 @@ class App(tk.Tk):
                         if self.open_html_after_complete_var.get():
                             # Pass the scan_name for the plot title suffix
                             self.after(0, self.generate_single_scan_plot_and_open_wrapper, scanned_data, f"{scan_name}_{timestamp}") 
+                        
+                        # Removed: Trigger the averaged CSV and plot generation after each scan cycle completes.
+                        # This will now ONLY be triggered by the "Generate Plot (Average)" button.
+                        # if self.collected_scans_dataframes: # Only if there's data to average
+                        #     self.after(0, self._generate_current_cycle_average_csv_and_plot) 
                         
                         # Check if scan was stopped before waiting
                         if not self.scanning:
@@ -1425,14 +1628,96 @@ class App(tk.Tk):
             messagebox.showerror("Single Plot Error", f"Failed to generate single scan plot: {e}")
             print(f"❌ Error generating single scan plot: {e}")
 
+    def _generate_current_cycle_average_csv_and_plot(self): # Renamed function
+        """
+        Calculates average, median, and range from collected scan data (from current scan cycle),
+        saves them to a CSV, and plots them with overlays.
+        This function is called on the main Tkinter thread via self.after().
+        """
+        if not self.collected_scans_dataframes:
+            print("No scan data collected for current cycle averaging.")
+            return
+
+        print("\n📊 Generating averaged, median, and range data for current cycle...")
+
+        # Combine all scan data into a single DataFrame for easier processing
+        # Concatenate the collected_scans_dataframes vertically
+        combined_current_scans_df = pd.concat(self.collected_scans_dataframes)
+        
+        # Now group by Frequency_Hz and apply the aggregations on 'Power_dBm'
+        aggregated_df = combined_current_scans_df.groupby('Frequency_Hz')['Power_dBm'].agg(
+            Average_dBm='mean',
+            Median_dBm='median',
+            Max_dBm='max', # Intermediate for Range
+            Min_dBm='min'  # Intermediate for Range
+        ).reset_index() # Reset index to make Frequency_Hz a column again
+
+        # Calculate Range (Max - Min)
+        aggregated_df['Range_dBm'] = aggregated_df['Max_dBm'] - aggregated_df['Min_dBm']
+
+        # Drop intermediate Max_dBm and Min_dBm columns
+        aggregated_df = aggregated_df.drop(columns=['Max_dBm', 'Min_dBm'])
+
+        # Add Frequency in MHz for CSV and plotting
+        aggregated_df['Frequency_MHz'] = aggregated_df['Frequency_Hz'] / MHZ_TO_HZ
+
+        # Generate filename based on current time (HMS) and scan name
+        timestamp_hms = datetime.now().strftime("%H%M%S") # HMS format
+        base_filename = f"{self.scan_name_var.get()}_{timestamp_hms}"
+
+        csv_filename = os.path.join(self.output_folder_var.get(), f"{base_filename}_averaged_cycle.csv") # Added _cycle to distinguish
+        html_filename = os.path.join(self.output_folder_var.get(), f"{base_filename}_averaged_cycle.html") # Added _cycle to distinguish
+
+        # Ensure output directory exists
+        os.makedirs(self.output_folder_var.get(), exist_ok=True)
+
+        # Save to CSV
+        try:
+            # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
+            aggregated_df.to_csv(csv_filename, index=False, float_format='%.2f',
+                                 columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
+            print(f"✅ Averaged data for current cycle saved to: {csv_filename}")
+            self.last_csv_file_path = csv_filename
+        except Exception as e:
+            print(f"❌ Failed to save averaged CSV for current cycle: {e}")
+            messagebox.showerror("CSV Save Error", f"Could not save averaged CSV for current cycle: {e}")
+            return
+
+        # Plotting the averaged, median, and range data
+        try:
+            fig, plot_html_path_return = plot_multi_trace_data(
+                aggregated_df,
+                f"{self.scan_name_var.get()} - Averaged, Median & Range (Current Cycle {timestamp_hms})", # Include HMS in plot title
+                self.include_tv_markers_var.get(),
+                self.include_gov_markers_var.get(),
+                output_html_path=html_filename # Pass the desired full path for the HTML file
+            )
+
+            if fig:
+                fig.write_html(plot_html_path_return, auto_open=False)
+                print(f"✅ Averaged plot for current cycle saved to: {plot_html_path_return}")
+                if self.open_html_after_complete_var.get():
+                    self._open_plot_in_browser(plot_html_path_return)
+            else:
+                print("🚫 Plotly figure was not generated for current cycle averaged data.")
+
+        except Exception as e:
+            print(f"❌ Failed to generate or save current cycle averaged plot: {e}")
+            messagebox.showerror("Plot Error", f"Could not generate or save current cycle averaged plot: {e}")
+
+        # Clear collected dataframes after processing to prepare for the next set of scans
+        self.collected_scans_dataframes = []
+        print("🗑️ Cleared collected scan data for next averaging cycle.")
+
 
     def generate_average_plot(self):
         """
-        Generates an average plot from all CSV files found in the current output folder.
-        Each CSV is added as a trace, and an overall average trace is also added.
+        Generates an average, median, and range plot from ALL relevant CSV files
+        found in the current output folder base. This is triggered by the button.
+        This plot also includes all individual historical scans as overlay layers.
         """
         if self.scanning:
-            messagebox.showwarning("Plotting Error", "Cannot generate average plot while a scan is in progress.")
+            messagebox.showwarning("Plotting Error", "Cannot generate historical average plot while a scan is in progress.")
             return
 
         base_output_dir = self.output_folder_var.get()
@@ -1440,146 +1725,119 @@ class App(tk.Tk):
             messagebox.showwarning("Folder Not Found", f"The output folder '{base_output_dir}' does not exist. Please ensure it exists and contains scan data.")
             return
 
-        all_dfs = []
+        all_historical_dfs = [] # To store DataFrames for aggregation
+        historical_dfs_for_overlays = [] # To store (DataFrame, name) for plotting as overlays
+
+        # Regex to extract timestamp (time only) from filename: e.g., MyScan_YYYYMMDD-HHMMSS.csv
+        timestamp_pattern = re.compile(r'_\d{8}-(\d{6})\.csv$') # Capture only HHMMSS
+
         # Iterate directly through files in the base output directory
         for file_name in os.listdir(base_output_dir):
-            if file_name.endswith(".csv") and file_name.startswith(self.scan_name_var.get() + "_"): # Filter for CSVs with the current scan name prefix
+            # Filter for CSVs that match the scan name prefix and are not the 'averaged_cycle' files
+            if file_name.endswith(".csv") and file_name.startswith(self.scan_name_var.get() + "_") and "_averaged_cycle.csv" not in file_name and "_HISTORICAL_" not in file_name:
                 csv_path = os.path.join(base_output_dir, file_name)
                 try:
                     df = pd.read_csv(csv_path)
                     # Ensure columns are as expected (Frequency (Hz), Level (dBm))
                     if "Frequency (Hz)" in df.columns and "Level (dBm)" in df.columns:
-                        df['Frequency_MHz'] = df['Frequency (Hz)'].astype(float) / MHZ_TO_HZ
+                        # Convert Frequency (Hz) from MHz to Hz for consistency
+                        df['Frequency_Hz'] = df['Frequency (Hz)'].astype(float) * MHZ_TO_HZ 
                         df['Power_dBm'] = df['Level (dBm)'].astype(float)
-                        all_dfs.append(df[['Frequency_MHz', 'Power_dBm']])
-                    else:
-                        print(f"Skipping {file_name}: Missing expected columns or incorrect format.")
-                except Exception as e:
-                    print(f"Error reading CSV {csv_path}: {e}")
+                        
+                        all_historical_dfs.append(df[['Frequency_Hz', 'Power_dBm']])
 
-        if not all_dfs:
-            messagebox.showwarning("No Data Found", f"No valid scan data CSV files with prefix '{self.scan_name_var.get()}_' found in '{base_output_dir}' to generate an average plot.")
+                        # Extract timestamp for layer name (time only)
+                        match = timestamp_pattern.search(file_name)
+                        if match:
+                            timestamp_str = match.group(1)
+                            # Format as HH:MM:SS for display
+                            display_name = datetime.strptime(timestamp_str, "%H%M%S").strftime("%H:%M:%S")
+                            historical_dfs_for_overlays.append((df[['Frequency_Hz', 'Power_dBm']], display_name))
+                        else:
+                            historical_dfs_for_overlays.append((df[['Frequency_Hz', 'Power_dBm']], file_name)) # Fallback to full filename
+
+                    else:
+                        print(f"Skipping {file_name}: Missing expected columns or incorrect format. Expected 'Frequency (Hz)' and 'Level (dBm)'.")
+                except Exception as e:
+                    print(f"Error reading historical CSV {csv_path}: {e}")
+
+        if not all_historical_dfs:
+            messagebox.showwarning("No Data Found", f"No valid historical scan data CSV files with prefix '{self.scan_name_var.get()}_' found in '{base_output_dir}' to generate an average plot.")
             return
 
-        print("Generating average plot from multiple scans...")
+        print("📊 Generating historical averaged, median, and range data from CSV files...")
 
-        # Find a common frequency range and potentially resample if frequencies are not perfectly aligned
-        # For simplicity, assuming frequencies are aligned due to fixed sweep points and segmentation logic.
-        # If not aligned, interpolation (e.g., pd.merge_asof or scipy.interpolate) would be needed.
+        # Concatenate all historical DataFrames vertically for aggregation
+        combined_all_scans_df = pd.concat(all_historical_dfs)
         
-        # Use the frequency column from the first DataFrame as the reference
-        reference_freqs_mhz = all_dfs[0]['Frequency_MHz'].values
-        
-        # Create a DataFrame for averaging
-        avg_df_data = {'Frequency_MHz': reference_freqs_mhz}
-        all_power_data = [] # To store power data from all scans for averaging
+        # Now group by Frequency_Hz and apply the aggregations on 'Power_dBm'
+        aggregated_df = combined_all_scans_df.groupby('Frequency_Hz')['Power_dBm'].agg(
+            Average_dBm='mean',
+            Median_dBm='median',
+            Max_dBm='max', # Intermediate for Range
+            Min_dBm='min'  # Intermediate for Range
+        ).reset_index() # Reset index to make Frequency_Hz a column again
 
-        # Filter dfs for averaging to only include those with perfectly aligned frequencies
-        aligned_dfs = []
-        for i, df in enumerate(all_dfs):
-            if len(df) == len(reference_freqs_mhz) and np.allclose(df['Frequency_MHz'].values, reference_freqs_mhz):
-                aligned_dfs.append(df)
-                all_power_data.append(df['Power_dBm'].values)
+        # Calculate Range (Max - Min)
+        aggregated_df['Range_dBm'] = aggregated_df['Max_dBm'] - aggregated_df['Min_dBm']
+
+        # Drop intermediate Max_dBm and Min_dBm columns
+        aggregated_df = aggregated_df.drop(columns=['Max_dBm', 'Min_dBm'])
+
+        # Add Frequency in MHz for CSV and plotting
+        aggregated_df['Frequency_MHz'] = aggregated_df['Frequency_Hz'] / MHZ_TO_HZ
+
+        # Generate filename based on current time (HMS) and scan name
+        timestamp_hms = datetime.now().strftime("%H%M%S") # HMS format
+        base_filename = f"{self.scan_name_var.get()}_HISTORICAL_{timestamp_hms}" # Distinct filename for historical average
+
+        csv_filename = os.path.join(self.output_folder_var.get(), f"{base_filename}_averaged.csv")
+        html_filename = os.path.join(self.output_folder_var.get(), f"{base_filename}_averaged.html")
+
+        # Save to CSV
+        try:
+            # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
+            aggregated_df.to_csv(csv_filename, index=False, float_format='%.2f',
+                                 columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
+            print(f"✅ Historical averaged data saved to: {csv_filename}")
+            self.last_csv_file_path = csv_filename
+        except Exception as e:
+            print(f"❌ Failed to save historical averaged CSV: {e}")
+            messagebox.showerror("CSV Save Error", f"Could not save historical averaged CSV: {e}")
+            return
+
+        # Plotting the historical averaged, median, and range data, PLUS historical overlays
+        try:
+            fig, plot_html_path_return = plot_multi_trace_data(
+                aggregated_df,
+                f"{self.scan_name_var.get()} - Historical Averaged, Median & Range ({timestamp_hms})", # Include HMS in plot title
+                self.include_tv_markers_var.get(),
+                self.include_gov_markers_var.get(),
+                historical_dfs_with_names=historical_dfs_for_overlays, # Pass historical data for overlays
+                output_html_path=html_filename # Pass the desired full path for the HTML file
+            )
+
+            if fig:
+                fig.write_html(plot_html_path_return, auto_open=False)
+                print(f"✅ Historical averaged plot saved to: {plot_html_path_return}")
+                if self.open_html_after_complete_var.get():
+                    self._open_plot_in_browser(plot_html_path_return)
             else:
-                print(f"Warning: Frequencies in scan {i+1} ({len(df)} points) from '{os.path.basename(df.name if hasattr(df, 'name') else 'unknown')}' do not perfectly match reference ({len(reference_freqs_mhz)} points). It will be plotted individually but excluded from simple average calculation.")
+                print("🚫 Plotly figure was not generated for historical averaged data.")
 
-        if all_power_data:
-            average_power_dbm = np.mean(all_power_data, axis=0)
-            avg_df_data['Average_Power_dBm'] = average_power_dbm
-            average_df = pd.DataFrame(avg_df_data)
-        else:
-            average_df = None # No data to average if alignments failed or no aligned data
-
-        # Create the plot
-        fig = go.Figure()
-
-        # Add individual traces (from all_dfs, including those not used for averaging)
-        for i, df in enumerate(all_dfs):
-            # Use the original filename as part of the trace name for better identification
-            trace_name = os.path.basename(df.name) if hasattr(df, 'name') else f'Scan {i+1}'
-            fig.add_trace(go.Scatter(x=df['Frequency_MHz'], y=df['Power_dBm'], 
-                                     mode='lines', name=trace_name, 
-                                     line=dict(width=0.5, color=f'rgba(100, 100, 255, {0.3 + i * 0.1})'))) # Faded lines
-
-        # Add average trace if available
-        if average_df is not None:
-            fig.add_trace(go.Scatter(x=average_df['Frequency_MHz'], y=average_df['Average_Power_dBm'],
-                                     mode='lines', name='Average Scan',
-                                     line=dict(color='cyan', width=3, dash='solid'))) # Prominent average line
-
-        fig.update_layout(
-            title=f'RF Spectrum Average Scan (from {len(all_dfs)} files)',
-            xaxis_title='Frequency (MHz)',
-            yaxis_title='Power (dBm)',
-            hovermode="x unified",
-            template="plotly_dark" # Apply Dark Mode Theme
-        )
-
-        # Re-apply TV and Government Band Markers using the plot_single_scan_data's logic
-        # Need to determine y_range_min/max based on all data for markers
-        if all_dfs: # Ensure there's data before calculating min/max
-            all_power_values_combined = np.concatenate([df['Power_dBm'].values for df in all_dfs])
-            y_range_min_all = all_power_values_combined.min()
-            y_range_max_all = all_power_values_combined.max()
-            y_padding_all = (y_range_max_all - y_range_min_all) * 0.1
-            y_range_min_all -= y_padding_all
-            y_range_max_all += y_padding_all
-
-            all_freq_values_combined = np.concatenate([df['Frequency_MHz'].values for df in all_dfs])
-            x_min_data_all = all_freq_values_combined.min()
-            x_max_data_all = all_freq_values_combined.max()
-        else: # Fallback if no data
-            y_range_min_all, y_range_max_all = -100, 0 # Default range
-            x_min_data_all, x_max_data_all = 0, 1000 # Default range
+        except Exception as e:
+            messagebox.showerror("Plot Error", f"Could not generate or save historical averaged plot: {e}")
+            print(f"❌ Failed to generate or save historical averaged plot: {e}")
 
 
-        # --- Add TV Band Markers (re-used logic from plot_single_scan_data) ---
-        if self.include_tv_markers_var.get():
-            tv_marker_line_color = "rgba(255, 255, 0, 0.7)"
-            tv_marker_text_color = "yellow"
-            tv_band_fill_color = "rgba(255, 255, 0, 0.05)"
-            for band in TV_PLOT_BAND_MARKERS:
-                if band["Start MHz"] < x_max_data_all and band["Stop MHz"] > x_min_data_all:
-                    fig.add_shape(type="rect", x0=band["Start MHz"], y0=y_range_min_all, x1=band["Stop MHz"], y1=y_range_max_all,
-                                  line=dict(color=tv_marker_line_color, width=0.3, dash="dot"),
-                                  fillcolor=tv_band_fill_color, layer="below")
-                    x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
-                    y_text_position = y_range_max_all - (y_range_max_all - y_range_min_all) * 0.05
-                    fig.add_trace(go.Scatter(x=[x_center], y=[y_text_position], mode='text', showlegend=False, hoverinfo='text',
-                                             text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
-                                             textfont=dict(size=8, color=tv_marker_text_color), name=f"Band Label: {band['Band Name']}"))
-
-        # --- Add Government Band Markers (re-used logic from plot_single_scan_data) ---
-        if self.include_gov_markers_var.get():
-            gov_marker_line_color = "rgba(255, 0, 0, 0.9)"
-            gov_marker_text_color = "red"
-            gov_band_fill_color = "rgba(255, 0, 0, 0.1)"
-            y_offset_levels = [0.20, 0.25, 0.30, 0.35]
-            for i, band in enumerate(GOV_PLOT_BAND_MARKERS):
-                if band["Start MHz"] < x_max_data_all and band["Stop MHz"] > x_min_data_all:
-                    fig.add_shape(type="rect", x0=band["Start MHz"], y0=y_range_min_all, x1=band["Stop MHz"], y1=y_range_max_all,
-                                  line=dict(color=gov_marker_line_color, width=0.3, dash="dot"),
-                                  fillcolor=gov_band_fill_color, layer="below")
-                    x_center = (band["Start MHz"] + band["Stop MHz"]) / 2
-                    current_y_offset = y_offset_levels[i % len(y_offset_levels)]
-                    y_text_position = y_range_max_all - (y_range_max_all - y_range_min_all) * current_y_offset
-                    fig.add_trace(go.Scatter(x=[x_center], y=[y_text_position], mode='text', showlegend=False, hoverinfo='text',
-                                             text=[f"{band['Band Name']}<br>{band['Start MHz']:.1f}-{band['Stop MHz']:.1f} MHz"],
-                                             textfont=dict(size=8, color=gov_marker_text_color), name=f"Band Label: {band['Band Name']}"))
-
-
-        plot_filename = f"spectrum_average_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        plot_path = os.path.join(base_output_dir, plot_filename) # Save average plot in the base folder
-        fig.write_html(plot_path)
-        # Removed success dialog box: messagebox.showinfo("Average Plot Generated", f"Average plot saved to {plot_path}")
-        print(f"✅ Average plot generation complete: {plot_path}")
-
+    def _open_plot_in_browser(self, plot_path):
+        """Helper to open an HTML plot in the default web browser."""
         try:
             webbrowser.open(plot_path)
-            print(f"✅ Opened average plot in browser: {plot_path}")
+            print(f"✅ Opened plot in browser: {plot_path}")
         except Exception as e:
-            print(f"❌ Failed to open average plot in browser: {e}")
-            messagebox.showwarning("Open Plot Error", f"Could not open average plot in web browser automatically: {e}")
+            print(f"❌ Failed to open plot in browser: {e}")
+            messagebox.showwarning("Open Plot Error", f"Could not open plot in web browser automatically: {e}")
 
     def _update_console_line(self, text_to_display, overwrite=False):
         """
@@ -1609,4 +1867,3 @@ if __name__ == '__main__':
     else:
         print("Critical dependencies missing. Please install them to run the application.")
         messagebox.showerror("Dependency Error", "Some required Python packages are missing. Please install them manually and try again.")
-
