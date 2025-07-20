@@ -134,11 +134,13 @@ def initialize_instrument(inst, ref_level_dbm, preamp_on, display_log_scale, rbw
         write_safe(inst, ":TRAC1:MODE WRITe")
         print(f"✅ Trace 1 sent to write")
 
-
         write_safe(inst, ":TRAC2:MODE MAXHold")
         print(f"✅ Trace 2 sent to MAX HOLD")
 
+        write_safe(inst, ":TRAC3:MODE MINHold")
+        print(f"✅ Trace 3 sent to Min Hold")
 
+        
 
         
 
