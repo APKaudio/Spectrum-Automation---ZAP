@@ -111,15 +111,15 @@ def write_safe(inst, command):
 
 # --- Instrument Control Functions ---
 
-def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val):
+def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val, model_match):
     """Initializes the Keysight N9340B spectrum analyzer with basic settings."""
     print("✨ Initializing instrument with desired settings...")
     try:
-        write_safe(inst, "SYSTem:DISPlay:UPDate ON") # Ensure display updates
+     #   write_safe(inst, "SYSTem:DISPlay:UPDate ON") # Ensure display updates
     
 
         # Set reference level
-        write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM")
+        write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}")
         print(f"✅ Set reference level to {ref_level_dbm} dBm.")
 
 
@@ -128,10 +128,12 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
       
         if preamp_on:
             write_safe(inst, ":POWer:ATTenuation:AUTO ON") # Corrected SCPI command for preamp
-            write_safe(inst, ":SENS:POW:GAIN ON") # Corrected SCPI command for preamp
+            write_safe(inst, ":POWer:GAIN ON") # Corrected SCPI command for preamp
             print("✅ Preamplifier ON.")
+            write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM")
+            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
         else:
-            write_safe(inst, ":SENS:POW:GAIN OFF") # Corrected SCPI command for preamp
+            write_safe(inst, ":POWer:GAIN OFF") # Corrected SCPI command for preamp
             print("✅ Preamplifier OFF.")
 
 
@@ -140,12 +142,16 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50")
             write_safe(inst, ":POWer:ATTenuation 0") # User-requested SCPI command for preamplifier
             write_safe(inst, ":POWer:GAIN 1") # Corrected SCPI command for preamp
+            write_safe(inst, ":POWer:HSENsitive ON") # Corrected SCPI command for preamp
 
             #write_safe(inst, ":POWer:GAIN ON") # Corrected SCPI command for preamp
             print("✅ high sensitivity turned ON for")
         else:
+            write_safe(inst, ":POWer:HSENsitive OFF") # Corrected SCPI command for preamp
             write_safe(inst, ":POWer:ATTenuation 10") # User-requested SCPI command for preamplifier
             #write_safe(inst, ":POWer:GAIN OFF") # Corrected SCPI command for preamp
+            write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM")
+            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
             print("✅ high sensitivity turned OFF.")
         
         
@@ -172,18 +178,20 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
  #       write_safe(inst, f":SENSe:BANDwidth:RESolution {rbw_config_val}")
         
 
-  #      write_safe(inst, ":SENSe:BANDwidth:VIDeo:AUTO OFF")
-   #     write_safe(inst, f":SENSe:BANDwidth:VIDeo {vbw_config_val}")
+        write_safe(inst, ":SENSe:BANDwidth:VIDeo:AUTO ON")
+        
     #    print("✅ Sweep time set to AUTO.")
         
          # Set sweep time to auto
         write_safe(inst, ":SENSe:SWEep:TIME:AUTO ON")
         print("✅ Sweep time set to AUTO.")
 
-              
+        if model_match == "N9340B":
+            write_safe(inst, ":TRACe:FORMat:DATA ASCii") 
+        else:
         # Explicitly set data format to ASCII for :TRACe:DATA? query
-        write_safe(inst, ":FORMat:DATA ASCii") 
-        print("✅ Set trace data format to ASCII for data transfer.")
+            write_safe(inst, ":FORMat:DATA ASCii") 
+            print("✅ Set trace data format to ASCII for data transfer.")
 
       
         print("🎉 Instrument initialized successfully with desired settings.")
@@ -869,7 +877,6 @@ class App(tk.Tk):
         # Initialize Tkinter variables for Scan Configuration (User Input, can be pushed)
         self.desired_ref_level_var = tk.StringVar(self, value=str(DEFAULT_REFERENCE_LEVEL_DBM)) # Set default reference level
         self.desired_preamp_var = tk.BooleanVar(self, value=True)
-        self.desired_preamp_var = tk.BooleanVar(self, value=True)
         self.high_sensitivity_var = tk.BooleanVar(self, value=True) # New variable for High Sensitivity
         self.desired_max_hold_var = tk.BooleanVar(self, value=True) # Changed to True by default
         self.desired_max_hold_time_var = tk.StringVar(self, value=str(DEFAULT_MAXHOLD_TIME_SECONDS))
@@ -1275,7 +1282,7 @@ class App(tk.Tk):
                 query_safe(self.inst, "*OPC?")
                 time.sleep(1) # Give it a moment after reset
 
-                if initialize_instrument(self.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config):
+                if initialize_instrument(self.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, self.instrument_model):
                     self.start_scan_button.config(state=tk.NORMAL)
                     self.stop_scan_button.config(state=tk.DISABLED)
                     self.pause_resume_button.config(state=tk.DISABLED) # Initially disabled
@@ -1380,7 +1387,7 @@ class App(tk.Tk):
             vbw_config = int(float(self.desired_vbw_display_var.get())) # Use the calculated VBW
             #max_hold_on = self.desired_max_hold_var.get() # Get max hold state from GUI
 
-            if initialize_instrument(self.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config):
+            if initialize_instrument(self.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, self.instrument_model):
                 # Removed success dialog box: messagebox.showinfo("Settings Applied", "Desired settings successfully applied to the instrument.")
                 print("Desired settings successfully applied to the instrument.")
                 self.reset_setting_colors() # Revert colors to black after successful application
@@ -1468,7 +1475,7 @@ class App(tk.Tk):
         print("\nQuerying device preset files from C:\\PRESETS\\...")
         try:
             # Send the SCPI command to catalog presets
-            response = query_safe(self.inst, 'MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
+            response = query_safe(self.inst, ':MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
 
             if response is None:
                 print("🚫 No response received for preset catalog query.")
