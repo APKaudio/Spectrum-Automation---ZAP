@@ -87,6 +87,7 @@
   * **The generated plot will display these average, median, and range traces.**
   * **Crucially, it will also overlay *****each individual historical scan***** (at its *****original, shifted***** frequencies) as a transparent line, allowing you to see how the individual shifted scans contribute to the overall average and range.**
   * **This plot provides a comprehensive view of the spectrum, accounting for the frequency shifting you've applied.**
+  * 
 
 ## **8. Outputs**
 
