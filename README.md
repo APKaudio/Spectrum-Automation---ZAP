@@ -2,8 +2,7 @@
 
 **This application provides a graphical interface to control your Keysight N9340B/N9342CN spectrum analyzer. It automates the process of scanning frequency bands, collecting data, and generating interactive plots. A key feature is its ability to perform a series of scans with a small frequency shift on each, allowing you to build a more detailed picture of the spectrum by averaging the results.**
 
-
-
+![**Configuration Screen**](https://github.com/APKaudio/Spectrum-Automation---ZAP/blob/main/Screen%20shots%20and%20Demo%20Scan/V10.8.1%20screen.png?raw=true)
 
 ## **1. Getting Started**
 
@@ -76,7 +75,6 @@
 * ****Pause Scan / Resume Scan Button:****** Toggles the scanning process between paused and running states.**
 * ****Stop Scan Button:****** Halts the ongoing scanning process. The current sweep will complete, and then the scan will stop.**
 
-
 ## **7. Generating Plots**
 
 **The application automatically generates plots after each scan cycle, and you can also generate a comprehensive historical plot.**
@@ -93,14 +91,19 @@
 **The application produces the following files in your specified "Output Folder":**
 
 * ****CSV Files (Comma Separated Values):****
+  
   * ****Individual Scan Files:****** For each completed scan cycle, a CSV file will be created with a filename like **`<span class="selected">[ScanName]_RBW[RBWValue]K_HOLD[HoldTime]_[OffsetValue]_[YYYYMMDD_HHMMSS].csv</span>`**.**
     * **Example: **`<span class="selected">MyScan_RBW0010K_HOLD03_Offset1000_20250721_171942.csv</span>`
     * **These files contain two columns: "Frequency (MHz)" (the *****actual***** scanned frequency, including any applied offset for that cycle) and "Level (dBm)".**
   * ****Averaged Cycle Files (if applicable):****** If you use the **`<span class="selected">_generate_current_cycle_average_csv_and_plot</span>`** function (which happens internally after a set of scans or on demand), you might see files like **`<span class="selected">[ScanName]_[HHMM]_averaged_cycle.csv</span>`**. These contain the average, median, and range for a batch of recent scans.**
   * ****Historical Averaged Files:****** When you click "Generate Plot (Average)", a CSV file like **`<span class="selected">[ScanName]_HISTORICAL_[HHMM]_averaged.csv</span>`** is created. This file contains the normalized frequency, average power, median power, and range (Max-Min) calculated from *****all***** relevant historical individual scan CSVs.**
 * ****HTML Plot Files:****
+  
   * ****Individual Scan Plots:****** For each completed scan cycle, an interactive HTML plot (e.g., **`<span class="selected">MyScan_RBW0010K_HOLD03_Offset1000_20250721_171942.html</span>`**) is generated. You can open these in any web browser to view the spectrum data for that specific scan, including any applied frequency offset.**
   * ****Historical Averaged Plots:****** When you click "Generate Plot (Average)", a comprehensive HTML plot (e.g., **`<span class="selected">MyScan_HISTORICAL_[HHMM]_averaged.html</span>`**) is created. This plot displays the averaged, median, and range traces (on a normalized frequency axis) along with transparent overlays of all the individual shifted scans that contributed to the average. This allows for in-depth analysis of spectral trends over your shifted measurement cycles.**
+* 
+
+![Commands](https://github.com/APKaudio/Spectrum-Automation---ZAP/blob/main/Screen%20shots%20and%20Demo%20Scan/V10.8.1%20commands%20screen.png?raw=true)
 
 ## **9. Console Output**
 
@@ -111,10 +114,6 @@
 * **Scan progress updates, including current band, segment, and frequency range.**
 * **Information about data saving and plot generation.**
 * **Any errors or warnings encountered during operation.**
-
-
-
-
 
 ## 🚀 Interactive Setup Guide
 
@@ -184,3 +183,4 @@ You're all set! With Python installed and your workspace ready, you can now run 
 ```bash
 python ScanV9.3.py
 ```
+
