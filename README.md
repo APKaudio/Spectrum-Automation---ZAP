@@ -75,6 +75,8 @@
 * ****Pause Scan / Resume Scan Button:****** Toggles the scanning process between paused and running states.**
 * ****Stop Scan Button:****** Halts the ongoing scanning process. The current sweep will complete, and then the scan will stop.**
 
+![Creating Plot](https://github.com/APKaudio/Spectrum-Automation---ZAP/blob/main/Screen%20shots%20and%20Demo%20Scan/newplot%20(16).png?raw=true)
+
 ## **7. Generating Plots**
 
 **The application automatically generates plots after each scan cycle, and you can also generate a comprehensive historical plot.**
