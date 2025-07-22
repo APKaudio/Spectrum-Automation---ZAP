@@ -7,10 +7,6 @@
 
 # Updated ScanV10.4.2.py with new plot options, auto-open functionality, and enhanced scan_bands
 
-
-
-# Updated ScanV10.4.2.py with new plot options, auto-open functionality, and enhanced scan_bands
-
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, filedialog, TclError
 from tkinter import ttk  # Import ttk for Treeview - FIX: Added this import
@@ -2026,7 +2022,7 @@ class App(tk.Tk):
                 if auto_open_browser: # Only open if auto_open_browser is True
                     try:
                         webbrowser.open(output_html_path)
-                        print(f"✅ Opened single scan plot in browser: {output_html_path}")
+                        print(f"✅ Opened single scan plot in browser: {output_path}")
                     except Exception as e:
                         print(f"❌ Failed to open single scan plot in browser: {e}")
                         messagebox.showwarning("Open Plot Error", f"Could not open single scan plot in web browser automatically: {e}")
@@ -2124,7 +2120,8 @@ class App(tk.Tk):
         found in the current output folder base. This is triggered by the button.
         This plot also includes all individual historical scans as overlay layers.
         """
-        if self.scanning:
+        # Allow plotting if scan is not running OR if it is paused
+        if self.scanning and not self.paused:
             messagebox.showwarning("Plotting Error", "Cannot generate historical average plot while a scan is in progress. Please pause or stop the scan first.")
             return
 
