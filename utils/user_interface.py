@@ -39,7 +39,7 @@ except ImportError:
 from utils.scan_instrument import scan_bands
 from utils.plotting_utils import plot_single_scan_data, _open_plot_in_browser
 from utils.averaging_utils import generate_current_cycle_average_csv_and_plot, generate_historical_average_plot
-from utils.csv_utils import write_scan_data_to_csv
+from utils.csv_utils import write_scan_data_to_csv # This is for initial CSV creation, not continuous append
 from utils.instrument_control import (
     set_debug_mode,
     list_visa_resources,
@@ -107,9 +107,9 @@ class App(tk.Tk):
 
         self.desired_setting_entries = {}
 
-        # New variables for session-wide CSV
+        # New variables for session-wide CSV (now only used for initial file creation if desired)
         self.session_csv_file_path = None
-        self.session_csv_headers_written = False
+        self.session_csv_headers_written = False # This might become less relevant if continuous writing is removed
 
         # Initialize Tkinter variables
         self.desired_ref_level_var = tk.StringVar(self)
@@ -893,12 +893,15 @@ class App(tk.Tk):
         self.scan_cycle_count = 0
         self.current_freq_offset = 0
 
-        # Generate a unique filename for the session CSV at the start of a new scan session
+        # The session_csv_file_path is no longer used for continuous appending from scan_bands.
+        # It can be removed or repurposed if needed for a different session summary.
+        # For now, we'll keep it defined but understand its use has changed.
         scan_name = self.scan_name_var.get()
         if not scan_name:
             scan_name = "UnnamedScan"
         
-        datetime_session_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Changed to remove seconds from the session CSV filename if it were to be used for initial creation
+        datetime_session_str = datetime.now().strftime("%Y%m%d_%H%M")
         # Include RBW and Hold time in session file name for clarity
         rbw_str = f"RBW{int(self.desired_scan_rbw_segmentation_var.get()/1000):04d}K"
         max_hold_time_val = float(self.desired_max_hold_time_var.get()) if self.desired_max_hold_var.get() else 0
@@ -906,10 +909,10 @@ class App(tk.Tk):
 
         self.session_csv_file_path = os.path.join(
             self.output_folder_var.get(),
-            f"{scan_name}_{rbw_str}_{hold_str}_SESSION_{datetime_session_str}.csv"
+            f"{scan_name}_{rbw_str}_{hold_str}_SESSION_{datetime_session_str}.csv" # Filename now without seconds
         )
         self.session_csv_headers_written = False # Reset for new session
-        print(f"Session CSV file will be: {self.session_csv_file_path}")
+        print(f"Session CSV file path (not continuously written by scan_bands): {self.session_csv_file_path}")
         self.last_csv_file_path = self.session_csv_file_path # Point last_csv_file_path to the session CSV
 
         scan_thread = threading.Thread(target=self._run_scan, 
@@ -921,7 +924,8 @@ class App(tk.Tk):
 
     def _append_scan_data_to_session_csv(self, file_path, data, header):
         """Appends scan data to the session CSV file. Writes header only if file is new."""
-        # Data is assumed to be a list of lists (rows)
+        # This function is now only called if the user explicitly wants to append data here.
+        # The primary raw data output for plotting is handled by averaging_utils.py
         mode = 'a' if os.path.exists(file_path) else 'w'
         
         with open(file_path, mode, newline='') as f:
@@ -977,7 +981,8 @@ class App(tk.Tk):
                 hold_str = f"HOLD{int(max_hold_time_val):02d}"
                 offset_str = f"Offset{int(self.current_freq_offset)}"
 
-                datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # Changed to remove seconds from the HTML filename
+                datetime_str = datetime.now().strftime("%Y%m%d_%H%M")
                 
                 # The individual CSV filename is now only used for the plot, not for data storage
                 html_filename_base = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}"
@@ -990,17 +995,20 @@ class App(tk.Tk):
                         vbw_config_val, max_hold_time, self.current_freq_offset
                     ) 
                     
-                    if scanned_data:
-                        header = ["Frequency (MHz)", "Level (dBm)"]
-                        # Append to the session-wide CSV
-                        self._append_scan_data_to_session_csv(self.session_csv_file_path, scanned_data, header)
-                        print(f"Data appended to session CSV: {self.session_csv_file_path}")
+                    # The following block for appending to session CSV is now removed from here,
+                    # as scan_instrument.py no longer calls append_scan_data_to_csv directly.
+                    # if scanned_data:
+                    #     header = ["Frequency (MHz)", "Level (dBm)"]
+                    #     # Append to the session-wide CSV
+                    #     self._append_scan_data_to_session_csv(self.session_csv_file_path, scanned_data, header)
+                    #     print(f"Data appended to session CSV: {self.session_csv_file_path}")
 
                     if not self.scanning:
                         print("\nScan process finished (interrupted after band scan).")
                         print("Scan interrupted by user.")
                         if scanned_data:
-                            plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}_INTERRUPTED"
+                            # Changed to remove seconds from the HTML filename
+                            plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime.now().strftime('%Y%m%d_%H%M')}_INTERRUPTED"
                             html_plot_path_for_single_scan_interrupted = os.path.join(self.output_folder_var.get(), f"{plot_suffix}.html")
                             self.after(0, self.generate_single_scan_plot_and_open_wrapper, scanned_data, plot_suffix, html_plot_path_for_single_scan_interrupted, False)
                         break
