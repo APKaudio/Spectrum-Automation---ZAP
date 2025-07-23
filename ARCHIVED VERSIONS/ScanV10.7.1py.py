@@ -553,6 +553,7 @@ def plot_multi_trace_data(aggregated_df, plot_title_suffix, include_tv_markers=T
     including overlays for TV and Government frequency bands based on flags.
     Optionally includes historical scan data as additional layers.
 
+
     Args:
         aggregated_df (pd.DataFrame): DataFrame with 'Frequency_Hz', 'Average_dBm', 'Median_dBm', 'Range_dBm'.
         plot_title_suffix (str): Suffix for the plot title.

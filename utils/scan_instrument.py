@@ -113,7 +113,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     # This file is now explicitly for the raw data of the current scan cycle.
     scan_name = app_instance_ref.scan_name_var.get()
     output_folder = app_instance_ref.output_folder_var.get()
-    timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M") # YYYYMMDD_HHMM (no seconds)
+    timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") # YYYYMMDD_HHMM (no seconds)
     
     # Define the CSV filename for the *current scan cycle's raw data*
     csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val/1000)}K_HOLD{int(max_hold_time)}_Offset{int(current_freq_offset)}_{timestamp_hm}.csv")

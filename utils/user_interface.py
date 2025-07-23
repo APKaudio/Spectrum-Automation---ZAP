@@ -107,6 +107,10 @@ class App(tk.Tk):
 
         self.desired_setting_entries = {}
 
+        # Variable to control the blinking of the connect button
+        self.blink_id = None
+        self.blink_on = False
+
         # Removed: New variables for session-wide CSV
         # self.session_csv_file_path = None
         # self.session_csv_headers_written = False
@@ -213,7 +217,7 @@ class App(tk.Tk):
 
         print_art()
 
-        print("--- RF Spectrum Scanner GUI Initialized ---")
+        print("--- RF Spectrum Analyzer Controller - GUI Initialized ---")
         self.create_widgets()
         self.after(0, self.populate_resources)
 
@@ -407,7 +411,7 @@ class App(tk.Tk):
         self.refresh_button = tk.Button(resource_frame, text="Refresh", command=lambda: self.populate_resources(), bg="darkgrey", fg="white")
         self.refresh_button.grid(row=0, column=2, padx=5, pady=2)
 
-        self.connect_button = tk.Button(resource_frame, text="Connect", command=lambda: self.connect_instrument(), bg="darkgrey", fg="white")
+        self.connect_button = tk.Button(resource_frame, text="Connect", command=lambda: self.connect_instrument(), state=tk.DISABLED, bg="darkgrey", fg="white")
         self.connect_button.grid(row=0, column=3, padx=5, pady=2)
         
         self.disconnect_button = tk.Button(resource_frame, text="Disconnect", command=lambda: self.disconnect_instrument(), state=tk.DISABLED, bg="darkgrey", fg="white")
@@ -731,7 +735,7 @@ class App(tk.Tk):
                     self.pause_resume_button.config(state=tk.DISABLED)
                     self.disconnect_button.config(state=tk.NORMAL)
                     self.apply_button.config(state=tk.NORMAL)
-                    self.reset_setting_colors()
+                    self._stop_connect_button_blink() # Stop blinking on successful connection
 
                     if self.instrument_model != "N9340B":
                         preset_files = control_query_device_presets(self.inst)
@@ -768,6 +772,9 @@ class App(tk.Tk):
             print("Disconnected.")
             self._reset_gui_on_disconnect_or_error()
             self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
+            # Start blinking again if resources are available
+            if self.instrument_list and self.resource_var.get() != "No resources found":
+                self._start_connect_button_blink()
         else:
             messagebox.showerror("Disconnect Error", "Failed to disconnect instrument.")
             
@@ -905,6 +912,7 @@ class App(tk.Tk):
         self.disconnect_button.config(state=tk.DISABLED)
         self.apply_button.config(state=tk.DISABLED)
         self.load_preset_button.config(state=tk.DISABLED)
+        self._stop_connect_button_blink() # Stop blinking when scan starts
 
         self.scanning = True
         self.paused = False
@@ -983,12 +991,13 @@ class App(tk.Tk):
                 if not scan_name:
                     scan_name = "UnnamedScan"
                 
-                rbw_str = f"RBW{int(scan_rbw_segmentation/1000):04d}K"
+                rbw_str = f"RBW{int(scan_rbw_segmentation/1000):04d}"
                 max_hold_time_val = float(self.desired_max_hold_time_var.get()) if self.desired_max_hold_var.get() else 0
                 hold_str = f"HOLD{int(max_hold_time_val):02d}"
                 offset_str = f"Offset{int(self.current_freq_offset)}"
 
-                datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # IMPORTANT CHANGE: Include seconds in the timestamp for unique CSV/HTML files per cycle
+                datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S") 
                 
                 # The individual HTML plot filename is still generated here
                 html_plot_path_for_single_scan = os.path.join(self.output_folder_var.get(), f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}.html")
@@ -1075,6 +1084,9 @@ class App(tk.Tk):
             self.scanning = False
             self.paused = False
             self.after(100, self.reset_scan_buttons)
+            # Start blinking again if resources are available and not connected
+            if not self.inst and self.instrument_list and self.resource_var.get() != "No resources found":
+                self._start_connect_button_blink()
 
     def populate_resources(self):
         """Populates the VISA resource dropdown."""
@@ -1091,21 +1103,50 @@ class App(tk.Tk):
                 menu.delete(0, "end")
                 for resource in self.instrument_list:
                     menu.add_command(label=resource, command=tk._setit(self.resource_var, resource))
+                
+                self.connect_button.config(state=tk.NORMAL)
+                self._start_connect_button_blink() # Start blinking if resources are found and not connected
             else:
                 self.resource_var.set("No resources found")
                 menu = self.resource_dropdown["menu"]
                 menu.delete(0, "end")
                 menu.add_command(label="No resources found", command=tk._setit(self.resource_var, "No resources found"))
+                self.connect_button.config(state=tk.DISABLED)
+                self._stop_connect_button_blink() # Stop blinking if no resources
+            
             self.start_scan_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.DISABLED)
             self.apply_button.config(state=tk.DISABLED)
-            self.connect_button.config(state=tk.NORMAL)
             self.load_preset_button.config(state=tk.DISABLED)
             self.pause_resume_button.config(state=tk.DISABLED)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to list VISA resources: {e}")
             self.resource_var.set("Error listing resources")
             self._reset_gui_on_disconnect_or_error()
+
+    def _start_connect_button_blink(self):
+        """Starts the blinking effect for the connect button."""
+        if self.blink_id is None: # Only start if not already blinking
+            self.blink_on = True
+            self._blink_connect_button()
+
+    def _stop_connect_button_blink(self):
+        """Stops the blinking effect and resets the button color."""
+        if self.blink_id is not None:
+            self.after_cancel(self.blink_id)
+            self.blink_id = None
+        self.connect_button.config(bg="darkgrey", fg="white") # Reset to original color
+        self.blink_on = False
+
+    def _blink_connect_button(self):
+        """Toggles the color of the connect button to create a blinking effect."""
+        if self.blink_on:
+            current_bg = self.connect_button.cget("bg")
+            if current_bg == "darkgrey":
+                self.connect_button.config(bg="lightblue", fg="black")
+            else:
+                self.connect_button.config(bg="darkgrey", fg="white")
+            self.blink_id = self.after(500, self._blink_connect_button) # Schedule next blink after 500ms
 
     def stop_scan(self):
         """Stops the ongoing scan."""
@@ -1138,16 +1179,20 @@ class App(tk.Tk):
             self.preset_tree.delete(item)
         self.preset_tree.insert("", "end", values=("No instrument connected.",))
         self.connect_button.config(state=tk.NORMAL)
+        # Start blinking if resources are found after a reset/error and not connected
+        if self.instrument_list and self.resource_var.get() != "No resources found" and not self.inst:
+            self._start_connect_button_blink()
+        else:
+            self._stop_connect_button_blink() # Ensure blinking is off if no resources or already connected
 
     def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser=True):
         """
         Wrapper to call plot_single_scan_data and handle saving/opening.
         Reads data directly from the provided CSV file path.
         """
-        if not os.path.exists(csv_file_path):
-            print(f"🚫 CSV file not found for plotting: {csv_file_path}")
-            messagebox.showerror("Plot Error", f"CSV file not found: {csv_file_path}. Cannot generate plot.")
-            return
+        # The 'output_html_path' parameter is already defined in the function signature.
+        # The previous debug print and check are no longer needed as the saving logic
+        # is now handled directly by plot_single_scan_data.
 
         print(f"Generating single scan plot from CSV: {csv_file_path}...")
         try:
@@ -1159,21 +1204,20 @@ class App(tk.Tk):
             # which expects Frequency_Hz as its first column.
             scanned_data_from_csv = list(zip(df['Frequency_MHz'] * MHZ_TO_HZ, df['Power_dBm']))
 
-            fig = plot_single_scan_data(
+            # Call plot_single_scan_data, which now handles saving and opening
+            fig, saved_html_path = plot_single_scan_data(
                 scanned_data_from_csv, 
                 plot_title_suffix,
                 include_tv_markers=self.include_tv_markers_var.get(),
-                include_gov_markers=self.include_gov_markers_var.get()
+                include_gov_markers=self.include_gov_markers_var.get(),
+                output_html_path=output_html_path, # Pass the output path
+                auto_open_browser=auto_open_browser # Pass the auto_open flag
             )
             
-            if fig:
-                fig.write_html(output_html_path)
-
-                print(f"✅ Single scan plot generation complete: {output_html_path}")
-                if auto_open_browser:
-                    _open_plot_in_browser(output_html_path)
+            if fig and saved_html_path:
+                print(f"✅ Single scan plot generation complete: {saved_html_path}")
             else:
-                print("🚫 Plotly figure was not generated for single scan data.")
+                print("🚫 Plotly figure was not generated or saved for single scan data.")
         except Exception as e:
             messagebox.showerror("Single Plot Error", f"Failed to generate single scan plot from CSV '{csv_file_path}': {e}")
             print(f"❌ Error generating single scan plot from CSV: {e}")
