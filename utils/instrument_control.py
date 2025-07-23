@@ -1,5 +1,19 @@
 # instrument_control.py
-
+#
+# This module provides a high-level interface for controlling the RF spectrum analyzer
+# via PyVISA. It abstracts the low-level SCPI commands, offering functions for
+# connecting, disconnecting, initializing, and querying instrument settings.
+# It also includes robust error handling for VISA communication.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
 import pyvisa
 import time
 import re
@@ -9,13 +23,42 @@ import tkinter as tk # Used for messagebox in this module for direct instrument 
 _debug_mode_enabled = False
 
 def set_debug_mode(enabled):
-    """Sets the global debug mode variable for this module."""
+    """
+    Sets the global debug mode variable for this module.
+    When debug mode is enabled, `query_safe` and `write_safe` functions
+    will print the SCPI commands sent and responses received to the console.
+
+    Inputs:
+        enabled (bool): True to enable debug mode, False to disable.
+    Process:
+        1. Updates the `_debug_mode_enabled` global variable.
+        2. Prints a confirmation message to the console.
+    Outputs:
+        None. (Side effect: Modifies a global variable and prints to console.)
+    """
     global _debug_mode_enabled
     _debug_mode_enabled = enabled
     print(f"Instrument Control Debug Mode: {'Enabled' if _debug_mode_enabled else 'Disabled'}")
 
 def query_safe(inst, command):
-    """Safely queries the instrument, handling VISA errors."""
+    """
+    Safely queries the instrument, handling PyVISA errors.
+    This function sends a query command to the instrument and returns its response.
+    It includes error handling for `VisaIOError` (communication issues) and other exceptions.
+
+    Inputs:
+        inst (pyvisa.resources.Resource): The connected PyVISA instrument object.
+        command (str): The SCPI query command to send to the instrument (e.g., "*IDN?").
+    Process:
+        1. Attempts to execute `inst.query(command)`.
+        2. Strips whitespace from the response.
+        3. If `_debug_mode_enabled` is True, prints the query and its response.
+        4. Catches `pyvisa.errors.VisaIOError` for communication specific issues.
+        5. Catches general `Exception` for other parsing or unexpected errors.
+    Outputs:
+        str or None: The stripped response string from the instrument if successful;
+                     None if an error occurs.
+    """
     try:
         response = inst.query(command).strip()
         if _debug_mode_enabled: # Conditional print
@@ -29,7 +72,22 @@ def query_safe(inst, command):
         return None
 
 def write_safe(inst, command):
-    """Safely writes to the instrument, handling VISA errors."""
+    """
+    Safely writes a command to the instrument, handling PyVISA errors.
+    This function sends a command to the instrument without expecting a direct response.
+    It includes error handling for `VisaIOError` and other exceptions.
+
+    Inputs:
+        inst (pyvisa.resources.Resource): The connected PyVISA instrument object.
+        command (str): The SCPI command to write to the instrument (e.g., ":SENSE:FREQ:START 1000000").
+    Process:
+        1. Attempts to execute `inst.write(command)`.
+        2. If `_debug_mode_enabled` is True, prints the command being written.
+        3. Catches `pyvisa.errors.VisaIOError` for communication specific issues.
+        4. Catches general `Exception` for other unexpected errors.
+    Outputs:
+        bool: True if the command was written successfully; False if an error occurs.
+    """
     try:
         inst.write(command)
         if _debug_mode_enabled: # Conditional print
@@ -41,11 +99,20 @@ def write_safe(inst, command):
 
 def list_visa_resources(resource_manager):
     """
-    Lists available VISA resources.
-    Args:
+    Lists available VISA resources (connected instruments).
+    This function uses the PyVISA resource manager to discover all connected
+    VISA-compliant devices.
+
+    Inputs:
         resource_manager (pyvisa.ResourceManager): The PyVISA resource manager instance.
-    Returns:
-        list: A list of available VISA resource strings.
+    Process:
+        1. Calls `resource_manager.list_resources()` to get a tuple of resource strings.
+        2. Converts the tuple to a list.
+        3. Prints the found resources to the console.
+        4. Catches any `Exception` during the listing process.
+    Outputs:
+        list: A list of available VISA resource strings (e.g., 'USB0::0x0957::0xFFEF::SG05300002::0::INSTR').
+              Returns an empty list on failure.
     """
     try:
         resources = resource_manager.list_resources()
@@ -58,12 +125,24 @@ def list_visa_resources(resource_manager):
 def connect_to_instrument(resource_manager, selected_resource):
     """
     Establishes connection to the selected instrument.
-    Args:
+    This function attempts to open a connection to a specified VISA resource,
+    sets communication timeouts and termination characters, and queries the
+    instrument's identification to confirm a successful connection.
+
+    Inputs:
         resource_manager (pyvisa.ResourceManager): The PyVISA resource manager instance.
-        selected_resource (str): The VISA resource string to connect to.
-    Returns:
-        tuple: (pyvisa.resources.Resource, str) - The connected instrument object and its model string.
-               Returns (None, None) on failure.
+        selected_resource (str): The VISA resource string to connect to (e.g., 'USB0::0x0957::0xFFEF::SG05300002::0::INSTR').
+    Process:
+        1. Attempts to open the resource using `resource_manager.open_resource()`.
+        2. Sets `inst.timeout` to 5 seconds and `inst.read_termination`/`inst.write_termination` to newline.
+        3. Queries the instrument's ID using `*IDN?`.
+        4. Extracts the instrument model (N9342CN or N9340B) from the IDN string using regex.
+        5. Prints connection status and detected model.
+        6. Handles `pyvisa.errors.VisaIOError` (connection specific issues) and general `Exception`.
+        7. Ensures the instrument connection is closed on failure.
+    Outputs:
+        tuple: `(pyvisa.resources.Resource, str)` - The connected instrument object and its model string.
+               Returns `(None, None)` on failure to connect or identify.
     """
     inst = None
     instrument_model = None
@@ -99,10 +178,15 @@ def connect_to_instrument(resource_manager, selected_resource):
 def disconnect_instrument(inst):
     """
     Closes the connection to the instrument.
-    Args:
+
+    Inputs:
         inst (pyvisa.resources.Resource): The instrument object to disconnect.
-    Returns:
-        bool: True if disconnected successfully, False otherwise.
+    Process:
+        1. If `inst` is not None, attempts to close the connection using `inst.close()`.
+        2. Prints a disconnection message.
+        3. Catches any `Exception` during the disconnection process.
+    Outputs:
+        bool: True if disconnected successfully or if no instrument was connected; False on error.
     """
     if inst:
         try:
@@ -115,7 +199,38 @@ def disconnect_instrument(inst):
     return True # Already disconnected or no instrument to begin with
 
 def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val, model_match):
-    """Initializes the spectrum analyzer with basic settings."""
+    """
+    Initializes the spectrum analyzer with basic settings such as reference level,
+    preamplifier state, high sensitivity mode, and trace configurations.
+    This function sets up the instrument for a scan.
+
+    Inputs:
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
+        ref_level_dbm (float): The desired reference level in dBm.
+        high_sensitivity_on (bool): True to enable high sensitivity mode, False otherwise.
+        preamp_on (bool): True to turn the preamplifier ON, False otherwise.
+        rbw_config_val (float): The Resolution Bandwidth (RBW) value to configure on the instrument in Hz.
+                                (Note: This parameter is currently not directly used for setting RBW in this function
+                                but is passed for consistency with the GUI's intent. RBW for scanning is set in `scan_bands`.)
+        vbw_config_val (float): The Video Bandwidth (VBW) value to configure on the instrument in Hz.
+                                (Note: This parameter is currently not directly used for setting VBW in this function
+                                but is passed for consistency with the GUI's intent. VBW for scanning is set in `scan_bands`.)
+        model_match (str): The detected model of the instrument (e.g., "N9340B", "N9342CN").
+                           Used for model-specific SCPI commands.
+    Process:
+        1. **Reset**: Sends `*RST` to reset the instrument to a known state, then waits for operation completion.
+        2. **Reference Level**: Sets the display reference level.
+        3. **Preamplifier/High Sensitivity**: Configures the preamplifier and high sensitivity mode based on `preamp_on`
+           and `high_sensitivity_on` flags. This involves setting attenuation and gain.
+        4. **Trace Modes**: Configures Trace 1 to 'WRITe', Trace 2 to 'MAXHold', and Trace 3 to 'MINHold'.
+        5. **Display Scale**: Sets the Y-axis display scale to 'LOGarithmic'.
+        6. **Sweep Time**: Sets sweep time to 'AUTO'.
+        7. **Data Format**: Sets the trace data format to 'ASCII' for data transfer, with a model-specific command.
+        8. Prints status messages for each configuration step.
+        9. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
+    Outputs:
+        bool: True if initialization is successful; False on failure.
+    """
     print("✨ Initializing instrument with desired settings...")
     try:
         # Reset the instrument to a known state using *RST first
@@ -186,10 +301,21 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
 
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
     """
-    Queries the instrument for its current settings and prints them to the console.
-    Args:
+    Queries the instrument for its current settings (Reference Level, Preamplifier,
+    RBW, VBW, Sweep Time, Start/Stop Frequency) and prints them to the console.
+    This provides a snapshot of the instrument's state.
+
+    Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
-        MHZ_TO_HZ (int): Conversion factor from MHz to Hz.
+        MHZ_TO_HZ (int): Conversion factor from MHz to Hz, used for displaying frequencies.
+    Process:
+        1. Checks if `inst` is connected.
+        2. Queries various settings using `query_safe` (e.g., `:DISPlay:WINDow:TRACe:Y:RLEVel?`).
+        3. Prints the queried values to the console, converting frequencies to MHz for readability.
+        4. Handles `ValueError` if frequency strings cannot be converted to float.
+        5. Catches general `Exception` for any other errors during querying.
+    Outputs:
+        None. (Side effect: Prints instrument settings to console.)
     """
     if not inst:
         print("Not connected to instrument, cannot query settings.")
@@ -231,11 +357,23 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
 
 def query_device_presets(inst):
     """
-    Queries the connected instrument for a list of preset files in "C:\\PRESETS\\".
-    Args:
+    Queries the connected instrument for a list of preset files stored in its
+    internal "C:\\PRESETS\\" directory. This allows the GUI to display available
+    presets for loading.
+
+    Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
-    Returns:
-        list: A list of .STA preset file names.
+    Process:
+        1. Checks if `inst` is connected.
+        2. Sends the SCPI command `:MMEMory:CATalog? "C:\\\\PRESETS\\\\"` to list directory contents.
+        3. Parses the comma-separated response string to extract file names and types.
+        4. Filters for files with the "STA" type (state files) and ending with ".STA".
+        5. Sorts the found preset names alphabetically.
+        6. Prints the number of found presets or a message if none are found.
+        7. Handles `pyvisa.errors.VisaIOError` and general `Exception` during the query/parsing.
+    Outputs:
+        list: A sorted list of `.STA` preset file names (e.g., `['MY_PRESET.STA', 'DEFAULT.STA']`).
+              Returns an empty list on failure or if no presets are found.
     """
     if not inst:
         print("Not connected to instrument, cannot query device presets.")
@@ -281,12 +419,24 @@ def query_device_presets(inst):
 def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
     """
     Loads the selected preset file onto the instrument.
-    Args:
+    This function sends the SCPI command to instruct the spectrum analyzer
+    to load a previously saved state file (`.STA`). After loading, it
+    queries and prints the instrument's current settings to confirm the change.
+
+    Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
-        selected_preset_name (str): The name of the preset file to load.
-        MHZ_TO_HZ (int): Conversion factor from MHz to Hz.
-    Returns:
-        bool: True if preset loaded successfully, False otherwise.
+        selected_preset_name (str): The name of the preset file to load (e.g., "MY_PRESET.STA").
+        MHZ_TO_HZ (int): Conversion factor from MHz to Hz, passed to `query_current_instrument_settings`.
+    Process:
+        1. Checks if `inst` is connected.
+        2. Constructs the full path to the preset file (e.g., `C:\\PRESETS\\MY_PRESET.STA`).
+        3. Sends the SCPI command `:MMEMory:LOAD STA,"{preset_path}"` using `write_safe`.
+        4. If loading is successful, calls `query_current_instrument_settings` to display
+           the instrument's new configuration.
+        5. Prints status messages.
+        6. Handles general `Exception` during the loading process.
+    Outputs:
+        bool: True if the preset is loaded successfully; False otherwise.
     """
     if not inst:
         print("Not connected to instrument, cannot load preset.")

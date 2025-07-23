@@ -1,5 +1,20 @@
 # averaging_utils.py
-
+#
+# This module provides utility functions for processing and analyzing collected
+# spectrum scan data. It includes functionalities for calculating various
+# statistical measures such as average, median, range, standard deviation,
+# variance, and power spectral density (PSD) from multiple scan cycles.
+# It is crucial for generating insightful plots and CSV reports from the raw scan data.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
 import pandas as pd
 import numpy as np # Ensure numpy is imported for std, var, and log10
 import os
@@ -22,17 +37,48 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     """
     Calculates average, median, range, standard deviation, variance, and power spectral density (PSD)
     from collected scan data (from current scan cycle), saves them to separate CSVs in a new subfolder,
-    and plots them with overlays.
-    This function is called on the main Tkinter thread via self.after().
+    and plots them with overlays. This function is called on the main Tkinter thread via self.after().
 
-    Args:
-        collected_scans_dataframes (list): List of pandas DataFrames from current scan cycle.
-        scan_name_var (tk.StringVar): Tkinter variable holding the scan name.
-        output_folder_var (tk.StringVar): Tkinter variable holding the output folder path.
-        open_html_after_complete_var (tk.BooleanVar): Tkinter variable for auto-opening HTML.
-        include_tv_markers_var (tk.BooleanVar): Tkinter variable for including TV markers.
-        include_gov_markers_var (tk.BooleanVar): Tkinter variable for including Government markers.
-        scan_rbw_hz (float): The Resolution Bandwidth (RBW) in Hz used for the current scans.
+    Inputs:
+        collected_scans_dataframes (list): A list of pandas DataFrames, where each DataFrame
+                                           represents a single scan from the current scan cycle.
+                                           Each DataFrame is expected to have 'Frequency_MHz' and 'Power_dBm' columns.
+        scan_name_var (tk.StringVar): A Tkinter variable holding the user-defined scan name.
+        output_folder_var (tk.StringVar): A Tkinter variable holding the base output folder path for saving files.
+        open_html_after_complete_var (tk.BooleanVar): A Tkinter variable indicating whether to
+                                                      automatically open the generated HTML plot in a browser.
+        include_tv_markers_var (tk.BooleanVar): A Tkinter variable indicating whether to include
+                                                TV band markers on the plot.
+        include_gov_markers_var (tk.BooleanVar): A Tkinter variable indicating whether to include
+                                                 Government band markers on the plot.
+        scan_rbw_hz (float): The Resolution Bandwidth (RBW) in Hz that was used for the current scans.
+                             This is crucial for calculating Power Spectral Density (PSD).
+
+    Process:
+        1. **Data Aggregation**: Concatenates all DataFrames in `collected_scans_dataframes` into a single DataFrame.
+        2. **Statistical Calculation**: Groups the combined DataFrame by 'Frequency_MHz' and calculates:
+           - `Average_dBm`: Mean of 'Power_dBm'.
+           - `Median_dBm`: Median of 'Power_dBm'.
+           - `Max_dBm`: Maximum of 'Power_dBm' (intermediate for Range).
+           - `Min_dBm`: Minimum of 'Power_dBm' (intermediate for Range).
+           - `Std_Dev_dBm`: Standard deviation of 'Power_dBm'.
+           - `Variance_dBm`: Variance of 'Power_dBm'.
+        3. **Range Calculation**: Computes `Range_dBm` as `Max_dBm - Min_dBm`.
+        4. **Power Spectral Density (PSD) Calculation**: Calculates `PSD_dBm_Hz` using the formula:
+           `Power (dBm) - 10 * log10(RBW_Hz)`. A check is included to prevent errors if `scan_rbw_hz` is zero or negative.
+        5. **File Path Generation**: Creates a unique subfolder within the `output_folder_var` based on the scan name
+           and current time (HHMM format) to store all generated files for this cycle.
+        6. **CSV Export**: Saves the calculated Average, Median, Range, Standard Deviation, Variance, and PSD data
+           into separate CSV files within the newly created subfolder. Headers are explicitly not written.
+        7. **Plot Generation**: Calls `plotting_utils.plot_multi_trace_data` to create an HTML plot
+           of the aggregated data. This plot includes the average, median, range, std dev, variance, and PSD traces,
+           along with optional TV and Government band markers.
+        8. **Browser Opening (Optional)**: If `open_html_after_complete_var` is True, it opens the generated HTML plot
+           in the default web browser using `_open_plot_in_browser`.
+
+    Outputs:
+        None. (Side effects: Creates CSV files and an HTML plot file in the specified output directory,
+               and optionally opens the HTML plot in a web browser. Prints status messages to console.)
     """
     if not collected_scans_dataframes:
         print("No scan data collected for current cycle averaging.")
@@ -142,6 +188,69 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     found in the current output folder base. This is triggered by the button.
     This plot also includes all individual historical scans as overlay layers.
     The output CSVs and HTML plot are saved into a new, dedicated subfolder.
+
+    Inputs:
+        scan_name_var (tk.StringVar): A Tkinter variable holding the user-defined scan name,
+                                      used to filter relevant historical CSV files.
+        output_folder_var (tk.StringVar): A Tkinter variable holding the base output folder path
+                                          where historical scan data is stored.
+        open_html_after_complete_var (tk.BooleanVar): A Tkinter variable indicating whether to
+                                                      automatically open the generated HTML plot in a browser.
+        include_tv_markers_var (tk.BooleanVar): A Tkinter variable indicating whether to include
+                                                TV band markers on the plot.
+        include_gov_markers_var (tk.BooleanVar): A Tkinter variable indicating whether to include
+                                                 Government band markers on the plot.
+
+    Process:
+        1. **Folder Validation**: Checks if the specified `base_output_dir` exists.
+        2. **Historical Data Collection**:
+           - Iterates through all `.csv` files in the `base_output_dir`.
+           - Filters files that match the `scan_name` prefix and a specific filename pattern
+             (e.g., `MyScan_RBW100K_HOLD0_Offset0_20250723_104243.csv`).
+           - For each matching CSV, it reads the data (assuming no header, 'Frequency_MHz', 'Power_dBm' columns).
+           - **Frequency Normalization**: Calculates `Original_Frequency_Hz` by reversing any `current_freq_offset`
+             that might have been applied during the original scan. This is crucial for accurate aggregation
+             of data from scans with different offsets.
+           - Stores the original (shifted) data for overlay plotting and the normalized data for aggregation.
+        3. **Data Aggregation**: Concatenates all normalized historical DataFrames.
+        4. **Statistical Calculation**: Groups the combined normalized DataFrame by 'Original_Frequency_MHz' and calculates:
+           - `Average_dBm`: Mean of 'Power_dBm'.
+           - `Median_dBm`: Median of 'Power_dBm'.
+           - `Max_dBm`: Maximum of 'Power_dBm'.
+           - `Min_dBm`: Minimum of 'Power_dBm'.
+           - `Std_Dev_dBm`: Standard deviation of 'Power_dBm'.
+           - `Variance_dBm`: Variance of 'Power_dBm'.
+           - `Average_PSD_dBm_Hz`: Mean of 'PSD_dBm_Hz' (calculated for each individual power measurement before aggregation).
+        5. **Range Calculation**: Computes `Range_dBm` as `Max_dBm - Min_dBm`.
+        6. **File Path Generation**: Creates a new, unique subfolder (e.g., `MyScan_HISTORICAL_YYYYMMDD_HHMMSS`)
+           to store the aggregated historical CSVs and the main HTML plot.
+        7. **CSV Export**: Saves the calculated Average, Median, Range, Standard Deviation, Variance, and PSD data
+           from the aggregated historical DataFrame into separate CSV files within the new subfolder.
+        8. **Plot Generation**: Calls `plotting_utils.plot_multi_trace_data` to generate an HTML plot.
+           This plot includes the aggregated historical data (average, median, range, std dev, variance, PSD)
+           as main traces, and all individual historical scans as lighter overlay layers.
+           Optional TV and Government band markers are also included.
+        9. **Browser Opening (Optional)**: If `open_html_after_complete_var` is True, it opens the generated HTML plot
+           in the default web browser using `_open_plot_in_browser`.
+
+    Outputs:
+        None. (Side effects: Creates CSV files and an HTML plot file in a new subfolder within the specified
+               output directory, and optionally opens the HTML plot in a web browser. Prints status messages to console.)
+
+    Notes:
+        - **Frequency Normalization (The "Magic")**: This is a critical step. When scans are performed with a
+          frequency shift (e.g., `current_freq_offset`), the `Frequency_MHz` values in the raw CSVs are
+          the *shifted* frequencies. To correctly average data across multiple scans that might have
+          used different shifts, we must first "normalize" or "un-shift" the frequencies back to their
+          original, absolute values. This is done by subtracting the `current_offset_hz` (extracted from the filename)
+          from the `Frequency_Hz` before grouping and averaging. This ensures that data points
+          corresponding to the same physical frequency are correctly aligned and aggregated.
+        - **Filename Pattern Matching**: A regular expression (`filename_pattern`) is used to robustly
+          extract metadata (RBW, hold time, offset, datetime) from the historical CSV filenames. This metadata
+          is essential for normalization and for creating informative plot labels.
+        - **Overlay Visualization**: The function collects both the normalized data for aggregation
+          and the original (shifted) data for plotting as overlays. This allows users to see the
+          aggregated trends while also being able to inspect the individual variations of each historical scan.
     """
     scan_name = scan_name_var.get() if scan_name_var.get() else "UnnamedScan"
     base_output_dir = output_folder_var.get()
@@ -167,7 +276,7 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     # Iterate directly through files in the base output directory
     for file_name in os.listdir(base_output_dir):
         # Filter for CSVs that match the scan name prefix and are not the 'averaged_cycle' or 'HISTORICAL' files
-        if file_name.endswith(".csv") and file_name.startswith(scan_name + "_") and "_averaged_cycle.csv" not in file_name and "_HISTORICAL_" not in file_name:
+        if file_name.endswith(".csv") and file_name.startswith(scan_name + "_") and "_CurrentCycle" not in file_name and "_HISTORICAL_" not in file_name: # Updated to exclude _CurrentCycle
             csv_path = os.path.join(base_output_dir, file_name)
             try:
                 # Extract components for layer name and offset using named groups
@@ -208,7 +317,7 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
                 else:
                     display_datetime = datetime_val # Fallback if format is unexpected
 
-                display_name = f"{scan_name_prefix}_{rbw_val_str}_{hold_val}_Offset{int(current_offset_hz)} ({display_datetime})"
+                display_name = f"{scan_name_prefix}_RBW{rbw_val_str}_HOLD{hold_val}_Offset{int(current_offset_hz)} ({display_datetime})"
                 historical_dfs_for_overlays.append({"name": display_name, "df": df[['Frequency_MHz', 'Power_dBm']].copy()})
 
                 # For averaging, use the original (un-shifted) frequencies and include RBW for PSD

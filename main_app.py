@@ -1,5 +1,19 @@
 # main_app.py
-
+#
+# This is the main entry point for the RF Spectrum Analyzer Controller application.
+# It handles initial setup, checks for and installs necessary Python dependencies,
+# and then launches the main graphical user interface (GUI).
+# This file ensures that the application environment is ready before starting the UI.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
 import sys
 import subprocess
 import os
@@ -19,7 +33,22 @@ from utils.user_interface import App, TextRedirector
 def check_and_install_dependencies():
     """
     Checks for required Python packages and installs them if missing.
-    Returns True if all dependencies are met or successfully installed, False otherwise.
+    This function is crucial for ensuring the application has all necessary libraries
+    (pyvisa, numpy, pandas, plotly) to function correctly. If dependencies are missing,
+    it prompts the user to install them via pip.
+
+    Inputs: None
+    Process:
+        1. Defines a list of `required_packages`.
+        2. Iterates through the `required_packages`, attempting to `__import__` each.
+        3. If an `ImportError` occurs, the package name is added to `missing_packages`.
+        4. If `missing_packages` is not empty, it displays a `messagebox.askyesno` dialog
+           to the user, asking if they want to install the missing packages.
+        5. If the user agrees, it attempts to install them using `subprocess.check_call` with `pip`.
+        6. Handles `subprocess.CalledProcessError` (pip installation failure) and other `Exception` types.
+        7. If the user declines, it shows a `messagebox.showwarning` about missing critical dependencies.
+    Outputs:
+        bool: True if all dependencies are met or successfully installed; False otherwise.
     """
     required_packages = [
         "pyvisa",
@@ -74,7 +103,8 @@ def check_and_install_dependencies():
 
 # The actual entry point of the script
 if __name__ == '__main__':
-    # Ensure dependencies are installed before running the app
+    # Ensures that all necessary Python packages are installed before the application starts.
+    # This prevents runtime errors due to missing dependencies and provides a smoother user experience.
     if check_and_install_dependencies():
         app = App()
         app.mainloop()

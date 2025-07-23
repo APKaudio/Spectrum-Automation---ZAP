@@ -1,4 +1,20 @@
 # scan_instrument.py
+#
+# This module contains the core logic for controlling the spectrum analyzer
+# to perform frequency sweeps across specified bands. It handles the low-level
+# communication with the instrument via PyVISA, processes raw trace data,
+# and saves it to CSV files. This is a critical component for data acquisition.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
+# scan_instrument.py
 
 import pyvisa
 import time
@@ -207,8 +223,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             write_safe(inst, ":TRAC2:MODE MAXHold;")
 
             # Add a small delay after setting frequencies to allow instrument to configure
-            time.sleep(0.1)
-            time.sleep(0.5) # Add a small delay for data processing within the instrument
+#            time.sleep(0.1)
+ #           time.sleep(0.5) # Add a small delay for data processing within the instrument
 
             # Add settling time for max hold values to show up, if max hold is enabled
             if max_hold_time > 0:

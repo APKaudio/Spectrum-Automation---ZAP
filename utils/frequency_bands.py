@@ -1,10 +1,28 @@
 # frequency_bands.py
-
+#
+# This module defines constants and data structures related to frequency bands
+# relevant to RF spectrum analysis. It separates the bands used for instrument
+# scanning from those used purely for plotting markers (e.g., TV channels,
+# government/commercial bands), enhancing modularity and clarity.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
 # Define constants for better readability and easier modification
 MHZ_TO_HZ = 1_000_000 # Conversion factor from MHz to Hz
 
 # Define the frequency bands to *SCAN* (User's specified bands for instrument operation)
 # This list will be used by the scan_bands function.
+# Each dictionary contains:
+# - "Band Name": A human-readable name for the band.
+# - "Start MHz": The starting frequency of the band in Megahertz.
+# - "Stop MHz": The stopping frequency of the band in Megahertz.
 SCAN_BAND_RANGES = [
     {"Band Name": "Low VHF+FM", "Start MHz": 50.000, "Stop MHz": 110.000},
     {"Band Name": "High VHF+216", "Start MHz": 170.000, "Stop MHz": 220.000},
@@ -21,7 +39,12 @@ SCAN_BAND_RANGES = [
 ]
 
 # North American TV Channel Bands (for plotting)
-# Directly defined to avoid redundant loops and intermediate lists.
+# This list is used by the plotting functions to overlay visual markers
+# on the spectrum plots, helping to identify common TV broadcast frequencies.
+# Each dictionary contains:
+# - "Band Name": The name of the TV channel.
+# - "Start MHz": The starting frequency of the channel in Megahertz.
+# - "Stop MHz": The stopping frequency of the channel in Megahertz.
 TV_PLOT_BAND_MARKERS = [
     {"Band Name": "TV Channel 2", "Start MHz": 54, "Stop MHz": 60},
     {"Band Name": "TV Channel 3", "Start MHz": 60, "Stop MHz": 66},
@@ -76,7 +99,13 @@ TV_PLOT_BAND_MARKERS = [
 ]
 
 # Government/Commercial Frequency Bands (for plotting)
-# Directly defined to avoid redundant loops and intermediate lists.
+# This list is used by the plotting functions to overlay visual markers
+# on the spectrum plots, helping to identify common government and commercial
+# radio frequency allocations.
+# Each dictionary contains:
+# - "Band Name": The name of the band (e.g., "FM Broadcast", "Amateur Radio 6m").
+# - "Start MHz": The starting frequency of the band in Megahertz.
+# - "Stop MHz": The stopping frequency of the band in Megahertz.
 GOV_PLOT_BAND_MARKERS = [
     {"Band Name": "Amateur Radio 6m", "Start MHz": 50, "Stop MHz": 54},
     {"Band Name": "FM Broadcast", "Start MHz": 88, "Stop MHz": 108},

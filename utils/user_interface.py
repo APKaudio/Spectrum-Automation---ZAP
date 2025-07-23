@@ -1,5 +1,22 @@
 # user_interface.py
-
+#
+# This module is responsible for building and managing the graphical user interface (GUI)
+# of the RF Spectrum Analyzer Controller application. It uses Tkinter to create the
+# main window, input fields, buttons, and display areas, allowing users to interact
+# with the spectrum analyzer, configure scan settings, view real-time output, and
+# generate plots. It acts as the central hub for user interaction and orchestrates
+# calls to other utility modules for instrument control, scanning, data processing,
+# and plotting.
+#
+# Author: Anthony Peter Kuzub
+# Blog: www.Like.audio (Contributor to this project)
+#
+# Professional services for customizing and tailoring this software to your specific
+# application can be negotiated. There is no change to use, modify, or fork this software.
+#
+# Build Log: https://like.audio/category/software/spectrum-scanner/
+# Source Code: https://github.com/APKaudio/
+#
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, filedialog, TclError
 from tkinter import ttk
@@ -56,13 +73,48 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(SCRIPT_DIR, 'config.ini')
 
 class TextRedirector(object):
-    """A class to redirect stdout/stderr to a Tkinter scrolled text widget."""
+    """
+    A class to redirect standard output (stdout) and standard error (stderr)
+    to a Tkinter scrolled text widget. This allows all print statements and
+    error messages from the application's backend to be displayed directly
+    within the GUI's console area, providing real-time feedback to the user.
+    """
     def __init__(self, widget, tag="stdout"):
+        """
+        Initializes the TextRedirector.
+
+        Inputs:
+            widget (tk.scrolledtext.ScrolledText): The Tkinter scrolled text widget
+                                                  where output will be displayed.
+            tag (str, optional): A tag for text formatting within the widget. Defaults to "stdout".
+        Process:
+            1. Stores the provided `widget` and `tag`.
+            2. Initializes `last_char_was_cr` to False, used for handling carriage returns for line overwriting.
+        Outputs: None
+        """
         self.widget = widget
         self.tag = tag
         self.last_char_was_cr = False
 
     def write(self, str_val):
+        """
+        Writes the given string value to the Tkinter scrolled text widget.
+        Handles carriage returns (`\r`) to overwrite the current line,
+        useful for progress bars or dynamic console updates.
+
+        Inputs:
+            str_val (str): The string to write to the console.
+        Process:
+            1. Sets the widget state to `tk.NORMAL` to allow editing.
+            2. Checks if `str_val` contains `\r`.
+            3. If `\r` is present, splits the string and handles line deletion
+               for overwriting if the previous character was also a carriage return.
+            4. Inserts the string (or parts of it) into the widget at the end.
+            5. Scrolls the widget to the end to show the latest output.
+            6. Sets the widget state back to `tk.DISABLED` to prevent user editing.
+            7. Updates Tkinter idle tasks to ensure immediate display.
+        Outputs: None
+        """
         self.widget.config(state=tk.NORMAL)
         
         if '\r' in str_val:
@@ -85,10 +137,42 @@ class TextRedirector(object):
         self.widget.update_idletasks()
 
     def flush(self):
+        """
+        Required method for file-like objects. Does nothing in this implementation.
+        """
         pass
 
 class App(tk.Tk):
+    """
+    The main application class for the RF Spectrum Analyzer Controller.
+    It inherits from `tk.Tk` and sets up the entire GUI, manages application state,
+    handles user interactions, and orchestrates calls to backend functions
+    for instrument control, data acquisition, and plotting.
+    """
     def __init__(self):
+        """
+        Initializes the main application window and its components.
+
+        Inputs: None
+        Process:
+            1. Calls the parent `tk.Tk` constructor.
+            2. Configures the main window's appearance (background, title, geometry).
+            3. Initializes PyVISA ResourceManager and related instrument state variables.
+            4. Initializes Tkinter `StringVar`, `BooleanVar`, and `DoubleVar` objects
+               to hold the values of various GUI settings.
+            5. Sets up a mapping (`setting_var_map`) between Tkinter variables and
+               their corresponding keys in the `config.ini` file for persistent storage.
+            6. Loads configuration settings from `config.ini` using `_load_config()`.
+            7. Initializes sliders for RBW and Frequency Shift, binding them to update
+               the relevant Tkinter variables.
+            8. Creates the main GUI widgets by calling `create_widgets()`.
+            9. Redirects `sys.stdout` and `sys.stderr` to the console output widget
+               using `TextRedirector`.
+            10. Prints ASCII art and a welcome message to the console.
+            11. Populates available VISA resources using `populate_resources()`.
+            12. Binds the window closing protocol to `on_closing` for saving settings.
+        Outputs: None
+        """
         super().__init__()
         self.configure(bg="black") 
         self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
@@ -110,10 +194,6 @@ class App(tk.Tk):
         # Variable to control the blinking of the connect button
         self.blink_id = None
         self.blink_on = False
-
-        # Removed: New variables for session-wide CSV
-        # self.session_csv_file_path = None
-        # self.session_csv_headers_written = False
 
         # Initialize Tkinter variables
         self.desired_ref_level_var = tk.StringVar(self)
@@ -227,7 +307,22 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _load_config(self):
-        """Loads configuration from config.ini, setting defaults if file or sections are missing."""
+        """
+        Loads configuration settings from `config.ini`.
+        If the file or sections are missing, it ensures default settings are present.
+        This function is called during application initialization to restore
+        the last-used settings or apply defaults.
+
+        Inputs: None
+        Process:
+            1. Reads `CONFIG_FILE` into `self.config` using `configparser`.
+            2. Ensures `DEFAULT_SETTINGS` section exists, creating it if not.
+            3. Dynamically generates default selected bands string from `SCAN_BAND_RANGES`.
+            4. Populates `DEFAULT_SETTINGS` with predefined default values if any are missing.
+            5. Ensures `LAST_USED_SETTINGS` section exists, creating it if not.
+            6. Calls `_populate_vars_from_config()` to set Tkinter variables based on loaded config.
+        Outputs: None
+        """
         self.config.read(CONFIG_FILE)
 
         # Default settings section
@@ -270,7 +365,22 @@ class App(tk.Tk):
 
 
     def _populate_vars_from_config(self):
-        """Populates Tkinter variables from config, prioritizing LAST_USED_SETTINGS, then DEFAULT_SETTINGS."""
+        """
+        Populates Tkinter variables with values from the loaded configuration.
+        It prioritizes `LAST_USED_SETTINGS` and falls back to `DEFAULT_SETTINGS`
+        if a value is not found or is invalid in the last used section.
+
+        Inputs: None
+        Process:
+            1. Iterates through `self.setting_var_map`, which defines the mapping
+               between Tkinter variables and config keys.
+            2. For each setting, attempts to retrieve the value from `LAST_USED_SETTINGS`.
+            3. If not found or parsing fails, attempts to retrieve from `DEFAULT_SETTINGS`.
+            4. Converts the retrieved string value to the appropriate Python type (bool, float, int, str).
+            5. Sets the corresponding Tkinter variable's value.
+            6. Handles a special case for `resource_var` if no resource is found.
+        Outputs: None
+        """
         for var_name, (last_key, default_key, type_converter) in self.setting_var_map.items():
             tk_var = getattr(self, var_name)
             value_to_set = None
@@ -318,7 +428,21 @@ class App(tk.Tk):
 
 
     def _save_config(self):
-        """Saves current settings to config.ini into LAST_USED_SETTINGS."""
+        """
+        Saves the current state of all configurable settings from the GUI's Tkinter
+        variables to the `config.ini` file, specifically in the `LAST_USED_SETTINGS` section.
+        This ensures that user preferences are preserved between application sessions.
+
+        Inputs: None
+        Process:
+            1. Ensures the `LAST_USED_SETTINGS` section exists in `self.config`.
+            2. Iterates through `self.setting_var_map` and saves the current value
+               of each Tkinter variable to its corresponding `last_used_config_key`.
+            3. Special handling to save the currently selected frequency bands.
+            4. Saves the current window geometry.
+            5. Writes the updated configuration to `CONFIG_FILE`.
+        Outputs: None
+        """
         # Ensure LAST_USED_SETTINGS section exists
         if 'LAST_USED_SETTINGS' not in self.config:
             self.config['LAST_USED_SETTINGS'] = {}
@@ -340,12 +464,34 @@ class App(tk.Tk):
         print(f"Configuration saved to {CONFIG_FILE}")
 
     def on_closing(self):
-        """Handler for window closing event to save config."""
+        """
+        Handler for the window closing event. This function is called when
+        the user attempts to close the application window. It ensures that
+        the current configuration settings are saved before the application exits.
+
+        Inputs: None
+        Process:
+            1. Calls `_save_config()` to persist current settings.
+            2. Destroys the Tkinter root window, effectively closing the application.
+        Outputs: None
+        """
         self._save_config()
         self.destroy()
 
     def _update_debug_mode_global(self, *args):
-        """Updates the global debug mode variable when the checkbox state changes."""
+        """
+        Updates the global debug mode variable in the `instrument_control` module
+        whenever the state of the debug mode checkbox in the GUI changes.
+        This allows for dynamic enabling/disabling of verbose logging for VISA commands.
+
+        Inputs:
+            *args: Standard Tkinter trace arguments (not used).
+        Process:
+            1. Retrieves the current boolean value from `self.debug_mode_var`.
+            2. Calls `set_debug_mode()` from `instrument_control` to update the global flag.
+            3. Calls `_save_config()` to immediately persist the debug mode setting.
+        Outputs: None
+        """
         set_debug_mode(self.debug_mode_var.get())
         # Also update the config setting immediately
         # This specific debug mode update is handled by the generic _save_config now.
@@ -354,7 +500,20 @@ class App(tk.Tk):
 
 
     def _update_scan_rbw_from_slider_index(self, *args):
-        """Updates scan RBW from slider index."""
+        """
+        Updates the `desired_scan_rbw_segmentation_var` (which controls the instrument's RBW)
+        based on the position of the RBW slider. This links the visual slider
+        to the numerical RBW setting.
+
+        Inputs:
+            *args: Standard Tkinter trace arguments (not used).
+        Process:
+            1. Retrieves the current index from `self.rbw_slider_index_var`.
+            2. Uses the index to look up the corresponding RBW value from `self.rbw_values`.
+            3. Sets the `desired_scan_rbw_segmentation_var` to this float value.
+            4. Includes error handling for invalid index access.
+        Outputs: None
+        """
         try:
             idx = self.rbw_slider_index_var.get()
             if 0 <= idx < len(self.rbw_values):
@@ -363,7 +522,20 @@ class App(tk.Tk):
             print(f"Error updating scan RBW from slider index: {e}")
 
     def _update_freq_shift_from_slider_index(self, *args):
-        """Updates frequency shift from slider index."""
+        """
+        Updates the `shift_freq_var` (which controls the frequency offset)
+        based on the position of the Frequency Shift slider. This links the visual slider
+        to the numerical frequency offset setting.
+
+        Inputs:
+            *args: Standard Tkinter trace arguments (not used).
+        Process:
+            1. Retrieves the current index from `self.freq_shift_slider_index_var`.
+            2. Uses the index to look up the corresponding frequency shift value from `self.freq_shift_values`.
+            3. Sets the `shift_freq_var` to this float value.
+            4. Includes error handling for invalid index access.
+        Outputs: None
+        """
         try:
             idx = self.freq_shift_slider_index_var.get()
             if 0 <= idx < len(self.freq_shift_values):
@@ -372,6 +544,35 @@ class App(tk.Tk):
             print(f"Error updating frequency shift from slider index: {e}")
 
     def create_widgets(self):
+        """
+        Constructs all the graphical user interface elements of the application.
+        This includes frames, labels, entry fields, buttons, checkboxes, sliders,
+        and treeviews, arranging them using Tkinter's `pack` and `grid` layout managers.
+
+        Inputs: None
+        Process:
+            1. Configures `ttk.Style` for consistent widget appearance.
+            2. Creates `resource_frame` for instrument connection controls:
+               - VISA Resource dropdown (`resource_dropdown`)
+               - Refresh, Connect, Disconnect buttons
+            3. Creates `scan_settings_frame` for instrument configuration:
+               - Restore Default Settings button
+               - Entry fields and checkboxes for Reference Level, High Sensitivity, Preamplifier
+               - Sliders and entry fields for Scan RBW and Frequency Shift
+               - Sliders for Cycle Hold Time and Cycle Wait Time
+               - Entry fields for Scan Name and Output Folder, with an "Open Folder" button
+               - Checkboxes for including TV and Government band markers in plots
+               - Checkbox for auto-opening HTML plots
+               - Buttons for "Apply Settings to Device" and "Generate Plot (Average)"
+            4. Creates `bands_and_presets_frame` to hold band selection and preset lists:
+               - `band_selection_frame` with a scrollable canvas for frequency band checkboxes.
+               - `preset_files_frame` with a "Load Selected Preset" button and a `ttk.Treeview`
+                 to display device preset files.
+            5. Creates a `debug_frame` with a checkbox to enable/disable debug mode.
+            6. Configures grid weights for responsive layout.
+            7. Calls `update_vbw_display()` to initialize the VBW display.
+        Outputs: None
+        """
         style = ttk.Style(self)
         style.theme_use('clam')
 
@@ -648,13 +849,22 @@ class App(tk.Tk):
 
         self.update_vbw_display()
 
-    # Removed update_progress_label method
-    # def update_progress_label(self, message):
-    #     """Updates the progress label on the GUI."""
-    #     self.progress_label.config(text=message)
-
     def _set_band_checkboxes_from_config(self):
-        """Sets the state of band checkboxes based on the loaded config."""
+        """
+        Sets the state (checked/unchecked) of the frequency band checkboxes
+        based on the `last_selected_bands` setting loaded from `config.ini`.
+        If no last selected bands are found, all checkboxes are set to `True` (selected).
+
+        Inputs: None
+        Process:
+            1. Retrieves the string of comma-separated band names from `self.last_selected_bands_str`.
+            2. Splits the string into a list of selected band names.
+            3. Iterates through `self.band_vars` (which holds each band's name and its Tkinter `BooleanVar`).
+            4. If a band's name is found in the list of selected band names, its `BooleanVar` is set to `True`.
+            5. Otherwise, it's set to `False`.
+            6. If no `last_selected_bands` are found in config, all bands are set to `True`.
+        Outputs: None
+        """
         selected_bands_from_config = self.last_selected_bands_str.get()
         if selected_bands_from_config:
             selected_band_names = [name.strip() for name in selected_bands_from_config.split(',') if name.strip()]
@@ -670,7 +880,19 @@ class App(tk.Tk):
                 item["var"].set(True) # Default to all selected if no config found
 
     def update_vbw_display(self):
-        """Updates the VBW display based on the current RBW setting."""
+        """
+        Updates the displayed Video Bandwidth (VBW) value based on the
+        current Resolution Bandwidth (RBW) setting. The VBW is typically
+        set to approximately 1/3 of the RBW for spectrum analyzers.
+
+        Inputs: None
+        Process:
+            1. Retrieves the current RBW value from `self.desired_scan_rbw_segmentation_var`.
+            2. Calculates VBW as RBW / 3.
+            3. Sets the `self.desired_vbw_display_var` to the calculated VBW (as an integer string).
+            4. Handles `ValueError` if the RBW input is not a valid number.
+        Outputs: None
+        """
         try:
             scan_rbw_val = float(self.desired_scan_rbw_segmentation_var.get())
             self.desired_vbw_display_var.set(str(int(scan_rbw_val / 3)))
@@ -678,7 +900,20 @@ class App(tk.Tk):
             self.desired_vbw_display_var.set("Invalid RBW")
 
     def open_output_folder(self):
-        """Opens the specified output folder in the file explorer."""
+        """
+        Opens the specified output folder in the user's default file explorer.
+        This provides a convenient way for users to access their saved scan data and plots.
+
+        Inputs: None
+        Process:
+            1. Retrieves the output folder path from `self.output_folder_var`.
+            2. Converts the path to an absolute path if it's relative.
+            3. Checks if the folder exists, showing a warning if not.
+            4. Uses `os.startfile` (Windows), `subprocess.run(['open', ...])` (macOS),
+               or `subprocess.run(['xdg-open', ...])` (Linux) to open the folder.
+            5. Prints success or error messages to the console and displays a messagebox on error.
+        Outputs: None
+        """
         folder_path = self.output_folder_var.get()
         if not os.path.isabs(folder_path):
             folder_path = os.path.join(os.getcwd(), folder_path)
@@ -701,7 +936,30 @@ class App(tk.Tk):
             print(f"❌ Error opening folder: {e}")
 
     def connect_instrument(self):
-        """Establishes connection to the selected instrument and queries its settings."""
+        """
+        Establishes a connection to the selected VISA instrument (spectrum analyzer).
+        Upon successful connection, it initializes the instrument with the desired
+        settings from the GUI and updates the GUI state accordingly.
+
+        Inputs: None
+        Process:
+            1. Retrieves the selected VISA resource string from `self.resource_var`.
+            2. Performs initial checks for valid resource selection.
+            3. If an existing connection exists, it attempts to close it first.
+            4. Calls `connect_to_instrument()` from `instrument_control` to establish the connection.
+            5. If connection is successful:
+               - Updates the window title with the instrument model.
+               - Retrieves current GUI settings for Reference Level, Sensitivity, Preamplifier, RBW, and VBW.
+               - Calls `initialize_instrument()` from `instrument_control` to configure the device.
+               - Queries and displays current instrument settings.
+               - Enables/disables relevant GUI buttons (Start Scan, Disconnect, Apply, Load Preset).
+               - Stops the connect button blinking.
+               - Queries device presets (if not N9340B) and updates the preset treeview.
+            6. If connection or initialization fails, displays appropriate error messages
+               and resets the GUI to a disconnected state.
+            7. Includes error handling for `ValueError` (invalid numeric inputs) and general exceptions.
+        Outputs: None
+        """
         selected_resource = self.resource_var.get()
         if selected_resource == "No resources found" or "Error listing resources" in selected_resource:
             messagebox.showwarning("Connection Warning", "Please select a valid VISA resource.")
@@ -765,7 +1023,20 @@ class App(tk.Tk):
 
             
     def disconnect_instrument(self):
-        """Closes the connection to the instrument."""
+        """
+        Closes the active connection to the spectrum analyzer.
+        Resets the GUI state to reflect a disconnected instrument.
+
+        Inputs: None
+        Process:
+            1. Calls `control_disconnect_instrument()` from `instrument_control`.
+            2. If successful, sets `self.inst` and `self.instrument_model` to `None`.
+            3. Resets the GUI button states using `_reset_gui_on_disconnect_or_error()`.
+            4. Resets the window title.
+            5. If resources are available, restarts the connect button blinking.
+            6. Displays an error messagebox if disconnection fails.
+        Outputs: None
+        """
         if control_disconnect_instrument(self.inst):
             self.inst = None
             self.instrument_model = None
@@ -779,7 +1050,19 @@ class App(tk.Tk):
             messagebox.showerror("Disconnect Error", "Failed to disconnect instrument.")
             
     def apply_settings_to_device(self):
-        """Applies the desired settings from the GUI to the connected instrument."""
+        """
+        Applies the currently configured settings from the GUI's input fields
+        and checkboxes directly to the connected spectrum analyzer.
+
+        Inputs: None
+        Process:
+            1. Checks if an instrument is connected, showing a warning if not.
+            2. Retrieves the desired settings (Reference Level, High Sensitivity, Preamplifier, RBW, VBW).
+            3. Calls `initialize_instrument()` from `instrument_control` to send these commands to the device.
+            4. Displays success or error messages and resets the color of setting entries.
+            5. Includes error handling for `ValueError` (invalid numeric inputs) and general exceptions.
+        Outputs: None
+        """
         if not self.inst:
             messagebox.showwarning("Not Connected", "Please connect to an instrument first to apply settings.")
             return
@@ -803,13 +1086,38 @@ class App(tk.Tk):
             print(f"❌ Error applying settings: {e}")
 
     def reset_setting_colors(self):
-        """Resets the text color of all desired setting entries to black."""
+        """
+        Resets the foreground color of all input entry widgets in the "Scan Configuration"
+        section to white. This is typically called after settings are successfully applied
+        to provide visual feedback that the settings are no longer "dirty" or unapplied.
+
+        Inputs: None
+        Process:
+            1. Iterates through the `self.desired_setting_entries` dictionary.
+            2. For each entry that is a `tk.Entry` widget, sets its `fg` (foreground)
+               color to "white".
+        Outputs: None
+        """
         for key, entry_widget in self.desired_setting_entries.items():
             if isinstance(entry_widget, tk.Entry):
                 entry_widget.config(fg="white")
 
     def _update_preset_tree(self, preset_files):
-        """Helper to update the preset Treeview."""
+        """
+        Updates the `ttk.Treeview` widget that displays the list of
+        available preset files on the connected instrument.
+
+        Inputs:
+            preset_files (list): A list of strings, where each string is the name of a preset file.
+        Process:
+            1. Clears all existing items from the `preset_tree`.
+            2. If `preset_files` is not empty, it inserts each preset name into the treeview,
+               sorted alphabetically. It also applies a "Mon" tag for blue foreground if
+               "MON" is in the preset name (likely for 'Monitor' presets).
+            3. If `preset_files` is empty, it inserts a "No .STA preset files found." message.
+            4. Disables the "Load Selected Preset" button.
+        Outputs: None
+        """
         for item in self.preset_tree.get_children():
             self.preset_tree.delete(item)
         if preset_files:
@@ -823,7 +1131,20 @@ class App(tk.Tk):
         self.load_preset_button.config(state=tk.DISABLED)
 
     def _on_preset_select(self, event):
-        """Enables the Load Preset button if a preset is selected."""
+        """
+        Event handler for when a preset file is selected in the `preset_tree` Treeview.
+        It enables the "Load Selected Preset" button if a valid preset is selected
+        and the instrument is connected (and not an N9340B, which doesn't support presets).
+
+        Inputs:
+            event (tk.Event): The Tkinter event object (not directly used).
+        Process:
+            1. Checks if any items are selected in the `preset_tree`.
+            2. If an item is selected and an instrument is connected (and it's not the N9340B model),
+               the `load_preset_button` is enabled.
+            3. Otherwise, the `load_preset_button` is disabled.
+        Outputs: None
+        """
         selected_items = self.preset_tree.selection()
         if selected_items and self.inst and self.instrument_model != "N9340B":
             self.load_preset_button.config(state=tk.NORMAL)
@@ -832,7 +1153,19 @@ class App(tk.Tk):
 
     def load_selected_preset(self):
         """
-        Loads the selected preset file onto the instrument using instrument_control.
+        Loads the currently selected preset file from the `preset_tree` onto the
+        connected spectrum analyzer. This function acts as a wrapper to the
+        `control_load_selected_preset` function in `instrument_control.py`.
+
+        Inputs: None
+        Process:
+            1. Checks for instrument connection and displays a warning if not connected.
+            2. Checks if the instrument model is N9340B, which does not support presets,
+               and shows a warning if so.
+            3. Retrieves the name of the selected preset from the `preset_tree`.
+            4. Calls `control_load_selected_preset()` to send the command to the instrument.
+            5. Displays success or error messages to the console and via messagebox.
+        Outputs: None
         """
         if not self.inst:
             messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
@@ -856,7 +1189,26 @@ class App(tk.Tk):
             messagebox.showerror("Load Preset Failed", f"Failed to load preset: {selected_preset_name}. Check console for details.")
 
     def restore_default_settings(self):
-        """Restores all configurable settings to their default values from config.ini."""
+        """
+        Restores all configurable settings in the GUI to their default values
+        as defined in the `DEFAULT_SETTINGS` section of `config.ini`.
+        This provides a quick way for users to revert to a known good configuration.
+
+        Inputs: None
+        Process:
+            1. Prints a message indicating restoration.
+            2. Iterates through `self.setting_var_map`.
+            3. For each setting, retrieves its default value from `config.ini` and converts it
+               to the appropriate Python type.
+            4. Sets the corresponding Tkinter variable to this default value.
+            5. Handles special updates for slider widgets to reflect the new values.
+            6. Resets all frequency band checkboxes to `True` (selected).
+            7. Calls `update_vbw_display()` to refresh the VBW based on the restored RBW.
+            8. Calls `reset_setting_colors()` to clear any visual indications of unapplied settings.
+            9. Calls `_save_config()` to save these restored defaults as the new last-used settings.
+            10. Displays an informational messagebox upon completion.
+        Outputs: None
+        """
         print("Restoring default settings...")
         for var_name, (_, default_key, type_converter) in self.setting_var_map.items():
             if default_key and self.config.has_option('DEFAULT_SETTINGS', default_key):
@@ -893,7 +1245,24 @@ class App(tk.Tk):
 
 
     def start_scan_thread(self):
-        """Starts the scanning process in a separate thread."""
+        """
+        Initiates the spectrum scanning process by launching a dedicated thread.
+        This prevents the GUI from freezing during long scan operations.
+        It performs initial checks, updates GUI button states, and saves the current configuration.
+
+        Inputs: None
+        Process:
+            1. Checks if an instrument is connected and if a scan is already running.
+            2. Saves the current GUI configuration to `config.ini`.
+            3. Updates the state of various GUI buttons (Start, Stop, Pause/Resume, Connect, Disconnect, Apply, Load Preset).
+            4. Sets `self.scanning` to `True` and `self.paused` to `False`.
+            5. Retrieves scan parameters (Max Hold, RBW, Frequency Shift, selected bands).
+            6. Creates the output directory if it doesn't exist.
+            7. Initializes scan cycle count and frequency offset.
+            8. Creates and starts a new `threading.Thread` that will execute the `_run_scan` method.
+               The thread is set as a daemon so it terminates with the main application.
+        Outputs: None
+        """
         if not self.inst:
             messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
             return
@@ -952,7 +1321,19 @@ class App(tk.Tk):
         scan_thread.start()
 
     def toggle_pause_scan(self):
-        """Toggles the paused state of the scan."""
+        """
+        Toggles the paused state of the ongoing scan.
+        When paused, the scan thread will temporarily halt its operations.
+
+        Inputs: None
+        Process:
+            1. Checks if a scan is currently active.
+            2. Toggles the `self.paused` boolean flag.
+            3. Updates the text and background color of the `pause_resume_button`
+               to reflect the current state ("Pause Scan" or "Resume Scan").
+            4. Prints status messages to the console.
+        Outputs: None
+        """
         if self.scanning:
             self.paused = not self.paused
             if self.paused:
@@ -967,7 +1348,43 @@ class App(tk.Tk):
             messagebox.showwarning("Scan Not Active", "No scan is currently running to pause or resume.")
 
     def _run_scan(self, selected_bands, scan_rbw_segmentation, freq_shift_value, rbw_config_val, vbw_config_val, max_hold_time):
-        """Internal method to run the scan logic, called by the thread."""
+        """
+        The core logic for performing a continuous spectrum scan. This method runs
+        in a separate thread to keep the GUI responsive. It iterates through selected
+        frequency bands, performs sweeps, collects data, saves it to CSV, generates plots,
+        and manages scan cycles and frequency shifting.
+
+        Inputs:
+            selected_bands (list): A list of dictionaries, each representing a frequency band to scan.
+            scan_rbw_segmentation (float): The Resolution Bandwidth (RBW) to use for scan segments.
+            freq_shift_value (float): The frequency offset (in Hz) to apply per scan cycle.
+            rbw_config_val (float): RBW value to configure on the instrument.
+            vbw_config_val (float): VBW value to configure on the instrument.
+            max_hold_time (float): Duration in seconds for which MAX Hold should be active.
+
+        Process:
+            1. Enters a `while self.scanning` loop for continuous operation.
+            2. Inside the loop, it checks `self.paused` and `self.scanning` flags
+               to allow pausing and stopping the scan.
+            3. Increments `self.scan_cycle_count` and applies `self.current_freq_offset`.
+            4. Constructs a unique filename for the current scan cycle's raw CSV and HTML plot.
+            5. Calls `scan_bands()` from `scan_instrument` to perform the actual instrument sweep
+               for the selected bands. This function returns the scanned data, the index of the
+               last successfully scanned band, and the path to the CSV file where raw data was saved.
+            6. If the scan was not interrupted and data was collected:
+               - Converts the scanned data into a Pandas DataFrame.
+               - Appends the DataFrame to `self.collected_scans_dataframes` for later averaging.
+               - Calls `generate_single_scan_plot_and_open_wrapper()` to create and potentially
+                 open an HTML plot for the current cycle's data.
+            7. Increments `self.scan_cycle_count` and updates `self.current_freq_offset`.
+            8. Resets `self.current_freq_offset` and `self.scan_cycle_count` after 10 cycles.
+            9. If `desired_cycle_wait_time_var` is greater than 0, pauses for the specified duration,
+               allowing for pause/stop during the wait.
+            10. Includes extensive `try-except` blocks to catch and report errors during the scan cycle.
+            11. In the `finally` block, ensures `self.scanning` and `self.paused` are reset,
+                and calls `reset_scan_buttons()` to update the GUI.
+        Outputs: None (modifies `self.collected_scans_dataframes`, generates files, updates GUI)
+        """
         try:
             while self.scanning:
                 while self.paused:
@@ -1089,7 +1506,24 @@ class App(tk.Tk):
                 self._start_connect_button_blink()
 
     def populate_resources(self):
-        """Populates the VISA resource dropdown."""
+        """
+        Discovers and populates the list of available VISA resources (instruments)
+        in the `resource_dropdown` menu. It also manages the state of connection-related
+        buttons and the blinking effect for the "Connect" button.
+
+        Inputs: None
+        Process:
+            1. Calls `list_visa_resources()` from `instrument_control` to get available resources.
+            2. If resources are found:
+               - Sets `resource_var` to the last used device from config, or the first available.
+               - Clears and repopulates the `resource_dropdown` menu.
+               - Enables the "Connect" button and starts its blinking effect.
+            3. If no resources are found, sets `resource_var` to "No resources found"
+               and disables the "Connect" button, stopping any blinking.
+            4. Disables other scan/instrument control buttons until a connection is made.
+            5. Includes error handling for `pyvisa` and general exceptions.
+        Outputs: None
+        """
         try:
             self.instrument_list = list_visa_resources(self.rm)
             if self.instrument_list:
@@ -1125,13 +1559,36 @@ class App(tk.Tk):
             self._reset_gui_on_disconnect_or_error()
 
     def _start_connect_button_blink(self):
-        """Starts the blinking effect for the connect button."""
+        """
+        Initiates a blinking visual effect for the "Connect" button.
+        This serves as a visual cue to the user that a connection is possible
+        but not yet established.
+
+        Inputs: None
+        Process:
+            1. Checks if the blinking effect is already active (`self.blink_id is None`).
+            2. Sets `self.blink_on` to `True`.
+            3. Calls `_blink_connect_button()` to start the actual blinking loop.
+        Outputs: None
+        """
         if self.blink_id is None: # Only start if not already blinking
             self.blink_on = True
             self._blink_connect_button()
 
     def _stop_connect_button_blink(self):
-        """Stops the blinking effect and resets the button color."""
+        """
+        Stops the blinking effect on the "Connect" button and resets its color
+        to its default state.
+
+        Inputs: None
+        Process:
+            1. If `self.blink_id` is not None (meaning blinking is active),
+               cancels the scheduled `after` event.
+            2. Resets `self.blink_id` to `None`.
+            3. Resets the button's background and foreground colors to their defaults.
+            4. Sets `self.blink_on` to `False`.
+        Outputs: None
+        """
         if self.blink_id is not None:
             self.after_cancel(self.blink_id)
             self.blink_id = None
@@ -1139,7 +1596,18 @@ class App(tk.Tk):
         self.blink_on = False
 
     def _blink_connect_button(self):
-        """Toggles the color of the connect button to create a blinking effect."""
+        """
+        Toggles the background and foreground colors of the "Connect" button
+        at a set interval (500ms) to create the blinking animation.
+
+        Inputs: None
+        Process:
+            1. If `self.blink_on` is `True`:
+               - Retrieves the current background color of the button.
+               - Toggles the colors between "darkgrey" (default) and "lightblue" (highlight).
+               - Schedules itself to be called again after 500 milliseconds using `self.after()`.
+        Outputs: None
+        """
         if self.blink_on:
             current_bg = self.connect_button.cget("bg")
             if current_bg == "darkgrey":
@@ -1149,7 +1617,18 @@ class App(tk.Tk):
             self.blink_id = self.after(500, self._blink_connect_button) # Schedule next blink after 500ms
 
     def stop_scan(self):
-        """Stops the ongoing scan."""
+        """
+        Initiates the process of stopping the ongoing spectrum scan.
+        It sets internal flags that signal the scan thread to terminate gracefully.
+
+        Inputs: None
+        Process:
+            1. Sets `self.scanning` to `False` to signal the scan thread to stop.
+            2. Sets `self.paused` to `False` to ensure the thread isn't stuck in a pause state.
+            3. Prints a message to the console indicating the stop attempt.
+            4. Disables the "Stop Scan" button and resets the "Pause Scan" button.
+        Outputs: None
+        """
         self.scanning = False
         self.paused = False
         print("\nAttempting to stop scan... Please wait for current sweep to finish.")
@@ -1157,7 +1636,21 @@ class App(tk.Tk):
         self.pause_resume_button.config(text="Pause Scan", state=tk.DISABLED)
 
     def reset_scan_buttons(self):
-        """Resets the state of scan-related buttons after a scan completes or stops."""
+        """
+        Resets the state of scan-related buttons in the GUI. This function is called
+        after a scan completes normally or is stopped/interrupted, making the "Start Scan"
+        button available again and disabling others.
+
+        Inputs: None
+        Process:
+            1. Enables the "Start Scan" button.
+            2. If an instrument is connected, enables the "Disconnect" and "Apply Settings" buttons.
+            3. If an instrument is connected and a preset is selected (and not N9340B),
+               enables the "Load Preset" button.
+            4. Disables the "Stop Scan" and "Pause/Resume Scan" buttons.
+            5. Resets the text of the "Pause/Resume Scan" button to "Pause Scan".
+        Outputs: None
+        """
         self.start_scan_button.config(state=tk.NORMAL)
         if self.inst:
             self.disconnect_button.config(state=tk.NORMAL)
@@ -1168,7 +1661,21 @@ class App(tk.Tk):
         self.pause_resume_button.config(text="Pause Scan", state=tk.DISABLED)
 
     def _reset_gui_on_disconnect_or_error(self):
-        """Helper to reset GUI elements to a disconnected state."""
+        """
+        Resets the state of various GUI elements to reflect a disconnected
+        instrument or an error state. This ensures a consistent user experience
+        when the connection is lost or problematic.
+
+        Inputs: None
+        Process:
+            1. Disables all scan-related and instrument control buttons (Start, Stop, Pause/Resume, Disconnect, Apply, Load Preset).
+            2. Clears the preset treeview and inserts a "No instrument connected." message.
+            3. Enables the "Connect" button.
+            4. Manages the blinking effect of the "Connect" button:
+               - Starts blinking if resources are found and no instrument is connected.
+               - Stops blinking if no resources are found or if an instrument is already connected (though this function implies disconnection).
+        Outputs: None
+        """
         self.start_scan_button.config(state=tk.DISABLED)
         self.stop_scan_button.config(state=tk.DISABLED)
         self.pause_resume_button.config(state=tk.DISABLED)
@@ -1187,8 +1694,24 @@ class App(tk.Tk):
 
     def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser=True):
         """
-        Wrapper to call plot_single_scan_data and handle saving/opening.
-        Reads data directly from the provided CSV file path.
+        A wrapper function to facilitate plotting of a single scan's data.
+        It reads the scan data from a specified CSV file, prepares it for plotting,
+        and then calls `plot_single_scan_data` from `plotting_utils` to generate
+        and potentially open the HTML plot.
+
+        Inputs:
+            csv_file_path (str): The full path to the CSV file containing the scan data.
+            plot_title_suffix (str): A string to append to the plot's main title.
+            output_html_path (str): The full path where the generated HTML plot should be saved.
+            auto_open_browser (bool, optional): If True, the generated HTML plot will be
+                                                automatically opened in the default web browser. Defaults to True.
+        Process:
+            1. Reads the scan data from the `csv_file_path` into a Pandas DataFrame,
+               assuming no header and specific column names.
+            2. Converts frequencies from MHz back to Hz, as `plot_single_scan_data` expects Hz.
+            3. Calls `plot_single_scan_data` with the prepared data and plotting options.
+            4. Prints success or error messages to the console and displays a messagebox on error.
+        Outputs: None (generates an HTML file, potentially opens a browser)
         """
         # The 'output_html_path' parameter is already defined in the function signature.
         # The previous debug print and check are no longer needed as the saving logic
@@ -1224,9 +1747,17 @@ class App(tk.Tk):
 
     def generate_average_plot(self):
         """
-        Generates an average, median, and range plot from ALL relevant CSV files
-        found in the current output folder base. This is triggered by the button.
-        This plot also includes all individual historical scans as overlay layers.
+        Triggers the generation of a historical average, median, range, standard deviation,
+        variance, and PSD plot from all relevant CSV files found in the current output folder.
+        This plot also includes individual historical scans as overlay layers.
+        This function acts as a wrapper to `generate_historical_average_plot` from `averaging_utils`.
+
+        Inputs: None
+        Process:
+            1. Checks if a scan is currently in progress and warns the user if so.
+            2. Calls `generate_historical_average_plot()` with the necessary Tkinter variables
+               to retrieve scan name, output folder, and plotting options.
+        Outputs: None (generates HTML plots and CSV files)
         """
         if self.scanning and not self.paused:
             messagebox.showwarning("Plotting Error", "Cannot generate historical average plot while a scan is in progress. Please pause or stop the scan first.")
@@ -1242,14 +1773,34 @@ class App(tk.Tk):
 
     def _update_console_line(self, text_to_display, overwrite=False):
         """
-        Helper function to update the console output safely from any thread,
-        handling line overwriting.
+        Helper function to safely update the console output widget from any thread.
+        It supports overwriting the current line, which is useful for displaying
+        dynamic progress updates (e.g., progress bars or countdowns).
+
+        Inputs:
+            text_to_display (str): The text string to insert into the console.
+            overwrite (bool, optional): If True, the current last line in the console
+                                        will be deleted before inserting `text_to_display`,
+                                        creating an overwrite effect. Defaults to False.
+        Process:
+            1. Sets the console widget state to `tk.NORMAL` to allow editing.
+            2. If `overwrite` is True, attempts to delete the last line.
+            3. Inserts `text_to_display` at the end of the console.
+            4. Scrolls the console to the end to show the latest text.
+            5. Sets the console widget state back to `tk.DISABLED` to prevent user editing.
+            6. Updates Tkinter idle tasks to ensure immediate display.
+        Outputs: None
         """
         self.console_output.config(state=tk.NORMAL)
         if overwrite:
             try:
+                # Magic: This line deletes the content of the last line.
+                # "end-1c linestart" refers to the beginning of the last line.
+                # "end-1c" refers to the character just before the very end of the text.
+                # Together, they select the entire last line.
                 self.console_output.delete("end-1c linestart", "end-1c")
             except TclError:
+                # This can happen if the console is empty or the last line is not fully formed yet.
                 pass
         self.console_output.insert(tk.END, text_to_display)
         self.console_output.see(tk.END)
@@ -1258,7 +1809,15 @@ class App(tk.Tk):
 
 
 def print_art():
+    """
+    Prints an ASCII art logo to the console output. This function is called
+    during application startup to provide a visual brand element.
 
+    Inputs: None
+    Process:
+        1. Uses a series of `print()` statements to output the multi-line ASCII art.
+    Outputs: None (prints to console)
+    """
     print("                                                                                               ")
     print("                                               $              $$$$$                     $$ $$$$")
     print("                                               $$$            $$   $$$$$$               $$  $$ ")
