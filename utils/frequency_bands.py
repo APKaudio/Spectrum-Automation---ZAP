@@ -16,7 +16,8 @@ SCAN_BAND_RANGES = [
     {"Band Name": "ISM-STL 900-970", "Start MHz": 900.000, "Stop MHz": 970.000},
     {"Band Name": "AFTRCC 1430-1540", "Start MHz": 1430.000, "Stop MHz": 1540.000},
     {"Band Name": "DECT-ALL 1880-2000", "Start MHz": 1880.000, "Stop MHz": 2000.000},
-    {"Band Name": "Cams 2G-2.4G", "Start MHz": 2000.000, "Stop MHz": 2400.000},
+    {"Band Name": "Cams Lower 2G-2.2G", "Start MHz": 2000.000, "Stop MHz": 2200.000},
+    {"Band Name": "Cams Upper 2.4G-2.4G", "Start MHz": 2200.000, "Stop MHz": 2400.000},
 ]
 
 # North American TV Channel Bands (for plotting)

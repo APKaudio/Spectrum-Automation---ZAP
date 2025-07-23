@@ -32,7 +32,7 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     # Combine all scan data into a single DataFrame for easier processing
     # Concatenate the collected_scans_dataframes vertically
     combined_current_scans_df = pd.concat(collected_scans_dataframes)
-    
+
     # Now group by Frequency_MHz and apply the aggregations on 'Power_dBm'
     # The collected_scans_dataframes already have 'Frequency_MHz'
     aggregated_df = combined_current_scans_df.groupby('Frequency_MHz')['Power_dBm'].agg(
@@ -50,9 +50,9 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
 
     # Frequency_MHz is already present from the groupby operation, no need to re-add.
 
-    # Generate filename based on current time (HMS) and scan name
-    timestamp_hms = datetime.now().strftime("%H%M") # HMS format
-    base_filename = f"{scan_name_var.get()}_{timestamp_hms}"
+    # Generate filename based on current time (HHMM - no seconds) and scan name
+    timestamp_hm = datetime.now().strftime("%H%M") # HHMM format (no seconds)
+    base_filename = f"{scan_name_var.get()}_{timestamp_hm}"
 
     csv_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged_cycle.csv") # Added _cycle to distinguish
     html_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged_cycle.html") # Added _cycle to distinguish
@@ -63,7 +63,8 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     # Save to CSV
     try:
         # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
-        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f',
+        # Using to_csv with header=False as requested by user
+        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f', header=False,
                              columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
         print(f"✅ Averaged data for current cycle saved to: {csv_filename}")
     except Exception as e:
@@ -75,7 +76,7 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     try:
         fig, plot_html_path_return = plot_multi_trace_data(
             aggregated_df,
-            f"{scan_name_var.get()} - Averaged, Median & Range (Current Cycle {timestamp_hms})", # Include HMS in plot title
+            f"{scan_name_var.get()} - Averaged, Median & Range (Current Cycle {timestamp_hm})", # Include HHMM in plot title
             include_tv_markers_var.get(),
             include_gov_markers_var.get(),
             output_html_path=html_filename # Pass the desired full path for the HTML file
@@ -108,9 +109,15 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     all_historical_dfs_normalized = [] # To store DataFrames with normalized frequencies for aggregation
     historical_dfs_for_overlays = [] # To store (DataFrame, name) for plotting as overlays
 
-    # Regex to extract datetime string and offset from filename: e.g., MyScan_RBW####K_HOLD##_Offset####_YYYYMMDD_HHMMSS.csv
-    # Changed Offset(\d+) to Offset(-?\d+) to allow for negative offsets if they were ever introduced.
-    filename_pattern = re.compile(r'^(.*)_RBW(\d{4}K)_HOLD(\d{2})_Offset(-?\d+)_(\d{8}_\d{6})\.csv$')
+    # Regex to extract components from filename.
+    # Made RBW and HOLD digits flexible (\d+).
+    # Made Offset optional and also account for _SESSION in older files.
+    # Made timestamp flexible for seconds (\d{2})?
+    filename_pattern = re.compile(
+        r'^(?P<prefix>.*?)_RBW(?P<rbw>\d+K)_HOLD(?P<hold>\d+)'
+        r'(?:_Offset(?P<offset>-?\d+)|_SESSION)?' # Non-capturing group for optional Offset or SESSION
+        r'_(?P<datetime>\d{8}_\d{4}(?:\d{2})?)\.csv$' # Timestamp with optional seconds
+    )
 
     print("📊 Collecting and normalizing historical scan data for averaging...")
 
@@ -120,39 +127,46 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
         if file_name.endswith(".csv") and file_name.startswith(scan_name_var.get() + "_") and "_averaged_cycle.csv" not in file_name and "_HISTORICAL_" not in file_name:
             csv_path = os.path.join(base_output_dir, file_name)
             try:
-                # Extract components for layer name and offset
+                # Extract components for layer name and offset using named groups
                 match = filename_pattern.match(file_name)
                 if not match:
-                    print(f"Skipping '{file_name}': Filename does not match expected pattern with Offset. Omitting from average.")
+                    print(f"Skipping '{file_name}': Filename does not match expected pattern. Omitting from average.")
                     continue
 
-                scan_name_prefix, rbw_val, hold_val, offset_str, datetime_val = match.groups()
-                current_offset_hz = float(offset_str) # Get the offset in Hz
+                # Get captured groups
+                groups = match.groupdict()
+                scan_name_prefix = groups['prefix']
+                rbw_val = groups['rbw']
+                hold_val = groups['hold']
+                offset_str = groups['offset'] # Will be None if _SESSION was matched
+                datetime_val = groups['datetime']
 
-                # Read CSV, assuming the header is "Frequency (MHz)", "Level (dBm)"
-                df = pd.read_csv(csv_path).copy()
+                current_offset_hz = 0.0
+                if offset_str is not None:
+                    current_offset_hz = float(offset_str) # Get the offset in Hz
 
-                # Strip whitespace from column names
-                df.columns = df.columns.str.strip()
+                # Read CSV, assuming no header as per the new csv_utils.py
+                df = pd.read_csv(csv_path, header=None, names=["Frequency_MHz", "Power_dBm"]).copy()
 
-                # Ensure columns are as expected and rename for internal consistency
-                if "Frequency (MHz)" in df.columns and "Level (dBm)" in df.columns:
-                    df.rename(columns={"Frequency (MHz)": "Frequency_MHz", "Level (dBm)": "Power_dBm"}, inplace=True)
-                    
-                    # Calculate original (un-shifted) frequencies for averaging
-                    df['Original_Frequency_Hz'] = df['Frequency_MHz'] * MHZ_TO_HZ - current_offset_hz
-                    df['Original_Frequency_MHz'] = df['Original_Frequency_Hz'] / MHZ_TO_HZ
+                # Calculate original (un-shifted) frequencies for averaging
+                df['Original_Frequency_Hz'] = df['Frequency_MHz'] * MHZ_TO_HZ - current_offset_hz
+                df['Original_Frequency_MHz'] = df['Original_Frequency_Hz'] / MHZ_TO_HZ
 
-                    # For historical overlays, we want the *actual* frequencies
+                # For historical overlays, we want the *actual* frequencies
+                # Parse datetime string, handling both HHMM and HHMMSS formats
+                if len(datetime_val) == 12: # YYYYMMDD_HHMM
+                    display_datetime = datetime.strptime(datetime_val, '%Y%m%d_%H%M').strftime('%Y-%m-%d %H:%M')
+                elif len(datetime_val) == 14: # YYYYMMDD_HHMMSS
                     display_datetime = datetime.strptime(datetime_val, '%Y%m%d_%H%M%S').strftime('%Y-%m-%d %H:%M:%S')
-                    display_name = f"{scan_name_prefix}_{rbw_val}_{hold_val}_Offset{offset_str} ({display_datetime})"
-                    historical_dfs_for_overlays.append((df[['Frequency_MHz', 'Power_dBm']].copy(), display_name))
-
-                    # For averaging, use the original (un-shifted) frequencies
-                    all_historical_dfs_normalized.append(df[['Original_Frequency_MHz', 'Power_dBm']].copy())
-
                 else:
-                    print(f"Skipping {file_name}: Missing expected columns or incorrect format. Expected 'Frequency (MHz)' and 'Level (dBm)'.")
+                    display_datetime = datetime_val # Fallback if format is unexpected
+
+                display_name = f"{scan_name_prefix}_{rbw_val}_{hold_val}_Offset{int(current_offset_hz)} ({display_datetime})"
+                historical_dfs_for_overlays.append((df[['Frequency_MHz', 'Power_dBm']].copy(), display_name))
+
+                # For averaging, use the original (un-shifted) frequencies
+                all_historical_dfs_normalized.append(df[['Original_Frequency_MHz', 'Power_dBm']].copy())
+
             except Exception as e:
                 print(f"Error reading historical CSV {csv_path}: {e}")
 
@@ -164,7 +178,7 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
 
     # Concatenate all historical DataFrames (with normalized frequencies) vertically for aggregation
     combined_all_scans_df_normalized = pd.concat(all_historical_dfs_normalized)
-    
+
     # Now group by Original_Frequency_MHz and apply the aggregations on 'Power_dBm'
     aggregated_df = combined_all_scans_df_normalized.groupby('Original_Frequency_MHz')['Power_dBm'].agg(
         Average_dBm='mean',
@@ -182,11 +196,11 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     # Rename the frequency column back to Frequency_MHz for plotting consistency
     aggregated_df.rename(columns={'Original_Frequency_MHz': 'Frequency_MHz'}, inplace=True)
 
-    # Generate filename based on current time (HMS) and scan name
-    timestamp_hms = datetime.now().strftime("%H%M") # HMS format
+    # Generate filename based on current time (HHMM - no seconds) and scan name
+    timestamp_hm = datetime.now().strftime("%H%M") # HHMM format (no seconds)
     # Plot title should only be date and time
-    plot_title_only_datetime = datetime.now().strftime("%Y-%m-%d %H:%M") 
-    base_filename = f"{scan_name_var.get()}_HISTORICAL_{timestamp_hms}" # Distinct filename for historical average
+    plot_title_only_datetime = datetime.now().strftime("%Y-%m-%d %H:%M")
+    base_filename = f"{scan_name_var.get()}_HISTORICAL_{timestamp_hm}" # Distinct filename for historical average
 
     csv_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged.csv")
     html_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged.html")
@@ -197,7 +211,8 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     # Save to CSV
     try:
         # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
-        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f',
+        # Using to_csv with header=False as requested by user
+        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f', header=False,
                              columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
         print(f"✅ Historical averaged data saved to: {csv_filename}")
     except Exception as e:
@@ -227,3 +242,4 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     except Exception as e:
         messagebox.showerror("Plot Error", f"Could not generate or save historical averaged plot: {e}")
         print(f"❌ Failed to generate or save historical averaged plot: {e}")
+
