@@ -23,6 +23,10 @@ except ImportError:
 
 # initialize_instrument has been moved to instrument_control.py
 
+# Define the ASCII art printing function
+
+
+
 # FIX: Removed csv_writer from the function signature
 def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rbw_config_val, vbw_config_val, max_hold_time, current_freq_offset, last_scanned_band_index=0):
     """
@@ -244,6 +248,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             except Exception as e:
                 print(f"🚨 An unexpected error occurred during trace processing: {e}")
 
+            # Call the ASCII art function after each segment scan
+         
             current_segment_start_freq_hz = segment_stop_freq_hz # Move to the start of the next segment
 
     print("\n--- 🎉 Band Scan Complete! ---")

@@ -155,6 +155,9 @@ class App(tk.Tk):
         self.config = configparser.ConfigParser()
         self._load_config() # This now only loads/sets defaults in self.config, no saving yet
 
+        
+        
+        
         # Set window geometry from config, or fallback to default
         initial_geometry = self.config.get('LAST_USED_SETTINGS', 'LAST_WINDOW_GEOMETRY')
         if not initial_geometry:
@@ -201,9 +204,13 @@ class App(tk.Tk):
         sys.stdout = TextRedirector(self.console_output, "stdout")
         sys.stderr = TextRedirector(self.console_output, "stderr")
 
+        print_art()
+
         print("--- RF Spectrum Scanner GUI Initialized ---")
         self.create_widgets()
         self.after(0, self.populate_resources)
+
+        
 
         # Bind the closing protocol to save config
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -1185,3 +1192,36 @@ class App(tk.Tk):
         self.console_output.see(tk.END)
         self.console_output.config(state=tk.DISABLED)
         self.console_output.update_idletasks()
+
+
+def print_art():
+
+    print("                                                                                               ")
+    print("                                               $              $$$$$                     $$ $$$$")
+    print("                                               $$$            $$   $$$$$$               $$  $$ ")
+    print("                                               $$$$           $$         $$$$$          $$ $$  ")
+    print("                                  $$           $$ $$          $$             $$$$$      $$$$   ")
+    print("                       $$$$$$$$$$$$            $$  $$$        $                  $$$    $$$$   ")
+    print("             $$$$$$$$$        $$$              $$   $$$      $$                    $$   $$$    ")
+    print("   $$$$$$$$$               $$$                 $$     $$     $$                $$$$     $$     ")
+    print("                         $$$                   $$$$$$$$$$$   $$          $$$$$$         $$     ")
+    print("                       $$$                     $$       $$$  $  $$$$$$$$                $      ")
+    print("                     $$$                       $$         $$$$$                                ")
+    print("                   $$$                         $$           $$                        $ $$     ")
+    print("                 $$$                $$$$$$$                 $$                        $$$      ")
+    print("              $$$$            $$$$$$                        $$                  $$$$$$$$$$     ")
+    print("            $$$        $$$$$$$                                   $$$$$$$$$$$$$$                ")
+    print("          $$$   $$$$$$$                             $$$$$$$$$$$                                ")
+    print("        $$$$$$$$                  $$$$$$$$             $$$$                                    ")
+    print("      $$$              $$$$$$$$$$  $$$$              $$$$$$$$                                  ")
+    print("           $$$$$$$$$$$          $$$         $$$$$$$$                                           ")
+    print(" $$$$$$$$$$                  $$$    $$$$$$$$                                                   ")
+    print("                         $$$$$$$$$$                                                            ")
+    print("                      $$$$$                        ")
+    print("    ")
+    print("    ")
+    print("    ")
+    print("Software created for  https://zimbelaudio.com/ike-zimbel/    ")
+    print("A Colaboration betweeen Ike Zimbel and Anthony P. Kuzub")
+    print("    ")
+    print("    ")
