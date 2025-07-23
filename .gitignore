@@ -1,6 +1,0 @@
-*.csv
-utils/__pycache__/frequency_bands.cpython-313.pyc
-utils/__pycache__/instrument_control.cpython-313.pyc
-utils/__pycache__/plotting_utils.cpython-313.pyc
-utils/__pycache__/scan_instrument.cpython-313.pyc
-utils/__pycache__/user_interface.cpython-313.pyc
