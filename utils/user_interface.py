@@ -38,7 +38,7 @@ except ImportError:
 # Changed to absolute imports, relying on main_app.py adding project root to sys.path
 from utils.scan_instrument import scan_bands
 from utils.plotting_utils import plot_single_scan_data, _open_plot_in_browser
-from utils.averaging_utils import generate_current_cycle_average_csv_and_plot, generate_historical_average_plot
+from utils.averaging_utils import generate_historical_average_plot
 from utils.csv_utils import write_scan_data_to_csv
 from utils.instrument_control import (
     set_debug_mode,

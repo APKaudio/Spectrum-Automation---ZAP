@@ -248,20 +248,21 @@ def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True,
 
 def plot_multi_trace_data(
     aggregated_df,
-    plot_title_only_datetime,
+    plot_title_full, # Changed to plot_title_full to use the complete title
     include_tv_markers_var,
     include_gov_markers_var,
     historical_dfs_with_names=None,
     output_html_path=None
 ):
     """
-    Plots aggregated (averaged, median, range) and optional historical scan data
+    Plots aggregated (averaged, median, range, std dev, variance, PSD) and optional historical scan data
     on a single Plotly graph.
 
     Args:
-        aggregated_df (pd.DataFrame): DataFrame with 'Frequency_MHz', 'Average_Power_dBm',
-                                      'Median_Power_dBm', 'Min_Power_dBm', 'Max_Power_dBm' columns.
-        plot_title_only_datetime (str): Suffix for the plot title.
+        aggregated_df (pd.DataFrame): DataFrame with 'Frequency_MHz', 'Average_dBm',
+                                      'Median_dBm', 'Range_dBm', 'Std_Dev_dBm', 'Variance_dBm',
+                                      and 'Average_PSD_dBm_Hz' columns.
+        plot_title_full (str): The complete title for the plot.
         include_tv_markers (bool): Whether to include TV band markers.
         include_gov_markers (bool): Whether to include Government band markers.
         historical_dfs_with_names (list of dict): List of dictionaries, each with 'name' (str)
@@ -277,7 +278,6 @@ def plot_multi_trace_data(
         print("No data to plot for multi-trace or historical average.")
         return None, None
 
-    plot_title = f"Aggregated Spectrum Scan - {plot_title_only_datetime}"
     fig = go.Figure()
 
     # Add historical overlays first, with lighter color and lower opacity
@@ -288,124 +288,103 @@ def plot_multi_trace_data(
             
             # Extract only the date and time part from the filename
             # Example: MyScan_RBW100K_HOLD0_Offset0_20250723_104243
-            match = re.search(r'(\d{8}_\d{6})$', full_name)
+            match = re.search(r'(\d{8}_\d{4}(?:\d{2})?)$', full_name) # Updated regex to match HHMM or HHMMSS
             display_name = match.group(1) if match else full_name # Fallback to full name if regex fails
             
             if not hist_df.empty:
                 # Use a very light grey or transparent color for historical overlays
-                line_color = 'rgba(244, 144, 44, .8)' 
+                line_color = 'rgba(244, 144, 44, .2)' # More transparent orange
                 
                 fig.add_trace(go.Scatter(
                     x=hist_df['Frequency_MHz'],
                     y=hist_df['Power_dBm'],
                     mode='lines',
-                    name=f'{display_name}', # Removed "Historical:" prefix
-                    line=dict(color=line_color, width=0.5, dash='solid'), # Changed to dashed line, width 0.5
+                    name=f'Scan: {display_name}', # Added "Scan:" prefix for clarity
+                    line=dict(color=line_color, width=1, dash='solid'), # Changed to dotted line for overlays
                     hoverinfo='x+y+name', # Show frequency, power, and name on hover
                     showlegend=True # Show in legend
                 ))
 
-    # Add aggregated traces (Average, Median, Range)
+    # Add aggregated traces (Average, Median, Range, Std Dev, Variance, PSD)
     if not aggregated_df.empty:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency_MHz'],
-            y=aggregated_df['Average_Power_dBm'],
+            y=aggregated_df['Average_dBm'],
             mode='lines',
-            name='Average Power',
-            line=dict(color='cyan', width=2, dash='solid') # Changed to solid line
+            name='Average Power (dBm)',
+            line=dict(color='cyan', width=2, dash='solid')
         ))
 
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency_MHz'],
-            y=aggregated_df['Median_Power_dBm'],
+            y=aggregated_df['Median_dBm'],
             mode='lines',
-            name='Median Power',
-            line=dict(color='yellow', width=1.5, dash='solid') # Changed to solid line
+            name='Median Power (dBm)',
+            line=dict(color='yellow', width=1.5, dash='solid')
         ))
 
-        # Add Range as a filled area (min to max)
-        if 'Min_Power_dBm' in aggregated_df.columns and 'Max_Power_dBm' in aggregated_df.columns:
-            fig.add_trace(go.Scatter(
-                x=aggregated_df['Frequency_MHz'],
-                y=aggregated_df['Max_Power_dBm'],
-                mode='lines',
-                name='Max Power',
-                line=dict(color='red', width=0.8, dash='solid'), # Changed to solid line
-                fill=None # No fill for the upper boundary initially
-            ))
-            fig.add_trace(go.Scatter(
-                x=aggregated_df['Frequency_MHz'],
-                y=aggregated_df['Min_Power_dBm'],
-                mode='lines',
-                name='Min Power',
-                line=dict(color='green', width=0.8, dash='solid'), # Changed to solid line
-                fill='tonexty', # Fills the area between this trace and the 'Max Power' trace
-                fillcolor='rgba(255,0,0,0.02)' # Even lighter red fill for the range
-            ))
-            # NEW: Add a trace for the Range_dBm itself
-            if 'Range_dBm' in aggregated_df.columns:
-                fig.add_trace(go.Scatter(
-                    x=aggregated_df['Frequency_MHz'],
-                    y=aggregated_df['Range_dBm'], # Plotting the calculated range directly
-                    mode='lines',
-                    name='Range (Max-Min)',
-                    line=dict(color='magenta', width=1, dash='solid'), # Changed to solid magenta line
-                    hoverinfo='x+y+name',
-                    showlegend=True
-                ))
-        elif 'Range_dBm' in aggregated_df.columns:
-            # Fallback if only Range_dBm is available, assume it's centered around Average
-            # This is a less accurate representation of true min/max.
-            fig.add_trace(go.Scatter(
-                x=aggregated_df['Frequency_MHz'],
-                y=aggregated_df['Average_Power_dBm'] + (aggregated_df['Range_dBm'] / 2),
-                mode='lines',
-                name='Upper Range',
-                line=dict(color='red', width=0.8, dash='solid'),
-                fill=None
-            ))
-            fig.add_trace(go.Scatter(
-                x=aggregated_df['Frequency_MHz'],
-                y=aggregated_df['Average_Power_dBm'] - (aggregated_df['Range_dBm'] / 2),
-                mode='lines',
-                name='Lower Range',
-                line=dict(color='green', width=0.8, dash='solid'),
-                fill='tonexty',
-                fillcolor='rgba(255,0,0,0.02)'
-            ))
-            # NEW: Add a trace for the Range_dBm itself (for this fallback case)
-            fig.add_trace(go.Scatter(
-                x=aggregated_df['Frequency_MHz'],
-                y=aggregated_df['Range_dBm'], # Plotting the calculated range directly
-                mode='lines',
-                name='Range (Max-Min)',
-                line=dict(color='magenta', width=1, dash='solid'), # Changed to solid magenta line
-                hoverinfo='x+y+name',
-                showlegend=True
-            ))
-        else:
-            print("Warning: No 'Min_Power_dBm', 'Max_Power_dBm', or 'Range_dBm' found for plotting range.")
-
-
-    # Determine initial Y-axis range based on all data (including historical)
-    all_power_data_for_range_calc = []
-    if not aggregated_df.empty:
-        all_power_data_for_range_calc.extend(aggregated_df['Average_Power_dBm'].tolist())
-        if 'Min_Power_dBm' in aggregated_df.columns and 'Max_Power_dBm' in aggregated_df.columns:
-            all_power_data_for_range_calc.extend(aggregated_df['Min_Power_dBm'].tolist())
-            all_power_data_for_range_calc.extend(aggregated_df['Max_Power_dBm'].tolist())
-        
-        # Always include the Range_dBm values if available, as they are now plotted
+        # Add Range (Max-Min)
         if 'Range_dBm' in aggregated_df.columns:
-            all_power_data_for_range_calc.extend(aggregated_df['Range_dBm'].tolist())
+            fig.add_trace(go.Scatter(
+                x=aggregated_df['Frequency_MHz'],
+                y=aggregated_df['Range_dBm'],
+                mode='lines',
+                name='Range (Max-Min) (dB)',
+                line=dict(color='magenta', width=1.5, dash='solid')
+            ))
+        
+        # Add Standard Deviation
+        if 'Std_Dev_dBm' in aggregated_df.columns:
+            fig.add_trace(go.Scatter(
+                x=aggregated_df['Frequency_MHz'],
+                y=aggregated_df['Std_Dev_dBm'],
+                mode='lines',
+                name='Standard Deviation (dB)',
+                line=dict(color='lime', width=1.5, dash='solid') # Greenish color
+            ))
+
+        # Add Variance
+        if 'Variance_dBm' in aggregated_df.columns:
+            fig.add_trace(go.Scatter(
+                x=aggregated_df['Frequency_MHz'],
+                y=aggregated_df['Variance_dBm'],
+                mode='lines',
+                name='Variance (dB^2)',
+                line=dict(color='orange', width=1.5, dash='solid') # Orange color
+            ))
+
+        # Add Power Spectral Density (PSD)
+        if 'Average_PSD_dBm_Hz' in aggregated_df.columns:
+            fig.add_trace(go.Scatter(
+                x=aggregated_df['Frequency_MHz'],
+                y=aggregated_df['Average_PSD_dBm_Hz'],
+                mode='lines',
+                name='Average PSD (dBm/Hz)',
+                line=dict(color='white', width=1.5, dash='solid') # White color for PSD
+            ))
+
+
+    # Determine initial Y-axis range based on all data (including historical and new metrics)
+    all_y_data_for_range_calc = []
+    if not aggregated_df.empty:
+        all_y_data_for_range_calc.extend(aggregated_df['Average_dBm'].tolist())
+        all_y_data_for_range_calc.extend(aggregated_df['Median_dBm'].tolist())
+        if 'Range_dBm' in aggregated_df.columns:
+            all_y_data_for_range_calc.extend(aggregated_df['Range_dBm'].tolist())
+        if 'Std_Dev_dBm' in aggregated_df.columns:
+            all_y_data_for_range_calc.extend(aggregated_df['Std_Dev_dBm'].tolist())
+        if 'Variance_dBm' in aggregated_df.columns:
+            all_y_data_for_range_calc.extend(aggregated_df['Variance_dBm'].tolist())
+        if 'Average_PSD_dBm_Hz' in aggregated_df.columns:
+            all_y_data_for_range_calc.extend(aggregated_df['Average_PSD_dBm_Hz'].tolist())
     
     if historical_dfs_with_names:
         for hist_item in historical_dfs_with_names:
             if not hist_item['df'].empty:
-                all_power_data_for_range_calc.extend(hist_item['df']['Power_dBm'].tolist())
+                all_y_data_for_range_calc.extend(hist_item['df']['Power_dBm'].tolist())
 
-    y_range_min = min(all_power_data_for_range_calc) - 5 if all_power_data_for_range_calc else -100
-    y_range_max = max(all_power_data_for_range_calc) + 5 if all_power_data_for_range_calc else 0
+    y_range_min = min(all_y_data_for_range_calc) - 5 if all_y_data_for_range_calc else -100
+    y_range_max = max(all_y_data_for_range_calc) + 5 if all_y_data_for_range_calc else 0
 
     if y_range_max <= y_range_min: # Handle cases with very flat or single-point data
         y_range_min = -100
@@ -523,7 +502,7 @@ def plot_multi_trace_data(
     fig.update_layout(
         template="plotly_dark",
         title={
-            'text': plot_title,
+            'text': plot_title_full, # Use the full title passed as argument
             'y':1.0, # Set Y position to the top of the plot area
             'x':0.5,
             'xanchor': 'center',
@@ -539,7 +518,7 @@ def plot_multi_trace_data(
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
             rangeslider=dict(
-                visible=False, # Removed range slider from average plot
+                visible=True,
                 thickness=0.05,
             ),
             type="linear",
@@ -549,9 +528,7 @@ def plot_multi_trace_data(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            # Explicitly set autorange to True for Y-axis interactivity
             autorange=True,
-            # Set initial range based on calculated min/max from aggregated data (with padding)
             range=[y_range_min, y_range_max]
         ),
         plot_bgcolor='black',
