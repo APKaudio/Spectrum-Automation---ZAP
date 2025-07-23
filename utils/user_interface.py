@@ -17,7 +17,8 @@ import configparser
 
 # Import constants from frequency_bands.py
 try:
-    from utils.frequency_bands import ( # Updated import path
+    # Changed to absolute import, relying on main_app.py adding project root to sys.path
+    from utils.frequency_bands import (
         MHZ_TO_HZ,
         SCAN_BAND_RANGES,
         TV_PLOT_BAND_MARKERS,
@@ -34,11 +35,12 @@ except ImportError:
     GOV_PLOT_BAND_MARKERS = []
 
 # Import scanning, plotting, CSV, and instrument control utilities
-from utils.scan_instrument import scan_bands # Updated import path
-from utils.plotting_utils import plot_single_scan_data, _open_plot_in_browser # Updated import path
-from utils.averaging_utils import generate_current_cycle_average_csv_and_plot, generate_historical_average_plot # Updated import path
-from utils.csv_utils import write_scan_data_to_csv # Updated import path
-from utils.instrument_control import ( # Updated import path
+# Changed to absolute imports, relying on main_app.py adding project root to sys.path
+from utils.scan_instrument import scan_bands
+from utils.plotting_utils import plot_single_scan_data, _open_plot_in_browser
+from utils.averaging_utils import generate_current_cycle_average_csv_and_plot, generate_historical_average_plot
+from utils.csv_utils import write_scan_data_to_csv
+from utils.instrument_control import (
     set_debug_mode,
     list_visa_resources,
     connect_to_instrument,
@@ -91,16 +93,6 @@ class App(tk.Tk):
         self.configure(bg="black") 
         self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
         
-        # Load configuration at startup
-        self.config = configparser.ConfigParser()
-        self._load_config() # This now only loads/sets defaults in self.config, no saving yet
-
-        # Set window geometry from config, or fallback to default
-        initial_geometry = self.config.get('LAST_USED_SETTINGS', 'LAST_WINDOW_GEOMETRY')
-        if not initial_geometry:
-            initial_geometry = self.config.get('DEFAULT_SETTINGS', 'DEFAULT_WINDOW_GEOMETRY')
-        self.geometry(initial_geometry)
-
         self.rm = pyvisa.ResourceManager()
         self.instrument_list = []
         self.inst = None
@@ -119,39 +111,68 @@ class App(tk.Tk):
         self.session_csv_file_path = None
         self.session_csv_headers_written = False
 
-        # Initialize Tkinter variables using values from config
-        self.desired_ref_level_var = tk.StringVar(self, value=str(self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_REFERENCE_LEVEL_DBM')))
-        self.desired_preamp_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_PREAMP_ON'))
-        self.high_sensitivity_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_HIGH_SENSITIVITY'))
-        self.desired_max_hold_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_MAXHOLD_ENABLED'))
-        self.desired_max_hold_time_var = tk.DoubleVar(self, value=self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_MAXHOLD_TIME_SECONDS'))
-        self.desired_rbw_var = tk.StringVar(self, value=str(self.config.getint('DEFAULT_SETTINGS', 'DEFAULT_RBW_STEP_SIZE_HZ')))
-        self.desired_vbw_display_var = tk.StringVar(self, value=str(int(self.config.getint('DEFAULT_SETTINGS', 'DEFAULT_RBW_STEP_SIZE_HZ') / 3))) 
-        self.desired_cycle_wait_time_var = tk.DoubleVar(self, value=self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_CYCLE_WAIT_TIME_SECONDS'))
-        self.output_folder_var = tk.StringVar(self, value=self.config.get('LAST_USED_SETTINGS', 'LAST_SCAN_DIRECTORY'))
-        self.scan_name_var = tk.StringVar(self, value=self.config.get('LAST_USED_SETTINGS', 'LAST_SCAN_NAME'))
-        
-        # Initialize resource_var. populate_resources will handle setting it to the last used device or first found.
-        self.resource_var = tk.StringVar(self, value="") # Initialize as empty string
+        # Initialize Tkinter variables
+        self.desired_ref_level_var = tk.StringVar(self)
+        self.desired_preamp_var = tk.BooleanVar(self)
+        self.high_sensitivity_var = tk.BooleanVar(self)
+        self.desired_max_hold_var = tk.BooleanVar(self)
+        self.desired_max_hold_time_var = tk.DoubleVar(self)
+        self.desired_rbw_var = tk.StringVar(self) # This is for the RBW display, not scan_rbw_segmentation
+        self.desired_vbw_display_var = tk.StringVar(self)
+        self.desired_cycle_wait_time_var = tk.DoubleVar(self)
+        self.output_folder_var = tk.StringVar(self)
+        self.scan_name_var = tk.StringVar(self)
+        self.resource_var = tk.StringVar(self)
+        self.include_gov_markers_var = tk.BooleanVar(self)
+        self.include_tv_markers_var = tk.BooleanVar(self)
+        self.open_html_after_complete_var = tk.BooleanVar(self)
+        self.desired_scan_rbw_segmentation_var = tk.DoubleVar(self)
+        self.shift_freq_var = tk.DoubleVar(self)
+        self.debug_mode_var = tk.BooleanVar(self)
 
-        self.include_gov_markers_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_INCLUDE_GOV_MARKERS'))
-        self.include_tv_markers_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_INCLUDE_TV_MARKERS'))
-        self.open_html_after_complete_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_OPEN_HTML_AFTER_COMPLETE'))
+        # Map Tkinter variables to their corresponding config keys for last used settings
+        # (tk_var_name_string, last_used_config_key, default_config_key, type_converter)
+        self.setting_var_map = {
+            'desired_ref_level_var': ('last_reference_level_dbm', 'default_reference_level_dbm', float),
+            'desired_preamp_var': ('last_preamp_on', 'default_preamp_on', bool),
+            'high_sensitivity_var': ('last_high_sensitivity', 'default_high_sensitivity', bool),
+            'desired_max_hold_var': ('last_maxhold_enabled', 'default_maxhold_enabled', bool),
+            'desired_max_hold_time_var': ('last_maxhold_time_seconds', 'default_maxhold_time_seconds', float),
+            'desired_rbw_var': ('last_rbw_step_size_hz', 'default_rbw_step_size_hz', int), # This is for the RBW display
+            'desired_cycle_wait_time_var': ('last_cycle_wait_time_seconds', 'default_cycle_wait_time_seconds', float),
+            'output_folder_var': ('last_scan_directory', 'default_scan_directory', str),
+            'scan_name_var': ('last_scan_name', 'default_scan_name', str),
+            'resource_var': ('last_gpib_device', '', str), # No direct default for this, populated by populate_resources
+            'include_gov_markers_var': ('last_include_gov_markers', 'default_include_gov_markers', bool),
+            'include_tv_markers_var': ('last_include_tv_markers', 'default_include_tv_markers', bool),
+            'open_html_after_complete_var': ('last_open_html_after_complete', 'default_open_html_after_complete', bool),
+            'desired_scan_rbw_segmentation_var': ('last_scan_rbw_hz', 'default_scan_rbw_hz', float),
+            'shift_freq_var': ('last_freq_shift_hz', 'default_freq_shift_hz', float),
+            'debug_mode_var': ('last_debug_mode', 'default_debug_mode', bool),
+        }
 
-        self.desired_scan_rbw_segmentation_var = tk.DoubleVar(self, value=self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_SCAN_RBW_HZ'))
-        self.shift_freq_var = tk.DoubleVar(self, value=self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_FREQ_SHIFT_HZ'))
+        # Load configuration at startup
+        self.config = configparser.ConfigParser()
+        self._load_config() # This now only loads/sets defaults in self.config, no saving yet
+
+        # Set window geometry from config, or fallback to default
+        initial_geometry = self.config.get('LAST_USED_SETTINGS', 'LAST_WINDOW_GEOMETRY')
+        if not initial_geometry:
+            initial_geometry = self.config.get('DEFAULT_SETTINGS', 'DEFAULT_WINDOW_GEOMETRY')
+        self.geometry(initial_geometry)
 
         self.rbw_values = [5000, 10000, 25000, 50000, 100000]
         self.rbw_val_to_idx = {val: i for i, val in enumerate(self.rbw_values)}
-        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(self.config.getint('DEFAULT_SETTINGS', 'DEFAULT_SCAN_RBW_HZ'), 0))
+        # Initialize slider index based on the loaded desired_scan_rbw_segmentation_var
+        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(int(self.desired_scan_rbw_segmentation_var.get()), 0))
         self.rbw_slider_index_var.trace_add("write", self._update_scan_rbw_from_slider_index)
 
         self.freq_shift_values = [0, 500, 1000, 5000, 10000]
         self.freq_shift_val_to_idx = {val: i for i, val in enumerate(self.freq_shift_values)}
-        self.freq_shift_slider_index_var = tk.IntVar(self, value=self.freq_shift_val_to_idx.get(self.config.getint('DEFAULT_SETTINGS', 'DEFAULT_FREQ_SHIFT_HZ'), 0))
+        # Initialize slider index based on the loaded shift_freq_var
+        self.freq_shift_slider_index_var = tk.IntVar(self, value=self.freq_shift_val_to_idx.get(int(self.shift_freq_var.get()), 0))
         self.freq_shift_slider_index_var.trace_add("write", self._update_freq_shift_from_slider_index)
 
-        self.debug_mode_var = tk.BooleanVar(self, value=self.config.getboolean('DEFAULT_SETTINGS', 'DEFAULT_DEBUG_MODE'))
         self.debug_mode_var.trace_add("write", self._update_debug_mode_global)
 
         self.main_frame = tk.Frame(self, bg="black")
@@ -210,7 +231,9 @@ class App(tk.Tk):
             'DEFAULT_HIGH_SENSITIVITY': 'True',
             'DEFAULT_PREAMP_ON': 'True',
             'DEFAULT_DEBUG_MODE': 'False',
-            'DEFAULT_WINDOW_GEOMETRY': '1400x780+100+100' # Default geometry
+            'DEFAULT_WINDOW_GEOMETRY': '1400x780+100+100',
+            'DEFAULT_SCAN_DIRECTORY': 'scan_data', # Added default
+            'DEFAULT_SCAN_NAME': 'MyScan' # Added default
         }
         for key, default_val in default_settings_map.items():
             if key not in self.config['DEFAULT_SETTINGS']:
@@ -220,29 +243,68 @@ class App(tk.Tk):
         if 'LAST_USED_SETTINGS' not in self.config:
             self.config['LAST_USED_SETTINGS'] = {}
 
-        last_used_settings_map = {
-            'LAST_GPIB_DEVICE': '',
-            'LAST_SCAN_DIRECTORY': 'scan_data',
-            'LAST_SCAN_NAME': 'MyScan',
-            'LAST_WINDOW_GEOMETRY': '' # This will be updated by the app
-        }
-        for key, default_val in last_used_settings_map.items():
-            if key not in self.config['LAST_USED_SETTINGS']:
-                self.config['LAST_USED_SETTINGS'][key] = default_val
+        # Load values into Tkinter variables, prioritizing LAST_USED_SETTINGS
+        self._populate_vars_from_config()
 
-        # No call to _save_config() here anymore. It will be called on app close or scan start.
+
+    def _populate_vars_from_config(self):
+        """Populates Tkinter variables from config, prioritizing LAST_USED_SETTINGS, then DEFAULT_SETTINGS."""
+        for var_name, (last_key, default_key, type_converter) in self.setting_var_map.items():
+            tk_var = getattr(self, var_name)
+            value_to_set = None
+
+            # Try to load from LAST_USED_SETTINGS first
+            if self.config.has_option('LAST_USED_SETTINGS', last_key) and self.config.get('LAST_USED_SETTINGS', last_key):
+                try:
+                    if type_converter == bool:
+                        value_to_set = self.config.getboolean('LAST_USED_SETTINGS', last_key)
+                    elif type_converter == float:
+                        value_to_set = self.config.getfloat('LAST_USED_SETTINGS', last_key)
+                    elif type_converter == int:
+                        value_to_set = self.config.getint('LAST_USED_SETTINGS', last_key)
+                    else: # str
+                        value_to_set = self.config.get('LAST_USED_SETTINGS', last_key)
+                except ValueError as e:
+                    print(f"Warning: Could not parse '{last_key}' from LAST_USED_SETTINGS (value: '{self.config.get('LAST_USED_SETTINGS', last_key)}'). Error: {e}")
+                    value_to_set = None # Fallback to default
+            
+            # If not found in LAST_USED_SETTINGS or empty/invalid, try DEFAULT_SETTINGS
+            if value_to_set is None and default_key and self.config.has_option('DEFAULT_SETTINGS', default_key):
+                try:
+                    if type_converter == bool:
+                        value_to_set = self.config.getboolean('DEFAULT_SETTINGS', default_key)
+                    elif type_converter == float:
+                        value_to_set = self.config.getfloat('DEFAULT_SETTINGS', default_key)
+                    elif type_converter == int:
+                        value_to_set = self.config.getint('DEFAULT_SETTINGS', default_key)
+                    else: # str
+                        value_to_set = self.config.get('DEFAULT_SETTINGS', default_key)
+                except ValueError as e:
+                    print(f"Warning: Could not parse '{default_key}' from DEFAULT_SETTINGS (value: '{self.config.get('DEFAULT_SETTINGS', default_key)}'). Error: {e}")
+                    value_to_set = None # Set to None if default is also invalid
+
+            if value_to_set is not None:
+                tk_var.set(value_to_set)
+            else:
+                # Fallback for resource_var if no last_gpib_device and no default_gpib_device
+                if var_name == 'resource_var':
+                    tk_var.set("No Resources Found")
+                # For other variables, if no valid setting found, they will retain their default Tkinter variable value (e.g., 0 for int/float, False for bool, "" for string)
+
 
     def _save_config(self):
-        """Saves current settings to config.ini."""
-        # Ensure resource_var, output_folder_var, and scan_name_var are initialized before saving
-        if hasattr(self, 'resource_var'):
-            self.config['LAST_USED_SETTINGS']['LAST_GPIB_DEVICE'] = self.resource_var.get()
-        if hasattr(self, 'output_folder_var'):
-            self.config['LAST_USED_SETTINGS']['LAST_SCAN_DIRECTORY'] = self.output_folder_var.get()
-        if hasattr(self, 'scan_name_var'):
-            self.config['LAST_USED_SETTINGS']['LAST_SCAN_NAME'] = self.scan_name_var.get()
+        """Saves current settings to config.ini into LAST_USED_SETTINGS."""
+        # Ensure LAST_USED_SETTINGS section exists
+        if 'LAST_USED_SETTINGS' not in self.config:
+            self.config['LAST_USED_SETTINGS'] = {}
+
+        for var_name, (last_key, _, _) in self.setting_var_map.items():
+            if last_key: # Only save if there's a corresponding last_key
+                tk_var = getattr(self, var_name)
+                self.config['LAST_USED_SETTINGS'][last_key] = str(tk_var.get())
         
-        self.config['LAST_USED_SETTINGS']['LAST_WINDOW_GEOMETRY'] = self.winfo_geometry() # Save current geometry
+        # Save current window geometry
+        self.config['LAST_USED_SETTINGS']['last_window_geometry'] = self.winfo_geometry()
 
         with open(CONFIG_FILE, 'w') as configfile:
             self.config.write(configfile)
@@ -257,7 +319,8 @@ class App(tk.Tk):
         """Updates the global debug mode variable when the checkbox state changes."""
         set_debug_mode(self.debug_mode_var.get())
         # Also update the config setting immediately
-        self.config['DEFAULT_SETTINGS']['DEFAULT_DEBUG_MODE'] = str(self.debug_mode_var.get())
+        # This specific debug mode update is handled by the generic _save_config now.
+        # self.config['DEFAULT_SETTINGS']['DEFAULT_DEBUG_MODE'] = str(self.debug_mode_var.get())
         self._save_config()
 
 
@@ -266,7 +329,7 @@ class App(tk.Tk):
         try:
             idx = self.rbw_slider_index_var.get()
             if 0 <= idx < len(self.rbw_values):
-                self.desired_scan_rbw_segmentation_var.set(self.rbw_values[idx])
+                self.desired_scan_rbw_segmentation_var.set(float(self.rbw_values[idx]))
         except Exception as e:
             print(f"Error updating scan RBW from slider index: {e}")
 
@@ -275,7 +338,7 @@ class App(tk.Tk):
         try:
             idx = self.freq_shift_slider_index_var.get()
             if 0 <= idx < len(self.freq_shift_values):
-                self.shift_freq_var.set(self.freq_shift_values[idx])
+                self.shift_freq_var.set(float(self.freq_shift_values[idx]))
         except Exception as e:
             print(f"Error updating frequency shift from slider index: {e}")
 
@@ -328,7 +391,11 @@ class App(tk.Tk):
         scan_settings_frame = tk.LabelFrame(self.main_frame, text="Scan Configuration (Push to Device)", padx=10, pady=10, bg="black", fg="white")
         scan_settings_frame.pack(pady=10, padx=10, fill=tk.X)
 
-        row_idx = 0
+        # New: Restore Default Settings Button
+        restore_button = tk.Button(scan_settings_frame, text="Restore Default Settings", command=self.restore_default_settings, bg="darkgrey", fg="white")
+        restore_button.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.EW)
+
+        row_idx = 1 # Start subsequent widgets from row 1
         tk.Label(scan_settings_frame, text="Reference Level (dBm):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
         entry_ref_level = tk.Entry(scan_settings_frame, textvariable=self.desired_ref_level_var, bg="grey", fg="white", insertbackground="white")
         entry_ref_level.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
@@ -421,7 +488,7 @@ class App(tk.Tk):
                                                orient=tk.HORIZONTAL, showvalue=1, resolution=0.5,
                                                bg="black", fg="white", troughcolor="grey", highlightbackground="black")
         self.cycle_hold_time_slider.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        self.cycle_hold_time_slider.set(self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_MAXHOLD_TIME_SECONDS'))
+        # self.cycle_hold_time_slider.set(self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_MAXHOLD_TIME_SECONDS')) # This is now handled by _populate_vars_from_config
 
         row_idx += 1
         tk.Label(scan_settings_frame, text="Cycle Wait Time (s):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
@@ -431,7 +498,7 @@ class App(tk.Tk):
                                                orient=tk.HORIZONTAL, showvalue=1, resolution=1,
                                                bg="black", fg="white", troughcolor="grey", highlightbackground="black")
         self.cycle_wait_time_slider.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        self.cycle_wait_time_slider.set(self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_CYCLE_WAIT_TIME_SECONDS'))
+        # self.cycle_wait_time_slider.set(self.config.getfloat('DEFAULT_SETTINGS', 'DEFAULT_CYCLE_WAIT_TIME_SECONDS')) # This is now handled by _populate_vars_from_config
         
         row_idx += 1
         tk.Label(scan_settings_frame, text="Scan Name:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
@@ -532,8 +599,9 @@ class App(tk.Tk):
 
         self.preset_tree.bind("<<TreeviewSelect>>", self._on_preset_select)
 
-        self.progress_label = tk.Label(self.main_frame, text="Ready.", bg="black", fg="white")
-        self.progress_label.pack(pady=5)
+        # Removed progress_label as it's being replaced by console output
+        # self.progress_label = tk.Label(self.main_frame, text="Ready.", bg="black", fg="white")
+        # self.progress_label.pack(pady=5)
 
         debug_frame = tk.Frame(self.main_frame, bg="black")
         debug_frame.pack(pady=10, padx=10, fill=tk.X)
@@ -546,9 +614,10 @@ class App(tk.Tk):
 
         self.update_vbw_display()
 
-    def update_progress_label(self, message):
-        """Updates the progress label on the GUI."""
-        self.progress_label.config(text=message)
+    # Removed update_progress_label method
+    # def update_progress_label(self, message):
+    #     """Updates the progress label on the GUI."""
+    #     self.progress_label.config(text=message)
 
     def update_vbw_display(self):
         """Updates the VBW display based on the current RBW setting."""
@@ -650,7 +719,7 @@ class App(tk.Tk):
         if control_disconnect_instrument(self.inst):
             self.inst = None
             self.instrument_model = None
-            self.update_progress_label("Disconnected.")
+            print("Disconnected.")
             self._reset_gui_on_disconnect_or_error()
             self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
         else:
@@ -733,6 +802,39 @@ class App(tk.Tk):
         else:
             messagebox.showerror("Load Preset Failed", f"Failed to load preset: {selected_preset_name}. Check console for details.")
 
+    def restore_default_settings(self):
+        """Restores all configurable settings to their default values from config.ini."""
+        print("Restoring default settings...")
+        for var_name, (_, default_key, type_converter) in self.setting_var_map.items():
+            if default_key and self.config.has_option('DEFAULT_SETTINGS', default_key):
+                tk_var = getattr(self, var_name)
+                try:
+                    if type_converter == bool:
+                        tk_var.set(self.config.getboolean('DEFAULT_SETTINGS', default_key))
+                    elif type_converter == float:
+                        tk_var.set(self.config.getfloat('DEFAULT_SETTINGS', default_key))
+                    elif type_converter == int:
+                        tk_var.set(self.config.getint('DEFAULT_SETTINGS', default_key))
+                    else: # str
+                        tk_var.set(self.config.get('DEFAULT_SETTINGS', default_key))
+                    print(f"  Restored {default_key} to {tk_var.get()}")
+                except ValueError as e:
+                    print(f"Error restoring default for {default_key}: {e}. Skipping.")
+
+        # Special handling for sliders that are tied to index variables, as their values are derived
+        self.rbw_slider_index_var.set(self.rbw_val_to_idx.get(int(self.desired_scan_rbw_segmentation_var.get()), 0))
+        self.freq_shift_slider_index_var.set(self.freq_shift_val_to_idx.get(int(self.shift_freq_var.get()), 0))
+        
+        # Update sliders that are directly bound to DoubleVars
+        self.cycle_hold_time_slider.set(self.desired_max_hold_time_var.get())
+        self.cycle_wait_time_slider.set(self.desired_cycle_wait_time_var.get())
+
+        self.update_vbw_display() # Update VBW display after RBW change
+        self.reset_setting_colors() # Reset colors if any were marked
+        self._save_config() # Save the restored defaults as the new last used settings
+        messagebox.showinfo("Settings Restored", "Default settings have been restored and saved as last used.")
+
+
     def start_scan_thread(self):
         """Starts the scanning process in a separate thread."""
         if not self.inst:
@@ -743,7 +845,7 @@ class App(tk.Tk):
             messagebox.showwarning("Scan in Progress", "A scan is already running.")
             return
 
-        # Save configuration when scan starts
+        # Save configuration when scan starts - this will save current GUI settings as LAST_USED
         self._save_config()
 
         self.start_scan_button.config(state=tk.DISABLED)
@@ -829,11 +931,11 @@ class App(tk.Tk):
             self.paused = not self.paused
             if self.paused:
                 self.pause_resume_button.config(text="Resume Scan", bg="blue")
-                self.update_progress_label("Scan Paused.")
+                print("Scan Paused. Click Resume to continue.")
                 print("Scan paused.")
             else:
                 self.pause_resume_button.config(text="Pause Scan", bg="orange")
-                self.update_progress_label("Scan Resumed.")
+                print("Scan Resumed.")
                 print("Scan resumed.")
         else:
             messagebox.showwarning("Scan Not Active", "No scan is currently running to pause or resume.")
@@ -843,16 +945,16 @@ class App(tk.Tk):
         try:
             while self.scanning:
                 while self.paused:
-                    self.after(100, self.update_progress_label, "Scan Paused. Click Resume to continue.")
+                    print("Scan Paused. Click Resume to continue.")
                     time.sleep(0.5)
                     if not self.scanning:
                         print("\nScan process finished (interrupted).")
-                        self.after(0, self.update_progress_label, "Scan interrupted by user.")
+                        print("Scan interrupted by user.")
                         break
 
                 if not self.scanning:
                     print("\nScan process finished (interrupted).")
-                    self.after(0, self.update_progress_label, "Scan interrupted by user.")
+                    print("Scan interrupted by user.")
                     break
 
                 print(f"\n--- Starting Scan Cycle {self.scan_cycle_count + 1} ---")
@@ -864,7 +966,8 @@ class App(tk.Tk):
                     scan_name = "UnnamedScan"
                 
                 rbw_str = f"RBW{int(scan_rbw_segmentation/1000):04d}K"
-                hold_str = f"HOLD{int(max_hold_time):02d}"
+                max_hold_time_val = float(self.desired_max_hold_time_var.get()) if self.desired_max_hold_var.get() else 0
+                hold_str = f"HOLD{int(max_hold_time_val):02d}"
                 offset_str = f"Offset{int(self.current_freq_offset)}"
 
                 datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -888,7 +991,7 @@ class App(tk.Tk):
 
                     if not self.scanning:
                         print("\nScan process finished (interrupted after band scan).")
-                        self.after(0, self.update_progress_label, "Scan interrupted by user.")
+                        print("Scan interrupted by user.")
                         if scanned_data:
                             plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}_INTERRUPTED"
                             html_plot_path_for_single_scan_interrupted = os.path.join(self.output_folder_var.get(), f"{plot_suffix}.html")
@@ -918,42 +1021,42 @@ class App(tk.Tk):
 
                     if not self.scanning:
                         print("\nScan process finished (interrupted).")
-                        self.after(0, self.update_progress_label, "Scan interrupted by user.")
+                        print("Scan interrupted by user.")
                         break
                     
                     wait_time = float(self.desired_cycle_wait_time_var.get())
                     if wait_time > 0:
-                        self.after(0, self.update_progress_label, f"Waiting {wait_time} seconds for next cycle...")
+                        print(f"Waiting {wait_time} seconds for next cycle...")
                         print(f"Waiting {wait_time} seconds before next scan cycle...")
                         for _ in range(int(wait_time * 10)):
                             while self.paused:
-                                self.after(100, self.update_progress_label, "Scan Paused. Click Resume to continue.")
+                                print("Scan Paused. Click Resume to continue.")
                                 time.sleep(0.1)
                                 if not self.scanning:
                                     print("\nScan process finished (interrupted during pause in wait).")
-                                    self.after(0, self.update_progress_label, "Scan interrupted during pause in wait.")
+                                    print("Scan interrupted during pause in wait.")
                                     break
                             
                             if not self.scanning:
                                 print("\nScan process finished (interrupted during wait).")
-                                self.after(0, self.update_progress_label, "Scan interrupted during wait.")
+                                print("Scan interrupted during wait.")
                                 break
                             time.sleep(0.1)
 
                 except Exception as e:
                     self.after(0, messagebox.showerror, "Scan Cycle Error", f"An error occurred during scan cycle: {e}")
                     print(f"❌ Scan cycle encountered an error: {e}")
-                    self.after(0, self.update_progress_label, f"Scan cycle error: {e}")
+                    print(f"Scan cycle error: {e}")
                     self.scanning = False
                     break
 
             print("\nContinuous scan process terminated.")
-            self.after(0, self.update_progress_label, "Continuous scan terminated.")
+            print("Continuous scan terminated.")
             
         except Exception as e:
             self.after(0, messagebox.showerror, "Scan Thread Error", f"An unexpected error occurred in main scan thread: {e}")
             print(f"❌ Main scan thread encountered an error: {e}")
-            self.after(0, self.update_progress_label, f"Main scan thread error: {e}")
+            print(f"Main scan thread error: {e}")
         finally:
             self.scanning = False
             self.paused = False
@@ -966,11 +1069,9 @@ class App(tk.Tk):
             if self.instrument_list:
                 # Set resource_var to the last used device from config, if found.
                 # If last_device is blank or not in the current list, it defaults to the first available.
-                last_device = self.config.get('LAST_USED_SETTINGS', 'LAST_GPIB_DEVICE')
-                if last_device and last_device in self.instrument_list:
-                    self.resource_var.set(last_device)
-                else:
-                    self.resource_var.set(self.instrument_list[0]) if self.instrument_list else "No Resources Found" # Default to first found or "No Resources Found"
+                last_device = self.resource_var.get() # Get value already loaded by _populate_vars_from_config
+                if not last_device or last_device not in self.instrument_list:
+                    self.resource_var.set(self.instrument_list[0]) if self.instrument_list else "No Resources Found"
                 
                 menu = self.resource_dropdown["menu"]
                 menu.delete(0, "end")

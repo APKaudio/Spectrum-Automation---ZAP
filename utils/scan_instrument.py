@@ -13,7 +13,7 @@ from utils.instrument_control import query_safe, write_safe
 
 # Import constants from frequency_bands.py
 try:
-    from frequency_bands import MHZ_TO_HZ
+    from utils.frequency_bands import MHZ_TO_HZ
 except ImportError:
     print("Error: frequency_bands.py not found. Please ensure it's in the same directory.")
     MHZ_TO_HZ = 1_000_000 # Define dummy value

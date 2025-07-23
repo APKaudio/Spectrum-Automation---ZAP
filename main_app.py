@@ -6,8 +6,15 @@ import os
 import tkinter as tk
 from tkinter import messagebox
 
+# Add the directory containing this script to sys.path
+# This allows Python to find the 'utils' package when running main_app.py directly.
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
 # Import the main application class and TextRedirector from user_interface
-from user_interface import App, TextRedirector
+# Now that the script_dir is in sys.path, 'utils' can be imported as a package.
+from utils.user_interface import App, TextRedirector
 
 def check_and_install_dependencies():
     """
@@ -45,7 +52,7 @@ def check_and_install_dependencies():
             except subprocess.CalledProcessError as e:
                 messagebox.showerror(
                     "Installation Error",
-                    f"Failed to install packages. Please install them manually using pip.\nError: {e}"
+                    f"Failed to install packages. Please install them manually using pip.\\nError: {e}"
                 )
                 print(f"❌ Failed to install packages: {e}")
                 return False
@@ -74,4 +81,3 @@ if __name__ == '__main__':
     else:
         print("Critical dependencies missing. Please install them to run the application.")
         messagebox.showerror("Dependency Error", "Critical dependencies missing. Please install them to run the application.")
-

@@ -19,9 +19,9 @@ SCAN_BAND_RANGES = [
     {"Band Name": "Cams 2G-2.4G", "Start MHz": 2000.000, "Stop MHz": 2400.000},
 ]
 
-
-# North American TV Channel Bands (full list, for plotting)
-frequency_TV_Channel_bands_full_list = [
+# North American TV Channel Bands (for plotting)
+# Directly defined to avoid redundant loops and intermediate lists.
+TV_PLOT_BAND_MARKERS = [
     {"Band Name": "TV Channel 2", "Start MHz": 54, "Stop MHz": 60},
     {"Band Name": "TV Channel 3", "Start MHz": 60, "Stop MHz": 66},
     {"Band Name": "TV Channel 4", "Start MHz": 66, "Stop MHz": 72},
@@ -74,8 +74,9 @@ frequency_TV_Channel_bands_full_list = [
     {"Band Name": "TV Channel 51", "Start MHz": 692, "Stop MHz": 698},
 ]
 
-# Government/Commercial Frequency Bands (full list, for plotting)
-gov_frequency_bands_full_list = [
+# Government/Commercial Frequency Bands (for plotting)
+# Directly defined to avoid redundant loops and intermediate lists.
+GOV_PLOT_BAND_MARKERS = [
     {"Band Name": "Amateur Radio 6m", "Start MHz": 50, "Stop MHz": 54},
     {"Band Name": "FM Broadcast", "Start MHz": 88, "Stop MHz": 108},
     {"Band Name": "Air Traffic Control", "Start MHz": 108, "Stop MHz": 137},
@@ -114,20 +115,3 @@ gov_frequency_bands_full_list = [
     {"Band Name": "Amateur Radio 13cm", "Start MHz": 2300, "Stop MHz": 2450},
     {"Band Name": "Amateur Radio 13cm (cont)", "Start MHz": 2400, "Stop MHz": 2450}, # Overlap with ISM
 ]
-
-# Prepare band markers for plotting (these are derived from the full lists)
-TV_PLOT_BAND_MARKERS = []
-for band in frequency_TV_Channel_bands_full_list:
-    TV_PLOT_BAND_MARKERS.append({
-        "Band Name": band["Band Name"],
-        "Start MHz": band["Start MHz"],
-        "Stop MHz": band["Stop MHz"]
-    })
-
-GOV_PLOT_BAND_MARKERS = []
-for band in gov_frequency_bands_full_list:
-    GOV_PLOT_BAND_MARKERS.append({
-        "Band Name": band["Band Name"],
-        "Start MHz": band["Start MHz"],
-        "Stop MHz": band["Stop MHz"]
-    })
