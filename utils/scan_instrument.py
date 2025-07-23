@@ -86,11 +86,12 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         last_scanned_band_index (int): Index of the band to start scanning from.
                                         Used for resuming scans after an error.
     Returns:
-        tuple: (list: all_scan_data_cleaned, int: last_successful_band_index)
+        tuple: (list: all_scan_data_cleaned, int: last_successful_band_index, str: csv_filename_current_cycle)
                all_scan_data_cleaned: A list of de-duplicated and filtered data points
                                       for the entire sweep (or up to interruption).
                last_successful_band_index: The index of the last band that was fully
                                            or partially scanned successfully.
+               csv_filename_current_cycle: The full path to the CSV file where the scan data was saved.
     """
     # This will accumulate all raw data points for the *current single scan sweep*
     # before final de-duplication for plotting.
@@ -109,8 +110,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     print(f"📺 Set VBW to {vbw_config_val} Hz for scan.")
 
     # Determine the CSV filename for this scan session (continuous raw data)
-    # This file is no longer continuously written to by scan_bands, but the path is still used by user_interface.py
-    # for the session-wide CSV if it decides to write to it.
+    # This file is now explicitly for the raw data of the current scan cycle.
     scan_name = app_instance_ref.scan_name_var.get()
     output_folder = app_instance_ref.output_folder_var.get()
     timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M") # YYYYMMDD_HHMM (no seconds)
@@ -141,14 +141,14 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
         # Determine actual_sweep_points based on instrument model
         if app_instance_ref.instrument_model == "N9340B":
-            actual_sweep_points = 461
-            print(f"📊 Using {actual_sweep_points} sweep points per trace for {band_name} (N9340B detected).")
+            expected_sweep_points = 461
+            print(f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} (N9340B detected).")
         elif app_instance_ref.instrument_model == "N9342CN": # Explicitly check for N9342CN
-            actual_sweep_points = 500
-            print(f"📊 Using {actual_sweep_points} sweep points per trace for {band_name} (N9342CN detected).")
+            expected_sweep_points = 500
+            print(f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} (N9342CN detected).")
         else: # Default for unknown models, or other N9342 variants if needed
-            actual_sweep_points = 500
-            print(f"📊 Using {actual_sweep_points} sweep points per trace for {band_name} (Unknown or default model detected).")
+            expected_sweep_points = 500
+            print(f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} (Unknown or default model detected).")
 
 
         # Calculate total number of segments for the current band based on desired RBW and sweep points
@@ -160,15 +160,15 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         else:
             # Recalculate optimal_segment_span_hz to perfectly divide the band into equal segments
             # This ensures all segments have the same span, even if it slightly deviates from scan_rbw_segmentation
-            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation * (actual_sweep_points - 1))))
+            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation * (expected_sweep_points - 1))))
             if total_segments_in_band == 0: # Ensure at least one segment for non-zero spans
                 total_segments_in_band = 1
             
             # Now calculate the actual segment span to ensure equal division
             optimal_segment_span_hz = full_band_span_hz / total_segments_in_band
-            # Ensure it's at least the minimum possible span for actual_sweep_points > 1
-            if actual_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation * (actual_sweep_points - 1)):
-                optimal_segment_span_hz = scan_rbw_segmentation * (actual_sweep_points - 1)
+            # Ensure it's at least the minimum possible span for expected_sweep_points > 1
+            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation * (expected_sweep_points - 1)):
+                optimal_segment_span_hz = scan_rbw_segmentation * (expected_sweep_points - 1)
 
 
         # Calculate the effective stop frequency for the scan based on equal segments
@@ -190,12 +190,11 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
                 if not app_instance_ref.scanning: # Allow stopping even when paused
                     print(f"Scan for {band_name} interrupted during pause in segment {segment_counter + 1}.")
                     # Process and return data collected so far for the entire sweep
-                    return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index
-
+                    return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
             if not app_instance_ref.scanning: # Check scan flag after pause loop
                 print(f"Scan for {band_name} interrupted during segment {segment_counter + 1}.")
                 # Process and return data collected so far for the entire sweep
-                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index
+                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
 
             segment_counter += 1
             # The segment stop frequency is now always based on the optimal span
@@ -220,15 +219,14 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
                         if not app_instance_ref.scanning: # Allow stopping even when paused
                             print(f"Scan for {band_name} interrupted during pause in max hold for segment {segment_counter + 1}.")
                             # Process and return data collected so far for the entire sweep
-                            return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index
-
+                            return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
                     if not app_instance_ref.scanning: # Check scan flag after pause loop
                         print(f"Scan for {band_name} interrupted during max hold for segment {segment_counter + 1}.")
                         # Process and return data collected so far for the entire sweep
-                        return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index
+                        return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
 
                     # Update display for countdown (only update every second for cleaner output)
-                    if _ % 10 == 0: # Every 10 iterations (1 second)
+                    if _ % 10 == 0: # Every 10 iterations (1, second)
                         sec_remaining = int(max_hold_time - (_ / 10))
                         display_text = f"⏳ {sec_remaining}"
                         app_instance_ref.after(0, app_instance_ref._update_console_line, display_text, False)
@@ -239,7 +237,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             if not app_instance_ref.scanning: # Check scan flag after max hold loop
                 print(f"Scan for {band_name} interrupted after max hold for segment {segment_counter + 1}.")
                 # Process and return data collected so far for the entire sweep
-                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index
+                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
 
             # Calculate progress for the emoji bar - Using more compatible ASCII characters
             progress_percentage = (segment_counter / total_segments_in_band)
@@ -255,7 +253,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
             # Read and process trace data
             trace_data = []
-            segment_scan_data = [] # To store data for the current segment to write to CSV
+            segment_raw_data = [] # To store raw data for the current segment before filtering
             try:
                 # Conditional trace data query based on instrument model
                 if app_instance_ref.instrument_model == "N9340B":
@@ -286,23 +284,31 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
                     current_segment_start_freq_hz = segment_stop_freq_hz
                     continue # Move to the next segment if no data
 
-                # Loop to append data to raw_scan_data_for_current_sweep (for later de-duplication)
+                # Loop to append data to raw_scan_data_for_current_sweep (for later de-duplication for plotting)
+                # and to segment_raw_data (for immediate CSV writing after filtering)
                 for j, amp_value in enumerate(trace_data):
                     current_freq_for_point_hz = current_segment_start_freq_hz + (j * freq_step_per_point_actual)
-
+                    segment_raw_data.append((current_freq_for_point_hz, amp_value))
                     raw_scan_data_for_current_sweep.append((current_freq_for_point_hz, amp_value))
-                    segment_scan_data.append((current_freq_for_point_hz, amp_value))
 
 
-                # *** Re-added: Write segment data to CSV immediately after processing ***
-                # This writes the raw data for the current segment to the CSV file
-                if segment_scan_data: # Only write if there's data
+                # *** Filter segment data before writing to CSV ***
+                # Ensure data written to CSV is strictly within the original band's bounds
+                filtered_segment_data_for_csv = []
+                for freq_hz, amp_value in segment_raw_data:
+                    # IMPORTANT CHANGE: Filter based on the original band's start and stop frequencies
+                    # This ensures no "leftover" data outside the selected band is written to CSV.
+                    if freq_hz >= band_start_freq_hz and freq_hz <= band_stop_freq_hz + 1e-9:
+                        filtered_segment_data_for_csv.append((freq_hz, amp_value))
+
+                # Write filtered segment data to CSV immediately after processing
+                if filtered_segment_data_for_csv: # Only write if there's data after filtering
                     header = ["Frequency_MHz", "Power_dBm"] # Define header for this CSV
                     # Convert frequencies to MHz for the CSV
-                    csv_data_to_write = [(f / MHZ_TO_HZ, amp) for f, amp in segment_scan_data]
+                    csv_data_to_write = [(f / MHZ_TO_HZ, amp) for f, amp in filtered_segment_data_for_csv]
                     # This will create/append to the CSV file defined at the start of scan_bands
                     write_scan_data_to_csv(csv_filename_current_cycle, header, csv_data_to_write, append_mode=True)
-                    print(f"✅ Appended {len(segment_scan_data)} data points to {os.path.basename(csv_filename_current_cycle)}")
+                    # Removed the print statement here as requested
 
 
                 # Update last_successful_band_index after successfully processing a band
@@ -335,5 +341,4 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         print(f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.")
 
 
-    return final_sweep_data_for_plotting, last_successful_band_index
-
+    return final_sweep_data_for_plotting, last_successful_band_index, csv_filename_current_cycle

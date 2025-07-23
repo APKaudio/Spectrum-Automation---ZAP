@@ -39,7 +39,7 @@ except ImportError:
 from utils.scan_instrument import scan_bands
 from utils.plotting_utils import plot_single_scan_data, _open_plot_in_browser
 from utils.averaging_utils import generate_current_cycle_average_csv_and_plot, generate_historical_average_plot
-from utils.csv_utils import write_scan_data_to_csv # This is for initial CSV creation, not continuous append
+from utils.csv_utils import write_scan_data_to_csv
 from utils.instrument_control import (
     set_debug_mode,
     list_visa_resources,
@@ -98,7 +98,7 @@ class App(tk.Tk):
         self.inst = None
         self.scanning = False
         self.paused = False
-        self.last_scan_data = None
+        self.last_scan_data = None # This will still store the in-memory data for potential other uses
         self.collected_scans_dataframes = []
         self.instrument_model = None
 
@@ -107,9 +107,9 @@ class App(tk.Tk):
 
         self.desired_setting_entries = {}
 
-        # New variables for session-wide CSV (now only used for initial file creation if desired)
-        self.session_csv_file_path = None
-        self.session_csv_headers_written = False # This might become less relevant if continuous writing is removed
+        # Removed: New variables for session-wide CSV
+        # self.session_csv_file_path = None
+        # self.session_csv_headers_written = False
 
         # Initialize Tkinter variables
         self.desired_ref_level_var = tk.StringVar(self)
@@ -129,6 +129,12 @@ class App(tk.Tk):
         self.desired_scan_rbw_segmentation_var = tk.DoubleVar(self)
         self.shift_freq_var = tk.DoubleVar(self)
         self.debug_mode_var = tk.BooleanVar(self)
+        self.last_selected_bands_str = tk.StringVar(self) # New variable for selected bands
+
+        # Initialize band_checkboxes and band_vars here
+        # This ensures they exist before _load_config tries to set band states
+        self.band_checkboxes = []
+        self.band_vars = []
 
         # Map Tkinter variables to their corresponding config keys for last used settings
         # (tk_var_name_string, last_used_config_key, default_config_key, type_converter)
@@ -149,6 +155,7 @@ class App(tk.Tk):
             'desired_scan_rbw_segmentation_var': ('last_scan_rbw_hz', 'default_scan_rbw_hz', float),
             'shift_freq_var': ('last_freq_shift_hz', 'default_freq_shift_hz', float),
             'debug_mode_var': ('last_debug_mode', 'default_debug_mode', bool),
+            'last_selected_bands_str': ('last_selected_bands', 'default_selected_bands', str), # New entry for selected bands
         }
 
         # Load configuration at startup
@@ -223,6 +230,9 @@ class App(tk.Tk):
         if 'DEFAULT_SETTINGS' not in self.config:
             self.config['DEFAULT_SETTINGS'] = {}
         
+        # Dynamically generate the default selected bands string from SCAN_BAND_RANGES
+        default_selected_bands_str = ",".join([band["Band Name"] for band in SCAN_BAND_RANGES])
+
         # Ensure all default settings are present with their default values
         default_settings_map = {
             'DEFAULT_RBW_STEP_SIZE_HZ': '1000000',
@@ -240,10 +250,11 @@ class App(tk.Tk):
             'DEFAULT_DEBUG_MODE': 'False',
             'DEFAULT_WINDOW_GEOMETRY': '1400x780+100+100',
             'DEFAULT_SCAN_DIRECTORY': 'scan_data', # Added default
-            'DEFAULT_SCAN_NAME': 'MyScan' # Added default
+            'DEFAULT_SCAN_NAME': 'MyScan', # Added default
+            'DEFAULT_SELECTED_BANDS': default_selected_bands_str, # Dynamically set default selected bands
         }
         for key, default_val in default_settings_map.items():
-            if key not in self.config['DEFAULT_SETTINGS']:
+            if key.lower() not in [k.lower() for k in self.config['DEFAULT_SETTINGS'].keys()]: # Case-insensitive check
                 self.config['DEFAULT_SETTINGS'][key] = default_val
         
         # Last used settings section
@@ -298,6 +309,9 @@ class App(tk.Tk):
                     tk_var.set("No Resources Found")
                 # For other variables, if no valid setting found, they will retain their default Tkinter variable value (e.g., 0 for int/float, False for bool, "" for string)
 
+        # _set_band_checkboxes_from_config() is now called AFTER create_widgets()
+        # This ensures self.band_vars is populated.
+
 
     def _save_config(self):
         """Saves current settings to config.ini into LAST_USED_SETTINGS."""
@@ -306,9 +320,13 @@ class App(tk.Tk):
             self.config['LAST_USED_SETTINGS'] = {}
 
         for var_name, (last_key, _, _) in self.setting_var_map.items():
-            if last_key: # Only save if there's a corresponding last_key
+            if last_key and var_name != 'last_selected_bands_str': # Exclude last_selected_bands_str from generic save
                 tk_var = getattr(self, var_name)
                 self.config['LAST_USED_SETTINGS'][last_key] = str(tk_var.get())
+        
+        # Save selected bands separately
+        selected_band_names = [item["band"]["Band Name"] for item in self.band_vars if item["var"].get()]
+        self.config['LAST_USED_SETTINGS']['last_selected_bands'] = ",".join(selected_band_names)
         
         # Save current window geometry
         self.config['LAST_USED_SETTINGS']['last_window_geometry'] = self.winfo_geometry()
@@ -564,8 +582,8 @@ class App(tk.Tk):
         band_selection_frame = tk.LabelFrame(bands_and_presets_frame, text="Frequency Band Selection", padx=10, pady=10, bg="black", fg="white")
         band_selection_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
-        self.band_checkboxes = []
-        self.band_vars = []
+        # self.band_checkboxes = [] # Moved to __init__
+        # self.band_vars = [] # Moved to __init__
 
         band_canvas = tk.Canvas(band_selection_frame, bg="black", highlightbackground="black")
         band_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -583,10 +601,15 @@ class App(tk.Tk):
             var = tk.BooleanVar(self)
             chk = tk.Checkbutton(self.inner_band_frame, text=f"{band['Band Name']} ({band['Start MHz']:.3f}-{band['Stop MHz']:.3f} MHz)", variable=var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
             chk.grid(row=i, column=0, sticky=tk.W, padx=5, pady=1)
-            var.set(True)
+            # Initial state will be set by _set_band_checkboxes_from_config after all are created
             self.band_checkboxes.append(chk)
             self.band_vars.append({"band": band, "var": var})
         
+        # After creating all checkboxes, set their initial state based on loaded config
+        # This call is moved here to ensure self.band_vars is populated.
+        self._set_band_checkboxes_from_config()
+
+
         preset_files_frame = tk.LabelFrame(bands_and_presets_frame, text="Device Preset Files (C:\\PRESETS\\)", padx=10, pady=10, bg="black", fg="white")
         preset_files_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
 
@@ -625,6 +648,22 @@ class App(tk.Tk):
     # def update_progress_label(self, message):
     #     """Updates the progress label on the GUI."""
     #     self.progress_label.config(text=message)
+
+    def _set_band_checkboxes_from_config(self):
+        """Sets the state of band checkboxes based on the loaded config."""
+        selected_bands_from_config = self.last_selected_bands_str.get()
+        if selected_bands_from_config:
+            selected_band_names = [name.strip() for name in selected_bands_from_config.split(',') if name.strip()]
+            for item in self.band_vars:
+                band_name = item["band"]["Band Name"]
+                if band_name in selected_band_names:
+                    item["var"].set(True)
+                else:
+                    item["var"].set(False)
+        else:
+            # If no last selected bands, default to all true (or specific default)
+            for item in self.band_vars:
+                item["var"].set(True) # Default to all selected if no config found
 
     def update_vbw_display(self):
         """Updates the VBW display based on the current RBW setting."""
@@ -836,6 +875,10 @@ class App(tk.Tk):
         self.cycle_hold_time_slider.set(self.desired_max_hold_time_var.get())
         self.cycle_wait_time_slider.set(self.desired_cycle_wait_time_var.get())
 
+        # Restore band selection to default (all selected)
+        for item in self.band_vars:
+            item["var"].set(True)
+
         self.update_vbw_display() # Update VBW display after RBW change
         self.reset_setting_colors() # Reset colors if any were marked
         self._save_config() # Save the restored defaults as the new last used settings
@@ -893,48 +936,12 @@ class App(tk.Tk):
         self.scan_cycle_count = 0
         self.current_freq_offset = 0
 
-        # The session_csv_file_path is no longer used for continuous appending from scan_bands.
-        # It can be removed or repurposed if needed for a different session summary.
-        # For now, we'll keep it defined but understand its use has changed.
-        scan_name = self.scan_name_var.get()
-        if not scan_name:
-            scan_name = "UnnamedScan"
-        
-        # Changed to remove seconds from the session CSV filename if it were to be used for initial creation
-        datetime_session_str = datetime.now().strftime("%Y%m%d_%H%M")
-        # Include RBW and Hold time in session file name for clarity
-        rbw_str = f"RBW{int(self.desired_scan_rbw_segmentation_var.get()/1000):04d}K"
-        max_hold_time_val = float(self.desired_max_hold_time_var.get()) if self.desired_max_hold_var.get() else 0
-        hold_str = f"HOLD{int(max_hold_time_val):02d}"
-
-        self.session_csv_file_path = os.path.join(
-            self.output_folder_var.get(),
-            f"{scan_name}_{rbw_str}_{hold_str}_SESSION_{datetime_session_str}.csv" # Filename now without seconds
-        )
-        self.session_csv_headers_written = False # Reset for new session
-        print(f"Session CSV file path (not continuously written by scan_bands): {self.session_csv_file_path}")
-        self.last_csv_file_path = self.session_csv_file_path # Point last_csv_file_path to the session CSV
-
         scan_thread = threading.Thread(target=self._run_scan, 
                                        args=(selected_bands, 
                                              scan_rbw_segmentation, freq_shift_value, 
                                              rbw_config_val, vbw_config_val, max_hold_time))
         scan_thread.daemon = True
         scan_thread.start()
-
-    def _append_scan_data_to_session_csv(self, file_path, data, header):
-        """Appends scan data to the session CSV file. Writes header only if file is new."""
-        # This function is now only called if the user explicitly wants to append data here.
-        # The primary raw data output for plotting is handled by averaging_utils.py
-        mode = 'a' if os.path.exists(file_path) else 'w'
-        
-        with open(file_path, mode, newline='') as f:
-            writer = csv.writer(f)
-            if not self.session_csv_headers_written:
-                writer.writerow(header)
-                self.session_csv_headers_written = True
-            writer.writerows(data)
-        print(f"Appended data to session CSV: {file_path}")
 
     def toggle_pause_scan(self):
         """Toggles the paused state of the scan."""
@@ -981,36 +988,27 @@ class App(tk.Tk):
                 hold_str = f"HOLD{int(max_hold_time_val):02d}"
                 offset_str = f"Offset{int(self.current_freq_offset)}"
 
-                # Changed to remove seconds from the HTML filename
-                datetime_str = datetime.now().strftime("%Y%m%d_%H%M")
+                datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                # The individual CSV filename is now only used for the plot, not for data storage
-                html_filename_base = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}"
-                html_plot_path_for_single_scan = os.path.join(self.output_folder_var.get(), f"{html_filename_base}.html")
+                # The individual HTML plot filename is still generated here
+                html_plot_path_for_single_scan = os.path.join(self.output_folder_var.get(), f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}.html")
 
                 try:
-                    scanned_data, last_successful_band_index = scan_bands(
+                    # scan_bands now returns the path to the CSV file
+                    scanned_data, last_successful_band_index, current_scan_csv_path = scan_bands(
                         self, self.inst, selected_bands, 
                         scan_rbw_segmentation, rbw_config_val, 
                         vbw_config_val, max_hold_time, self.current_freq_offset
                     ) 
                     
-                    # The following block for appending to session CSV is now removed from here,
-                    # as scan_instrument.py no longer calls append_scan_data_to_csv directly.
-                    # if scanned_data:
-                    #     header = ["Frequency (MHz)", "Level (dBm)"]
-                    #     # Append to the session-wide CSV
-                    #     self._append_scan_data_to_session_csv(self.session_csv_file_path, scanned_data, header)
-                    #     print(f"Data appended to session CSV: {self.session_csv_file_path}")
-
                     if not self.scanning:
                         print("\nScan process finished (interrupted after band scan).")
                         print("Scan interrupted by user.")
                         if scanned_data:
-                            # Changed to remove seconds from the HTML filename
-                            plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime.now().strftime('%Y%m%d_%H%M')}_INTERRUPTED"
+                            plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}_INTERRUPTED"
                             html_plot_path_for_single_scan_interrupted = os.path.join(self.output_folder_var.get(), f"{plot_suffix}.html")
-                            self.after(0, self.generate_single_scan_plot_and_open_wrapper, scanned_data, plot_suffix, html_plot_path_for_single_scan_interrupted, False)
+                            # Pass the CSV path for plotting
+                            self.after(0, self.generate_single_scan_plot_and_open_wrapper, current_scan_csv_path, plot_suffix, html_plot_path_for_single_scan_interrupted, False)
                         break
 
                     if scanned_data:
@@ -1019,12 +1017,13 @@ class App(tk.Tk):
                         self.collected_scans_dataframes.append(df_scan[['Frequency_MHz', 'Power_dBm']].copy())
                         print(f"✅ Stored scan data for averaging. Total scans collected: {len(self.collected_scans_dataframes)}")
 
-                    self.last_scan_data = scanned_data
+                    self.last_scan_data = scanned_data # Still keep in-memory for other potential uses
                     
-                    print(f"Cycle scan finished. Plot will be generated for: {html_plot_path_for_single_scan}")
+                    print(f"Cycle scan finished. Plot will be generated from CSV: {current_scan_csv_path}")
 
                     plot_suffix = f"{scan_name}_{rbw_str}_{hold_str}_{offset_str}_{datetime_str}"
-                    self.after(0, self.generate_single_scan_plot_and_open_wrapper, scanned_data, plot_suffix, html_plot_path_for_single_scan, self.open_html_after_complete_var.get()) 
+                    # Pass the CSV path for plotting
+                    self.after(0, self.generate_single_scan_plot_and_open_wrapper, current_scan_csv_path, plot_suffix, html_plot_path_for_single_scan, self.open_html_after_complete_var.get()) 
                     
                     self.scan_cycle_count += 1
                     self.current_freq_offset += freq_shift_value
@@ -1140,16 +1139,28 @@ class App(tk.Tk):
         self.preset_tree.insert("", "end", values=("No instrument connected.",))
         self.connect_button.config(state=tk.NORMAL)
 
-    def generate_single_scan_plot_and_open_wrapper(self, scanned_data, plot_title_suffix, output_html_path, auto_open_browser=True):
-        """Wrapper to call plot_single_scan_data and handle saving/opening."""
-        if not scanned_data:
-            print("No single scan data available to plot.")
+    def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser=True):
+        """
+        Wrapper to call plot_single_scan_data and handle saving/opening.
+        Reads data directly from the provided CSV file path.
+        """
+        if not os.path.exists(csv_file_path):
+            print(f"🚫 CSV file not found for plotting: {csv_file_path}")
+            messagebox.showerror("Plot Error", f"CSV file not found: {csv_file_path}. Cannot generate plot.")
             return
 
-        print("Generating single scan plot...")
+        print(f"Generating single scan plot from CSV: {csv_file_path}...")
         try:
+            # Read data from the CSV file
+            # Assuming no header and columns are Frequency_MHz, Power_dBm
+            df = pd.read_csv(csv_file_path, header=None, names=["Frequency_MHz", "Power_dBm"])
+            
+            # Convert Frequency_MHz back to Frequency_Hz for plot_single_scan_data
+            # which expects Frequency_Hz as its first column.
+            scanned_data_from_csv = list(zip(df['Frequency_MHz'] * MHZ_TO_HZ, df['Power_dBm']))
+
             fig = plot_single_scan_data(
-                scanned_data, 
+                scanned_data_from_csv, 
                 plot_title_suffix,
                 include_tv_markers=self.include_tv_markers_var.get(),
                 include_gov_markers=self.include_gov_markers_var.get()
@@ -1164,8 +1175,8 @@ class App(tk.Tk):
             else:
                 print("🚫 Plotly figure was not generated for single scan data.")
         except Exception as e:
-            messagebox.showerror("Single Plot Error", f"Failed to generate single scan plot: {e}")
-            print(f"❌ Error generating single scan plot: {e}")
+            messagebox.showerror("Single Plot Error", f"Failed to generate single scan plot from CSV '{csv_file_path}': {e}")
+            print(f"❌ Error generating single scan plot from CSV: {e}")
 
     def generate_average_plot(self):
         """
