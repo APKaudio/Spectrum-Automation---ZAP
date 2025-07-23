@@ -239,7 +239,7 @@ def plot_multi_trace_data(
             y=aggregated_df['Median_dBm'],
             mode='lines',
             name='Median Power (dBm)', # Changed name
-            line=dict(color='pink', width=2), # Changed to PINK
+            line=dict(color='orange', width=2), # Changed to ORANGE
             hoverinfo='name+x+y'
         ))
 

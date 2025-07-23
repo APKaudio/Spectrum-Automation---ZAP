@@ -16,11 +16,20 @@ from utils.frequency_bands import (
     GOV_PLOT_BAND_MARKERS
 )
 
+def _save_aggregated_csv(df, folder_path, base_filename, suffix, freq_col, data_col):
+    """
+    Saves a specific aggregated column pair to CSV without header,
+    formatted to 3 decimal places.
+    """
+    csv_path = os.path.join(folder_path, f"{base_filename}_{suffix}.csv")
+    df[[freq_col, data_col]].to_csv(csv_path, index=False, float_format='%.3f', header=False)
+    print(f"✅ Saved {suffix} data to: {csv_path}")
+
 
 def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan_name_var, output_folder_var, open_html_after_complete_var, include_tv_markers_var, include_gov_markers_var):
     """
     Calculates average, median, and range from collected scan data (from current scan cycle),
-    saves them to a CSV, and plots them with overlays.
+    saves them to separate CSVs in a new folder, and plots them with overlays.
     This function is called on the main Tkinter thread via self.after().
     """
     if not collected_scans_dataframes:
@@ -30,11 +39,9 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     print("\n📊 Generating averaged, median, and range data for current cycle...")
 
     # Combine all scan data into a single DataFrame for easier processing
-    # Concatenate the collected_scans_dataframes vertically
     combined_current_scans_df = pd.concat(collected_scans_dataframes)
 
     # Now group by Frequency_MHz and apply the aggregations on 'Power_dBm'
-    # The collected_scans_dataframes already have 'Frequency_MHz'
     aggregated_df = combined_current_scans_df.groupby('Frequency_MHz')['Power_dBm'].agg(
         Average_dBm='mean',
         Median_dBm='median',
@@ -48,28 +55,35 @@ def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan
     # Drop intermediate Max_dBm and Min_dBm columns
     aggregated_df = aggregated_df.drop(columns=['Max_dBm', 'Min_dBm'])
 
-    # Frequency_MHz is already present from the groupby operation, no need to re-add.
-
     # Generate filename based on current time (HHMM - no seconds) and scan name
     timestamp_hm = datetime.now().strftime("%H%M") # HHMM format (no seconds)
     base_filename = f"{scan_name_var.get()}_{timestamp_hm}"
 
-    csv_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged_cycle.csv") # Added _cycle to distinguish
-    html_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged_cycle.html") # Added _cycle to distinguish
+    # Create a new subfolder for the plot and its associated CSVs
+    output_subfolder_name = f"{base_filename}_CURRENT_CYCLE_PLOT_DATA"
+    output_full_path = os.path.join(output_folder_var.get(), output_subfolder_name)
+    os.makedirs(output_full_path, exist_ok=True)
+    print(f"Created output subfolder: {output_full_path}")
 
-    # Ensure output directory exists
-    os.makedirs(output_folder_var.get(), exist_ok=True)
+    # Define HTML filename within the new subfolder
+    html_filename = os.path.join(output_full_path, f"{base_filename}_averaged_cycle.html")
 
-    # Save to CSV
+    # Save separate CSV files without headers
     try:
-        # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
-        # Using to_csv with header=False as requested by user
-        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f', header=False,
-                             columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
-        print(f"✅ Averaged data for current cycle saved to: {csv_filename}")
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'average', 'Frequency_MHz', 'Average_dBm')
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'median', 'Frequency_MHz', 'Median_dBm')
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'range', 'Frequency_MHz', 'Range_dBm')
+
+        # Save the combined raw data for the current cycle as the fourth file
+        # Ensure it's also formatted correctly and has no header
+        raw_current_cycle_csv_path = os.path.join(output_full_path, f"{base_filename}_raw_current_cycle.csv")
+        combined_current_scans_df.to_csv(raw_current_cycle_csv_path, index=False, float_format='%.3f', header=False,
+                                         columns=['Frequency_MHz', 'Power_dBm'])
+        print(f"✅ Saved raw current cycle data to: {raw_current_cycle_csv_path}")
+
     except Exception as e:
-        print(f"❌ Failed to save averaged CSV for current cycle: {e}")
-        messagebox.showerror("CSV Save Error", f"Could not save averaged CSV for current cycle: {e}")
+        print(f"❌ Failed to save separate averaged CSVs for current cycle: {e}")
+        messagebox.showerror("CSV Save Error", f"Could not save separate averaged CSVs for current cycle: {e}")
         return
 
     # Plotting the averaged, median, and range data
@@ -202,22 +216,31 @@ def generate_historical_average_plot(scan_name_var, output_folder_var, open_html
     plot_title_only_datetime = datetime.now().strftime("%Y-%m-%d %H:%M")
     base_filename = f"{scan_name_var.get()}_HISTORICAL_{timestamp_hm}" # Distinct filename for historical average
 
-    csv_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged.csv")
-    html_filename = os.path.join(output_folder_var.get(), f"{base_filename}_averaged.html")
+    # Create a new subfolder for the plot and its associated CSVs
+    output_subfolder_name = f"{base_filename}_HIST_PLOT_DATA"
+    output_full_path = os.path.join(output_folder_var.get(), output_subfolder_name)
+    os.makedirs(output_full_path, exist_ok=True)
+    print(f"Created output subfolder: {output_full_path}")
 
-    # Ensure output directory exists
-    os.makedirs(output_folder_var.get(), exist_ok=True)
+    # Define HTML filename within the new subfolder
+    html_filename = os.path.join(output_full_path, f"{base_filename}_averaged.html")
 
-    # Save to CSV
+    # Save separate CSV files without headers
     try:
-        # Select columns for CSV: Frequency_MHz, Average_dBm, Median_dBm, Range_dBm
-        # Using to_csv with header=False as requested by user
-        aggregated_df.to_csv(csv_filename, index=False, float_format='%.3f', header=False,
-                             columns=['Frequency_MHz', 'Average_dBm', 'Median_dBm', 'Range_dBm'])
-        print(f"✅ Historical averaged data saved to: {csv_filename}")
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'average', 'Frequency_MHz', 'Average_dBm')
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'median', 'Frequency_MHz', 'Median_dBm')
+        _save_aggregated_csv(aggregated_df, output_full_path, base_filename, 'range', 'Frequency_MHz', 'Range_dBm')
+
+        # Save the combined raw historical data as the fourth file
+        # Ensure it's also formatted correctly and has no header
+        raw_historical_csv_path = os.path.join(output_full_path, f"{base_filename}_raw_historical_combined.csv")
+        combined_all_scans_df_normalized.to_csv(raw_historical_csv_path, index=False, float_format='%.3f', header=False,
+                                                 columns=['Original_Frequency_MHz', 'Power_dBm'])
+        print(f"✅ Saved raw historical combined data to: {raw_historical_csv_path}")
+
     except Exception as e:
-        print(f"❌ Failed to save historical averaged CSV: {e}")
-        messagebox.showerror("CSV Save Error", f"Could not save historical averaged CSV: {e}")
+        print(f"❌ Failed to save separate historical averaged CSVs: {e}")
+        messagebox.showerror("CSV Save Error", f"Could not save separate historical averaged CSVs: {e}")
         return
 
     # Plotting the historical averaged, median, and range data, PLUS historical overlays
