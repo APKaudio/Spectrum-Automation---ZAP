@@ -14,9 +14,11 @@
 # Build Log: https://like.audio/category/software/spectrum-scanner/
 # Source Code: https://github.com/APKaudio/
 #
-# Define constants for better readability and easier modification
-MHZ_TO_HZ = 1_000_000 # Conversion factor from MHz to Hz
+# Conversion factor from MHz to Hz
+MHZ_TO_HZ = 1_000_000
 
+# Ratio for Video Bandwidth (VBW) to Resolution Bandwidth (RBW)
+VBW_RBW_RATIO = 1/3
 # Define the frequency bands to *SCAN* (User's specified bands for instrument operation)
 # This list will be used by the scan_bands function.
 # Each dictionary contains:

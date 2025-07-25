@@ -99,7 +99,7 @@ class App(tk.Tk):
             7. Loads configuration settings from `config.ini` using `load_config()`.
             8. Sets window geometry based on loaded config or default.
             9. Initializes sliders for RBW and Frequency Shift, binding them to update
-               the relevant Tkinter variables.
+            the relevant Tkinter variables.
             10. Binds debug mode variable to update global setting.
             11. Creates main frames for GUI layout.
             12. Sets up console output area and redirects `sys.stdout` and `sys.stderr`.
@@ -130,6 +130,9 @@ class App(tk.Tk):
 
         self.blink_id = None
         self.blink_on = False
+        # New variables for pause button blinking
+        self.pause_blink_id = None
+        self.pause_blink_on = False
 
         self.desired_ref_level_var = tk.StringVar(self)
         self.desired_preamp_var = tk.BooleanVar(self)
@@ -153,6 +156,9 @@ class App(tk.Tk):
 
         self.band_checkboxes = []
         self.band_vars = []
+
+        # List to hold references to tabs that should be hidden/shown
+        self.dynamic_tabs = [] 
 
         self.setting_var_map = {
             'desired_ref_level_var': ('last_reference_level_dbm', 'default_reference_level_dbm', float),
@@ -230,6 +236,7 @@ class App(tk.Tk):
         self.create_widgets()
         self.after(0, populate_resources_logic, self)
         self.after(100, self._check_and_load_markers_csv) # Auto-load markers.csv on startup
+        self.after(200, self._update_tab_visibility) # Call after initial setup to set tab visibility
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -305,10 +312,12 @@ class App(tk.Tk):
                - Checkbox for auto-opening HTML plots.
                - Buttons for "Apply Settings to Device" (command linked to `instrument_logic`) and "Generate Plot (Average)" (command linked to `plot_logic`).
             4. Creates `ttk.Notebook` for tabbed interface:
-               - "Frequency Band Selection" tab with a scrollable canvas for frequency band checkboxes.
+               - "Instrument Connection" tab (always visible).
+               - "Scan Configuration" tab now includes frequency band selection.
                - "Device Preset Files" tab with a "Load Selected Preset" button (command linked to `instrument_logic`) and a `ttk.Treeview`
                  to display device preset files (binds to `instrument_logic.on_preset_select`).
                - "Report Converter" tab with the `ReportConverterTab` from `src.tabs`.
+               - "Markers Display" tab (added dynamically).
             5. Creates a `debug_frame` with a checkbox to enable/disable debug mode.
             6. Configures grid weights for responsive layout.
             7. Calls `update_vbw_display_logic()` to initialize the VBW display.
@@ -347,8 +356,16 @@ class App(tk.Tk):
         style.map("TNotebook.Tab", background=[("selected", "grey")],
                                    foreground=[("selected", "white")])
 
+        # Main Notebook for tabs
+        self.notebook = ttk.Notebook(self.main_frame)
+        self.notebook.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        resource_frame = tk.LabelFrame(self.main_frame, text="Instrument Connection", padx=10, pady=10, bg="black", fg="white")
+        # --- Instrument Connection Tab (Always Visible) ---
+        self.instrument_connection_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(self.instrument_connection_tab, text="Instrument Connection")
+
+        # Move resource_frame content into instrument_connection_tab
+        resource_frame = tk.LabelFrame(self.instrument_connection_tab, text="Instrument Connection", padx=10, pady=10, bg="black", fg="white")
         resource_frame.pack(pady=10, padx=10, fill=tk.X)
 
         tk.Label(resource_frame, text="VISA Resource:", bg="black", fg="white").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -360,14 +377,19 @@ class App(tk.Tk):
         self.refresh_button = tk.Button(resource_frame, text="Refresh", command=lambda: populate_resources_logic(self), bg="darkgrey", fg="white")
         self.refresh_button.grid(row=0, column=2, padx=5, pady=2)
 
-        self.connect_button = tk.Button(resource_frame, text="Connect", command=lambda: connect_instrument_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
+        self.connect_button = tk.Button(resource_frame, text="Connect", command=lambda: self._connect_instrument_wrapper(), state=tk.DISABLED, bg="darkgrey", fg="white")
         self.connect_button.grid(row=0, column=3, padx=5, pady=2)
         
-        self.disconnect_button = tk.Button(resource_frame, text="Disconnect", command=lambda: disconnect_instrument_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
+        self.disconnect_button = tk.Button(resource_frame, text="Disconnect", command=lambda: self._disconnect_instrument_wrapper(), state=tk.DISABLED, bg="darkgrey", fg="white")
         self.disconnect_button.grid(row=0, column=4, padx=5, pady=2)
 
-        scan_settings_frame = tk.LabelFrame(self.main_frame, text="Scan Configuration (Push to Device)", padx=10, pady=10, bg="black", fg="white")
-        scan_settings_frame.pack(pady=10, padx=10, fill=tk.X)
+        # --- Scan Configuration Tab (now includes frequency band selection) ---
+        self.scan_settings_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(self.scan_settings_tab, text="Scan Configuration")
+        self.dynamic_tabs.append(self.scan_settings_tab) # Add to dynamic tabs list
+
+        scan_settings_frame = tk.LabelFrame(self.scan_settings_tab, text="Instrument Configuration & Scan Settings", padx=10, pady=10, bg="black", fg="white")
+        scan_settings_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True) # Changed to fill BOTH and expand
 
         restore_button = tk.Button(scan_settings_frame, text="Restore Default Settings", command=lambda: restore_default_settings_logic(self), bg="darkgrey", fg="white")
         restore_button.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.EW)
@@ -494,6 +516,12 @@ class App(tk.Tk):
         open_folder_button.pack(side=tk.RIGHT, padx=(5, 0))
 
         row_idx += 1
+        tk.Label(scan_settings_frame, text="Default Focus Width (Hz):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
+        entry_focus_width = tk.Entry(scan_settings_frame, textvariable=self.default_focus_width_var, bg="grey", fg="white", insertbackground="white")
+        entry_focus_width.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
+        self.desired_setting_entries["default_focus_width"] = entry_focus_width
+
+        row_idx += 1
         tk.Label(scan_settings_frame, text="Include TV Band Markers:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
         chk_tv_markers = tk.Checkbutton(scan_settings_frame, variable=self.include_tv_markers_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
         chk_tv_markers.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
@@ -523,16 +551,17 @@ class App(tk.Tk):
         self.plot_button = tk.Button(button_row_frame, text="Generate Plot (Average)", command=lambda: generate_average_plot_logic(self), state=tk.NORMAL, bg="blue", fg="white")
         self.plot_button.grid(row=0, column=1, padx=5, sticky=tk.EW)
 
-        self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+        # --- Moved Frequency Band Selection Section into Scan Configuration Tab ---
+        row_idx += 1
+        band_selection_frame = tk.LabelFrame(scan_settings_frame, text="Frequency Band Selection", padx=10, pady=10, bg="black", fg="white")
+        band_selection_frame.grid(row=row_idx, column=0, columnspan=2, sticky=tk.NSEW, pady=10)
+        band_selection_frame.grid_rowconfigure(0, weight=1)
+        band_selection_frame.grid_columnconfigure(0, weight=1)
 
-        band_selection_tab = tk.Frame(self.notebook, bg="black")
-        self.notebook.add(band_selection_tab, text="Frequency Band Selection")
-
-        band_canvas = tk.Canvas(band_selection_tab, bg="black", highlightbackground="black")
+        band_canvas = tk.Canvas(band_selection_frame, bg="black", highlightbackground="black")
         band_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        band_scrollbar = ttk.Scrollbar(band_selection_tab, orient="vertical", command=band_canvas.yview)
+        band_scrollbar = ttk.Scrollbar(band_selection_frame, orient="vertical", command=band_canvas.yview)
         band_scrollbar.pack(side=tk.RIGHT, fill="y")
 
         band_canvas.configure(yscrollcommand=band_scrollbar.set)
@@ -550,29 +579,34 @@ class App(tk.Tk):
         
         set_band_checkboxes_from_config_logic(self)
 
-        preset_files_tab = tk.Frame(self.notebook, bg="black")
-        self.notebook.add(preset_files_tab, text="Device Preset Files")
 
-        self.load_preset_button = tk.Button(preset_files_tab, text="Load Selected Preset", command=lambda: load_selected_preset_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
+        # --- Device Preset Files Tab ---
+        self.preset_files_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(self.preset_files_tab, text="Device Preset Files")
+        self.dynamic_tabs.append(self.preset_files_tab) # Add to dynamic tabs list
+
+        self.load_preset_button = tk.Button(self.preset_files_tab, text="Load Selected Preset", command=lambda: load_selected_preset_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
         self.load_preset_button.pack(pady=5)
 
-        self.preset_tree = ttk.Treeview(preset_files_tab, columns=("Name",), show="headings", selectmode="browse")
+        self.preset_tree = ttk.Treeview(self.preset_files_tab, columns=("Name",), show="headings", selectmode="browse")
         self.preset_tree.heading("Name", text="Preset File Name")
         self.preset_tree.column("Name", width=200, anchor="w")
         self.preset_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.preset_tree.tag_configure("Mon", foreground="blue")
 
-        preset_scrollbar = ttk.Scrollbar(preset_files_tab, orient="vertical", command=self.preset_tree.yview)
+        preset_scrollbar = ttk.Scrollbar(self.preset_files_tab, orient="vertical", command=self.preset_tree.yview)
         preset_scrollbar.pack(side=tk.RIGHT, fill="y")
         self.preset_tree.configure(yscrollcommand=preset_scrollbar.set)
 
         self.preset_tree.bind("<<TreeviewSelect>>", lambda event: on_preset_select(self, event))
         
-        # Pass self (the App instance) to ReportConverterTab
-        report_converter_tab = ReportConverterTab(self.notebook, app_instance=self, bg="black")
-        self.notebook.add(report_converter_tab, text="Report Converter")
+        # --- Report Converter Tab ---
+        self.report_converter_tab = ReportConverterTab(self.notebook, app_instance=self, bg="black")
+        self.notebook.add(self.report_converter_tab, text="Report Converter")
+        self.dynamic_tabs.append(self.report_converter_tab) # Add to dynamic tabs list
 
+        # Debug Frame (always visible, outside notebook)
         debug_frame = tk.Frame(self.main_frame, bg="black")
         debug_frame.pack(pady=10, padx=10, fill=tk.X)
         tk.Checkbutton(debug_frame, text="Enable Debug Mode (Log VISA Commands)", variable=self.debug_mode_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white").pack(anchor=tk.W)
@@ -602,16 +636,22 @@ class App(tk.Tk):
             4. Selects the newly created tab to bring it into view.
         Outputs: None
         """
+        # Check if "Markers Display" tab already exists and remove it
         for i, tab_id in enumerate(self.notebook.tabs()):
             tab_text = self.notebook.tab(tab_id, "text")
             if tab_text == "Markers Display":
                 self.notebook.forget(tab_id)
+                self.dynamic_tabs = [tab for tab in self.dynamic_tabs if tab != self.markers_display_tab] # Remove from dynamic tabs list
+                del self.markers_display_tab # Delete the reference
                 print("Existing 'Markers Display' tab removed.")
                 break
-        # Pass self (the App instance) to MarkersDisplayTab
-        markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, app_instance=self, bg="black")
-        self.notebook.add(markers_display_tab, text="Markers Display")
-        self.notebook.select(markers_display_tab)
+        
+        # Create and add the new MarkersDisplayTab
+        self.markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, app_instance=self, bg="black")
+        self.notebook.add(self.markers_display_tab, text="Markers Display")
+        self.dynamic_tabs.append(self.markers_display_tab) # Add to dynamic tabs list
+        self.notebook.select(self.markers_display_tab)
+        self._update_tab_visibility() # Ensure tab visibility is updated after adding
 
     def _check_and_load_markers_csv(self):
         """
@@ -667,28 +707,19 @@ class App(tk.Tk):
         """
         open_output_folder_logic(self)
 
-    def connect_instrument(self):
+    def _connect_instrument_wrapper(self):
         """
-        Wrapper for `connect_instrument_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `connect_instrument_logic` from `src.instrument_logic`, passing `self`.
-        Outputs: None
+        Wrapper for `connect_instrument_logic` that also updates tab visibility.
         """
         connect_instrument_logic(self)
+        self._update_tab_visibility() # Update tab visibility after connection attempt
 
-    def disconnect_instrument(self):
+    def _disconnect_instrument_wrapper(self):
         """
-        Wrapper for `disconnect_instrument_logic`.
-
-        Inputs: None
-            None
-        Process:
-            1. Calls `disconnect_instrument_logic` from `src.instrument_logic`, passing `self`.
-        Outputs: None
+        Wrapper for `disconnect_instrument_logic` that also updates tab visibility.
         """
         disconnect_instrument_logic(self)
+        self._update_tab_visibility() # Update tab visibility after disconnection
 
     def apply_settings_to_device(self):
         """
@@ -748,13 +779,24 @@ class App(tk.Tk):
     def toggle_pause_scan(self):
         """
         Wrapper for `toggle_pause_scan_logic`.
+        This method is responsible for managing the state and visual feedback
+        of the "Pause/Resume Scan" button, including its blinking animation.
 
         Inputs: None
         Process:
             1. Calls `toggle_pause_scan_logic` from `src.scan_logic`, passing `self`.
+            2. If the scan is now paused, starts the pause button blinking.
+            3. If the scan is now resumed, stops the pause button blinking.
         Outputs: None
         """
         toggle_pause_scan_logic(self)
+        if self.paused: # Check the state *after* toggle_pause_scan_logic has run
+            self._start_pause_button_blink()
+            # The console message "Scan Paused..." is handled in scan_logic.py
+            # We need to ensure it uses overwrite=True there.
+        else:
+            self._stop_pause_button_blink()
+
 
     def _run_scan(self, selected_bands, scan_rbw_segmentation, freq_shift_value, rbw_config_val, vbw_config_val, max_hold_time):
         """
@@ -780,9 +822,11 @@ class App(tk.Tk):
         Inputs: None
         Process:
             1. Calls `stop_scan_logic` from `src.scan_logic`, passing `self`.
+            2. Stops the pause button blinking in case the scan was stopped while paused.
         Outputs: None
         """
         stop_scan_logic(self)
+        self._stop_pause_button_blink() # Ensure blinking stops if scan is stopped
 
     def reset_scan_buttons(self):
         """
@@ -791,20 +835,27 @@ class App(tk.Tk):
         Inputs: None
         Process:
             1. Calls `reset_scan_buttons_logic` from `src.scan_logic`, passing `self`.
+            2. Stops the pause button blinking.
         Outputs: None
         """
         reset_scan_buttons_logic(self)
+        self._stop_pause_button_blink() # Ensure blinking stops when buttons are reset
 
     def _reset_gui_on_disconnect_or_error(self):
         """
         Wrapper for `reset_gui_on_disconnect_or_error` from `src.instrument_logic`.
+        This wrapper also ensures tab visibility is updated.
 
         Inputs: None
         Process:
             1. Calls `reset_gui_on_disconnect_or_error` from `src.instrument_logic`, passing `self`.
+            2. Calls `_update_tab_visibility()` to hide non-connection tabs.
+            3. Stops the pause button blinking.
         Outputs: None
         """
         reset_gui_on_disconnect_or_error(self)
+        self._update_tab_visibility() # Ensure tabs are hidden on disconnect/error
+        self._stop_pause_button_blink() # Stop blinking if disconnected/error
 
     def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser=True):
         """
@@ -857,9 +908,12 @@ class App(tk.Tk):
         self.console_output.config(state=tk.NORMAL)
         if overwrite:
             try:
-                self.console_output.delete("end-1c linestart", "end-1c")
+                # Delete from the start of the last line to the end of the text
+                # "end-1c linestart" means start of the line before the very last character
+                # "end-1c" means the character just before the end of the text
+                self.console_output.delete("end-1c linestart", "end")
             except TclError:
-                pass
+                pass # Handle case where there's no previous line to delete
         self.console_output.insert(tk.END, text_to_display)
         self.console_output.see(tk.END)
         self.console_output.config(state=tk.DISABLED)
@@ -923,6 +977,103 @@ class App(tk.Tk):
             else:
                 self.connect_button.config(bg="darkgrey", fg="white")
             self.blink_id = self.after(500, self._blink_connect_button)
+
+    def _start_pause_button_blink(self):
+        """
+        Initiates a blinking visual effect for the "Pause/Resume Scan" button.
+        This serves as a visual cue to the user that the scan is paused and
+        awaiting user action to resume.
+
+        Inputs: None
+        Process:
+            1. Checks if the blinking effect is already active (`self.pause_blink_id is None`).
+            2. Sets `self.pause_blink_on` to `True`.
+            3. Calls `_blink_pause_button()` to start the actual blinking loop.
+        Outputs: None
+        """
+        if self.pause_blink_id is None:
+            self.pause_blink_on = True
+            self._blink_pause_button()
+
+    def _stop_pause_button_blink(self):
+        """
+        Stops the blinking effect on the "Pause/Resume Scan" button and resets its color
+        to its default state (orange).
+
+        Inputs: None
+        Process:
+            1. If `self.pause_blink_id` is not None (meaning blinking is active),
+               cancels the scheduled `after` event.
+            2. Resets `self.pause_blink_id` to `None`.
+            3. Resets the button's background and foreground colors to its default "orange".
+            4. Sets `self.pause_blink_on` to `False`.
+        Outputs: None
+        """
+        if self.pause_blink_id is not None:
+            self.after_cancel(self.pause_blink_id)
+            self.pause_blink_id = None
+        self.pause_resume_button.config(bg="orange", fg="white")
+        self.pause_blink_on = False
+
+    def _blink_pause_button(self):
+        """
+        Toggles the background and foreground colors of the "Pause/Resume Scan" button
+        at a set interval (500ms) to create the blinking animation.
+
+        Inputs:
+            None
+        Process:
+            1. If `self.pause_blink_on` is `True`:
+               - Retrieves the current background color of the button.
+               - Toggles the colors between "orange" (default paused) and "darkorange" (highlight).
+               - Schedules itself to be called again after 500 milliseconds using `self.after()`.
+        Outputs: None
+        """
+        if self.pause_blink_on:
+            current_bg = self.pause_resume_button.cget("bg")
+            if current_bg == "orange":
+                self.pause_resume_button.config(bg="darkorange", fg="white")
+            else:
+                self.pause_resume_button.config(bg="orange", fg="white")
+            self.pause_blink_id = self.after(500, self._blink_pause_button)
+
+    def _update_tab_visibility(self):
+        """
+        Controls the visibility of tabs in the notebook based on instrument connection status.
+        When not connected, only the "Instrument Connection" tab is visible.
+        When connected, all other tabs become visible.
+        """
+        if self.inst is None: # Not connected
+            # Hide all dynamic tabs
+            for tab_frame in self.dynamic_tabs:
+                # Check if the tab is currently managed by the notebook before trying to hide
+                if tab_frame in self.notebook.tabs():
+                    self.notebook.hide(tab_frame)
+            # Select the Instrument Connection tab
+            self.notebook.select(self.instrument_connection_tab)
+            print("Tabs updated: Only 'Instrument Connection' tab visible.")
+        else: # Connected
+            # Show all dynamic tabs
+            for tab_frame in self.dynamic_tabs:
+                # Only add if not already present to avoid TclError
+                if tab_frame not in self.notebook.tabs():
+                    # Re-add using its original text, assuming it was added with text initially
+                    # This is important if a tab was dynamically created (like Markers Display)
+                    # and then hidden. Its text property might still be available.
+                    
+                    # A more robust solution would be to store a mapping of tab_frame to tab_text
+                    # when the tabs are initially created. For now, we'll hardcode based on known tabs.
+                    if tab_frame == self.scan_settings_tab:
+                        self.notebook.add(tab_frame, text="Scan Configuration")
+                    elif tab_frame == self.preset_files_tab:
+                        self.notebook.add(tab_frame, text="Device Preset Files")
+                    elif tab_frame == self.report_converter_tab:
+                        self.notebook.add(tab_frame, text="Report Converter")
+                    # Handle Markers Display Tab if it exists
+                    elif hasattr(self, 'markers_display_tab') and tab_frame == self.markers_display_tab:
+                        self.notebook.add(tab_frame, text="Markers Display")
+            print("Tabs updated: All tabs now visible.")
+
 
 if __name__ == "__main__":
     app = App()

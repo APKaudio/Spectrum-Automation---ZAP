@@ -9,7 +9,8 @@ from utils.instrument_control import (
     disconnect_instrument as control_disconnect_instrument,
     initialize_instrument, query_current_instrument_settings,
     query_device_presets as control_query_device_presets,
-    load_selected_preset as control_load_selected_preset
+    load_selected_preset as control_load_selected_preset,
+    debug_print # Import debug_print
 )
 from utils.frequency_bands import MHZ_TO_HZ
 
@@ -33,146 +34,133 @@ def populate_resources_logic(app_instance):
     """
     try:
         app_instance.instrument_list = list_visa_resources(app_instance.rm)
+        
+        # Get the last used device from the config (which is already loaded into resource_var)
+        last_used_device = app_instance.resource_var.get()
+        
+        selected_device_set = False
+
         if app_instance.instrument_list:
-            last_device = app_instance.resource_var.get()
-            if not last_device or last_device not in app_instance.instrument_list:
-                app_instance.resource_var.set(app_instance.instrument_list[0]) if app_instance.instrument_list else "No Resources Found"
-            
-            menu = app_instance.resource_dropdown["menu"]
-            menu.delete(0, "end")
-            for resource in app_instance.instrument_list:
-                menu.add_command(label=resource, command=tk._setit(app_instance.resource_var, resource))
+            # Check if the last used device is in the currently found list
+            if last_used_device and last_used_device in app_instance.instrument_list:
+                app_instance.resource_var.set(last_used_device)
+                debug_print(f"Set resource to last used: {last_used_device}")
+                selected_device_set = True
+            else:
+                # If last used device is not found or was empty, default to the first available
+                app_instance.resource_var.set(app_instance.instrument_list[0])
+                debug_print(f"Last used device not found or empty. Defaulting to: {app_instance.instrument_list[0]}")
+                selected_device_set = True
             
             app_instance.connect_button.config(state=tk.NORMAL)
-            app_instance._start_connect_button_blink()
+            app_instance._start_connect_button_blink() # Start blinking when resources are found
         else:
-            app_instance.resource_var.set("No resources found")
-            menu = app_instance.resource_dropdown["menu"]
-            menu.delete(0, "end")
-            menu.add_command(label="No resources found", command=tk._setit(app_instance.resource_var, "No resources found"))
+            app_instance.resource_var.set("No Resources Found")
             app_instance.connect_button.config(state=tk.DISABLED)
-            app_instance._stop_connect_button_blink()
+            app_instance._stop_connect_button_blink() # Stop blinking if no resources
+            selected_device_set = True # Indicate that a device state has been set (no resources)
         
-        app_instance.start_scan_button.config(state=tk.DISABLED)
+        # Update the dropdown menu
+        menu = app_instance.resource_dropdown["menu"]
+        menu.delete(0, "end")
+        for resource in app_instance.instrument_list:
+            menu.add_command(label=resource, command=tk._setit(app_instance.resource_var, resource))
+        
+        # If no device was explicitly set (e.g., if instrument_list was empty and last_used_device was also empty)
+        if not selected_device_set:
+            app_instance.resource_var.set("No Resources Found")
+
+
+        # Disable other buttons until connected
         app_instance.disconnect_button.config(state=tk.DISABLED)
         app_instance.apply_button.config(state=tk.DISABLED)
         app_instance.load_preset_button.config(state=tk.DISABLED)
+        app_instance.start_scan_button.config(state=tk.DISABLED)
+        app_instance.stop_scan_button.config(state=tk.DISABLED)
         app_instance.pause_resume_button.config(state=tk.DISABLED)
+
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to list VISA resources: {e}")
-        app_instance.resource_var.set("Error listing resources")
-        reset_gui_on_disconnect_or_error(app_instance)
+        messagebox.showerror("Resource Error", f"Failed to list VISA resources: {e}")
+        print(f"❌ Error listing VISA resources: {e}")
 
 def connect_instrument_logic(app_instance):
     """
-    Establishes a connection to the selected VISA instrument and initializes its settings.
+    Handles the connection process to the selected VISA instrument.
 
     Inputs:
         app_instance (App): The main application instance, providing access to
-                            instrument connection details, settings, and GUI elements.
+                            `rm`, `resource_var`, `inst`, `instrument_model`,
+                            and various button states.
     Process:
-        1. Retrieves the selected VISA resource.
-        2. Checks for existing connections and attempts to close them.
-        3. Calls `connect_to_instrument` to establish the connection.
-        4. If connected, updates the window title with the instrument model.
-        5. Retrieves desired instrument settings from GUI variables.
-        6. Calls `initialize_instrument` to apply settings to the device.
-        7. Queries and prints current instrument settings.
-        8. Enables/disables relevant GUI buttons (scan, disconnect, apply).
-        9. Stops the connect button blinking.
-        10. Queries device preset files (if not N9340B) and updates the preset tree.
-        11. Handles various exceptions (ValueError for invalid input, general Exception for others).
-        12. Calls `reset_gui_on_disconnect_or_error` on failure to reset GUI state.
-    Outputs: None (modifies GUI state, prints to console, shows messageboxes)
+        1. Retrieves the selected resource name from `resource_var`.
+        2. Calls `connect_to_instrument` from `utils.instrument_control`.
+        3. If connection is successful:
+           - Stores the instrument object and model in `app_instance.inst` and `app_instance.instrument_model`.
+           - Stops the connect button blinking.
+           - Enables disconnect, apply, and scan buttons.
+           - Queries and updates the preset tree.
+           - Prints success message.
+        4. If connection fails, resets GUI elements and prints error.
+    Outputs: None (modifies GUI state and prints to console)
     """
-    selected_resource = app_instance.resource_var.get()
-    if selected_resource == "No resources found" or "Error listing resources" in selected_resource:
-        messagebox.showwarning("Connection Warning", "Please select a valid VISA resource.")
+    resource_name = app_instance.resource_var.get()
+    if resource_name == "No Resources Found":
+        messagebox.showwarning("No Instrument Selected", "Please select a VISA resource to connect.")
         return
 
-    if app_instance.inst:
-        try:
-            control_disconnect_instrument(app_instance.inst)
-            app_instance.inst = None
-            print("🔌 Closed existing connection.")
-        except Exception as e:
-            print(f"Error closing existing connection: {e}")
+    app_instance.connect_button.config(state=tk.DISABLED)
+    app_instance._stop_connect_button_blink() # Stop blinking immediately on click
 
-    try:
-        app_instance.inst, app_instance.instrument_model = connect_to_instrument(app_instance.rm, selected_resource)
-        if app_instance.inst:
-            app_instance.title(f"RF Spectrum Analyzer Controller - {app_instance.instrument_model} - {os.path.basename(sys.argv[0])}")
-
-            ref_level = float(app_instance.desired_ref_level_var.get())
-            high_sensitivity_on = app_instance.high_sensitivity_var.get()
-            preamp_on = app_instance.desired_preamp_var.get()
-            rbw_config = int(float(app_instance.desired_scan_rbw_segmentation_var.get()))
-            vbw_config = int(float(app_instance.desired_vbw_display_var.get()))
-
-            if initialize_instrument(app_instance.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, app_instance.instrument_model):
-                print("Desired settings successfully applied to the instrument.")
-                query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ)
-                
-                app_instance.start_scan_button.config(state=tk.NORMAL)
-                app_instance.stop_scan_button.config(state=tk.DISABLED)
-                app_instance.pause_resume_button.config(state=tk.DISABLED)
-                app_instance.disconnect_button.config(state=tk.NORMAL)
-                app_instance.apply_button.config(state=tk.NORMAL)
-                app_instance._stop_connect_button_blink()
-
-                if app_instance.instrument_model != "N9340B":
-                    preset_files = control_query_device_presets(app_instance.inst)
-                    update_preset_tree(app_instance, preset_files)
-                else:
-                    print("ℹ️ Skipping device preset query for N9340B model.")
-                    update_preset_tree(app_instance, [])
-                    app_instance.preset_tree.insert("", "end", values=("Presets not supported for N9340B.",), tags=("disabled",))
-                    app_instance.load_preset_button.config(state=tk.DISABLED)
-
-            else:
-                messagebox.showerror("Initialization Failed", "Instrument initialization with desired settings failed.")
-                control_disconnect_instrument(app_instance.inst)
-                app_instance.inst = None
-                reset_gui_on_disconnect_or_error(app_instance)
-        else:
-            messagebox.showerror("Connection Failed", "Could not connect to instrument. Check console for details.")
-            reset_gui_on_disconnect_or_error(app_instance)
-
-    except ValueError as e:
-        messagebox.showerror("Input Error", f"Invalid numeric value for instrument settings: {e}. Please check Reference Level, RBW, and Max Hold Time.")
-        reset_gui_on_disconnect_or_error(app_instance)
-    except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-        print(f"❌ An unexpected error occurred during connection: {e}")
-        reset_gui_on_disconnect_or_error(app_instance)
+    inst, model = connect_to_instrument(app_instance.rm, resource_name)
+    if inst:
+        app_instance.inst = inst
+        app_instance.instrument_model = model
+        app_instance.disconnect_button.config(state=tk.NORMAL)
+        app_instance.apply_button.config(state=tk.NORMAL)
+        app_instance.start_scan_button.config(state=tk.NORMAL)
+        
+        # Query and update preset tree after successful connection
+        update_preset_tree(app_instance)
+        
+        print(f"✅ Successfully connected to {resource_name} (Model: {model}).")
+        # Do NOT initialize instrument settings here.
+        # Settings will be applied when the "Apply Settings to Device" button is pressed.
+    else:
+        app_instance.inst = None
+        app_instance.instrument_model = None
+        messagebox.showerror("Connection Failed", f"Could not connect to {resource_name}.")
+        print(f"❌ Failed to connect to {resource_name}.")
+        reset_gui_on_disconnect_or_error(app_instance) # Reset GUI on failure
 
 def disconnect_instrument_logic(app_instance):
     """
-    Disconnects from the currently connected VISA instrument.
+    Handles the disconnection process from the currently connected instrument.
 
     Inputs:
         app_instance (App): The main application instance, providing access to
-                            the instrument object (`inst`) and GUI elements.
+                            `inst` and various button states.
     Process:
-        1. Calls `control_disconnect_instrument` to close the VISA connection.
-        2. Resets `app_instance.inst` and `app_instance.instrument_model` to None.
-        3. Prints a disconnection message.
-        4. Calls `reset_gui_on_disconnect_or_error` to revert GUI state.
-        5. Updates the window title.
-        6. If resources are available, starts the connect button blinking.
-        7. Shows an error messagebox if disconnection fails.
-    Outputs: None (modifies GUI state, prints to console, shows messageboxes)
+        1. Calls `control_disconnect_instrument` from `utils.instrument_control`.
+        2. If disconnection is successful:
+           - Resets `app_instance.inst` and `app_instance.instrument_model` to None.
+           - Resets GUI elements to reflect disconnected state.
+           - Starts connect button blinking.
+           - Prints success message.
+        3. If disconnection fails, prints error.
+    Outputs: None (modifies GUI state and prints to console)
     """
-    if control_disconnect_instrument(app_instance.inst):
-        app_instance.inst = None
-        app_instance.instrument_model = None
-        print("Disconnected.")
-        reset_gui_on_disconnect_or_error(app_instance)
-        app_instance.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
-        if app_instance.instrument_list and app_instance.resource_var.get() != "No resources found":
-            app_instance._start_connect_button_blink()
+    if app_instance.inst:
+        if control_disconnect_instrument(app_instance.inst):
+            app_instance.inst = None
+            app_instance.instrument_model = None
+            print("✅ Instrument disconnected successfully.")
+            reset_gui_on_disconnect_or_error(app_instance)
+        else:
+            messagebox.showerror("Disconnect Error", "Failed to disconnect from instrument.")
+            print("❌ Failed to disconnect instrument.")
     else:
-        messagebox.showerror("Disconnect Error", "Failed to disconnect instrument.")
+        print("No instrument to disconnect.")
+        reset_gui_on_disconnect_or_error(app_instance) # Ensure GUI is reset even if inst is already None
 
 def apply_settings_to_device_logic(app_instance):
     """
@@ -180,136 +168,132 @@ def apply_settings_to_device_logic(app_instance):
 
     Inputs:
         app_instance (App): The main application instance, providing access to
-                            the instrument object (`inst`) and desired settings.
+                            `inst`, `desired_ref_level_var`, `high_sensitivity_var`,
+                            `desired_preamp_var`, `desired_scan_rbw_segmentation_var`,
+                            `desired_vbw_display_var`, `instrument_model`.
     Process:
-        1. Checks if an instrument is connected. If not, shows a warning.
-        2. Retrieves desired settings (reference level, preamp, RBW, VBW) from GUI variables.
-        3. Calls `initialize_instrument` to send these settings to the device.
-        4. Prints success or error messages to the console.
-        5. Calls `reset_setting_colors_logic` to update GUI visual feedback.
-        6. Handles `ValueError` for invalid numeric inputs and general `Exception`.
-    Outputs: None (modifies instrument state, prints to console, shows messageboxes)
+        1. Checks if an instrument is connected.
+        2. Retrieves current settings from Tkinter variables.
+        3. Calls `initialize_instrument` from `utils.instrument_control` to apply settings.
+        4. Queries and prints current instrument settings for verification.
+        5. Prints status messages.
+        6. Resets setting colors to default (indicating settings are applied).
+    Outputs: None (modifies instrument state and prints to console)
     """
     if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first to apply settings.")
+        messagebox.showwarning("Not Connected", "Please connect to an instrument before applying settings.")
         return
 
-    try:
-        ref_level = float(app_instance.desired_ref_level_var.get())
-        high_sensitivity_on = app_instance.high_sensitivity_var.get()
-        preamp_on = app_instance.desired_preamp_var.get()
-        rbw_config = int(float(app_instance.desired_scan_rbw_segmentation_var.get()))
-        vbw_config = int(float(app_instance.desired_vbw_display_var.get()))
+    ref_level = float(app_instance.desired_ref_level_var.get())
+    high_sensitivity_on = app_instance.high_sensitivity_var.get()
+    preamp_on = app_instance.desired_preamp_var.get()
+    rbw_config = int(app_instance.desired_scan_rbw_segmentation_var.get())
+    vbw_config = int(float(app_instance.desired_vbw_display_var.get())) # Ensure VBW is int
 
-        if initialize_instrument(app_instance.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, app_instance.instrument_model):
-            print("Desired settings successfully applied to the instrument.")
-            app_instance.reset_setting_colors()
-        else:
-            messagebox.showerror("Apply Failed", "Failed to apply settings to the instrument. Check console for details.")
-    except ValueError as e:
-        messagebox.showerror("Input Error", f"Invalid numeric value for instrument settings: {e}. Please check Reference Level, RBW, and Max Hold Time.")
-    except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred while applying settings: {e}")
-        print(f"❌ Error applying settings: {e}")
+    print("\nApplying settings to instrument...")
+    if initialize_instrument(app_instance.inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, app_instance.instrument_model):
+        print("✅ Desired settings successfully applied to the instrument.")
+        query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ)
+        app_instance.reset_setting_colors() # Reset colors after successful application
+    else:
+        messagebox.showerror("Apply Settings Failed", "Failed to apply settings to the instrument. Check console for details.")
+        print("❌ Failed to apply settings to the instrument.")
 
-def update_preset_tree(app_instance, preset_files):
+def update_preset_tree(app_instance):
     """
-    Updates the Treeview widget that displays available device preset files.
+    Updates the Treeview widget with preset files queried from the instrument.
 
     Inputs:
-        app_instance (App): The main application instance, providing access to `preset_tree`.
-        preset_files (list): A list of strings, where each string is the name of a preset file.
+        app_instance (App): The main application instance.
     Process:
-        1. Clears all existing items from the `preset_tree`.
-        2. If `preset_files` is not empty, inserts each preset name as a new item.
-           - Adds a "Mon" tag for blue foreground if "MON" is in the preset name.
-        3. If `preset_files` is empty, inserts a "No .STA preset files found." message.
-        4. Disables the "Load Selected Preset" button.
-    Outputs: None (modifies GUI treeview)
+        1. Clears existing items in `preset_tree`.
+        2. Calls `control_query_device_presets` to get available presets.
+        3. Inserts each preset into the `preset_tree`.
+        4. Handles cases where no presets are found.
+    Outputs: None (modifies GUI state and prints to console)
     """
     for item in app_instance.preset_tree.get_children():
         app_instance.preset_tree.delete(item)
-    if preset_files:
-        for preset_name in sorted(preset_files):
-            tags = ()
-            if "MON" in preset_name.upper():
-                tags = ("Mon",)
-            app_instance.preset_tree.insert("", "end", values=(preset_name,), tags=tags)
+
+    if app_instance.inst:
+        presets = control_query_device_presets(app_instance.inst)
+        if presets:
+            for preset in presets:
+                app_instance.preset_tree.insert("", "end", values=(preset,), tags=("Mon",))
+        else:
+            app_instance.preset_tree.insert("", "end", values=("No Presets Found",), tags=("NoPresets",))
+            app_instance.preset_tree.tag_configure("NoPresets", foreground="red")
+        app_instance.load_preset_button.config(state=tk.DISABLED) # Disable until a preset is selected
     else:
-        app_instance.preset_tree.insert("", "end", values=("No .STA preset files found.",))
-    app_instance.load_preset_button.config(state=tk.DISABLED)
+        app_instance.preset_tree.insert("", "end", values=("Connect to instrument to view presets",), tags=("NoConnection",))
+        app_instance.preset_tree.tag_configure("NoConnection", foreground="gray")
+        app_instance.load_preset_button.config(state=tk.DISABLED)
 
 def on_preset_select(app_instance, event):
     """
-    Event handler for when a preset file is selected in the preset treeview.
-    Enables the "Load Selected Preset" button if a valid preset is selected and instrument is connected.
+    Event handler for preset treeview selection. Enables the load preset button.
 
     Inputs:
-        app_instance (App): The main application instance, providing access to `preset_tree`,
-                            `inst`, `instrument_model`, and `load_preset_button`.
-        event (tk.Event): The Tkinter event object (not directly used, but part of binding).
+        app_instance (App): The main application instance.
+        event: The Tkinter event object.
     Process:
-        1. Retrieves the currently selected item(s) from the `preset_tree`.
-        2. If a valid item is selected and an instrument is connected (and not N9340B model),
-           enables the `load_preset_button`.
-        3. Otherwise, disables the `load_preset_button`.
-    Outputs: None (modifies GUI button state)
+        1. Checks if an item is selected in the `preset_tree`.
+        2. If a valid preset is selected and an instrument is connected, enables `load_preset_button`.
+        3. Handles specific conditions for the N9340B model (which might not support presets in the same way).
+    Outputs: None (modifies GUI state)
     """
-    selected_items = app_instance.preset_tree.selection()
-    if selected_items and app_instance.inst and app_instance.instrument_model != "N9340B":
-        app_instance.load_preset_button.config(state=tk.NORMAL)
+    selected_item = app_instance.preset_tree.selection()
+    if selected_item:
+        item_text = app_instance.preset_tree.item(selected_item, "values")[0]
+        if item_text != "No Presets Found" and item_text != "Connect to instrument to view presets" and app_instance.inst:
+            # Disable for N9340B as it doesn't support presets in this manner
+            if app_instance.instrument_model == "N9340B":
+                app_instance.load_preset_button.config(state=tk.DISABLED)
+                debug_print("Load Preset button disabled for N9340B.")
+            else:
+                app_instance.load_preset_button.config(state=tk.NORMAL)
+                debug_print(f"Preset '{item_text}' selected. Load button enabled.")
+        else:
+            app_instance.load_preset_button.config(state=tk.DISABLED)
+            debug_print("Load Preset button disabled (no valid selection or no instrument).")
     else:
         app_instance.load_preset_button.config(state=tk.DISABLED)
+        debug_print("Load Preset button disabled (no selection).")
 
 def load_selected_preset_logic(app_instance):
     """
-    Loads the currently selected preset file onto the connected instrument.
+    Loads the selected preset file onto the instrument.
 
     Inputs:
-        app_instance (App): The main application instance, providing access to
-                            `inst`, `instrument_model`, `preset_tree`, and messageboxes.
+        app_instance (App): The main application instance.
     Process:
-        1. Checks if an instrument is connected. If not, shows a warning.
-        2. Checks if the instrument model is N9340B, which does not support presets.
-        3. Retrieves the name of the selected preset from the `preset_tree`.
-        4. Calls `control_load_selected_preset` to send the load command to the instrument.
-        5. Prints success or error messages to the console and shows messageboxes.
-    Outputs: None (modifies instrument state, prints to console, shows messageboxes)
+        1. Retrieves the selected preset name from the `preset_tree`.
+        2. Calls `control_load_selected_preset` from `utils.instrument_control`.
+        3. Prints status messages.
+    Outputs: None (modifies instrument state and prints to console)
     """
-    if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
-        return
-    
-    if app_instance.instrument_model == "N9340B":
-        messagebox.showwarning("Preset Not Supported", "Loading presets is not supported for the N9340B model.")
-        print("🚫 Attempted to load preset on N9340B, which is not supported.")
-        return
-
-    selected_items = app_instance.preset_tree.selection()
-    if not selected_items:
-        messagebox.showwarning("No Preset Selected", "Please select a preset file from the list to load.")
-        return
-
-    selected_preset_name = app_instance.preset_tree.item(selected_items[0], 'values')[0]
-    
-    if control_load_selected_preset(app_instance.inst, selected_preset_name, MHZ_TO_HZ):
-        print(f"Preset '{selected_preset_name}' loaded successfully via instrument_control.")
+    selected_item = app_instance.preset_tree.selection()
+    if selected_item:
+        selected_preset_name = app_instance.preset_tree.item(selected_item, "values")[0]
+        if app_instance.inst:
+            control_load_selected_preset(app_instance.inst, selected_preset_name, MHZ_TO_HZ)
+        else:
+            messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
     else:
-        messagebox.showerror("Load Preset Failed", f"Failed to load preset: {selected_preset_name}. Check console for details.")
+        messagebox.showwarning("No Preset Selected", "Please select a preset to load from the list.")
 
 def reset_gui_on_disconnect_or_error(app_instance):
     """
-    Resets various GUI elements to their disconnected/initial state after
-    an instrument disconnect or an error.
+    Resets the GUI elements to their default disconnected state.
 
     Inputs:
-        app_instance (App): The main application instance, providing access to
-                            various buttons, the preset tree, and connection state.
+        app_instance (App): The main application instance.
     Process:
-        1. Disables scan, stop, pause/resume, disconnect, apply, and load preset buttons.
-        2. Clears and resets the preset tree to show "No instrument connected."
-        3. Enables the connect button.
-        4. Starts the connect button blinking if resources are available.
+        1. Disables scan, disconnect, apply, and load preset buttons.
+        2. Enables refresh and connect buttons.
+        3. Clears the preset tree.
+        4. Starts the connect button blinking animation.
+        5. Resets the instrument model.
     Outputs: None (modifies GUI state)
     """
     app_instance.start_scan_button.config(state=tk.DISABLED)
@@ -318,24 +302,26 @@ def reset_gui_on_disconnect_or_error(app_instance):
     app_instance.disconnect_button.config(state=tk.DISABLED)
     app_instance.apply_button.config(state=tk.DISABLED)
     app_instance.load_preset_button.config(state=tk.DISABLED)
+    app_instance.connect_button.config(state=tk.NORMAL)
+    app_instance.refresh_button.config(state=tk.NORMAL)
+    
+    # Clear preset tree
     for item in app_instance.preset_tree.get_children():
         app_instance.preset_tree.delete(item)
-    app_instance.preset_tree.insert("", "end", values=("No instrument connected.",))
-    app_instance.connect_button.config(state=tk.NORMAL)
-    if app_instance.instrument_list and app_instance.resource_var.get() != "No resources found":
-        app_instance._start_connect_button_blink()
-    else:
-        app_instance._stop_connect_button_blink()
+    app_instance.preset_tree.insert("", "end", values=("Connect to instrument to view presets",), tags=("NoConnection",))
 
-def set_focus_frequency_logic(app_instance, center_frequency_hz, device_name, span_hz):
+    app_instance._start_connect_button_blink()
+    app_instance.instrument_model = None # Clear instrument model on disconnect
+
+def set_focus_frequency_logic(app_instance, center_frequency_hz, span_hz, device_name="N/A"):
     """
-    Sets the instrument's center frequency and span to focus on a specific device.
+    Sets the instrument's center frequency and span.
 
     Inputs:
-        app_instance (App): The main application instance, providing access to the instrument object (`inst`).
+        app_instance (App): The main application instance.
         center_frequency_hz (float): The desired center frequency in Hz.
-        device_name (str): The name of the device being focused on (for logging/display).
         span_hz (float): The desired span (width) in Hz around the center frequency.
+        device_name (str): The name of the device/marker being focused on (for logging).
     Process:
         1. Checks if an instrument is connected. If not, prints a warning and returns False.
         2. Sends the `[:SENSe]:FREQuency:CENTer <freq>` command to the instrument.
@@ -349,20 +335,84 @@ def set_focus_frequency_logic(app_instance, center_frequency_hz, device_name, sp
         print("🚫 Instrument not connected. Cannot set focus frequency.")
         return False
     
+    debug_print(f"DEBUG (inst_logic): Received center_frequency_hz: {center_frequency_hz} (type: {type(center_frequency_hz)})")
+    debug_print(f"DEBUG (inst_logic): Received span_hz: {span_hz} (type: {type(span_hz)})")
+    debug_print(f"DEBUG (inst_logic): Received device_name: {device_name} (type: {type(device_name)})")
+
     try:
         # Set center frequency
         app_instance.inst.write(f":SENSe:FREQuency:CENTer {center_frequency_hz}")
-        print(f"Sent: :SENSe:FREQuency:CENTer {center_frequency_hz} Hz")
+        debug_print(f"Sent: :SENSe:FREQuency:CENTer {center_frequency_hz} Hz")
 
         # Set span
-        app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}")
-        print(f"Sent: :SENSe:FREQuency:SPAN {span_hz} Hz")
+        # Ensure span_hz is a float before formatting
+        span_hz_float = float(span_hz)
+        app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz_float}")
+        debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz_float} Hz")
 
-        print(f"✅ Instrument focused on '{device_name}' at {center_frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_hz} Hz.")
+        print(f"✅ Instrument focused on '{device_name}' at {center_frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_hz_float} Hz.")
         return True
+    except ValueError as e:
+        error_msg = f"❌ Error converting span_hz to float in set_focus_frequency_logic: {e}. Received value: '{span_hz}' (type: {type(span_hz)})"
+        print(error_msg)
+        messagebox.showerror("Type Conversion Error", error_msg)
+        return False
     except pyvisa.errors.VisaIOError as e:
-        print(f"❌ VISA error while setting focus frequency for '{device_name}': {e}")
+        print(f"❌ VISA error while setting focus frequency: {e}")
+        messagebox.showerror("VISA Error", f"Failed to set instrument focus: {e}")
         return False
     except Exception as e:
-        print(f"❌ An unexpected error occurred while setting focus frequency for '{device_name}': {e}")
+        print(f"❌ An unexpected error occurred while setting focus frequency: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred while setting instrument focus: {e}")
+        return False
+
+def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_name="Marker"):
+    """
+    Sets a marker on the instrument at the specified frequency and configures trace mode.
+
+    Inputs:
+        app_instance (App): The main application instance.
+        marker_frequency_hz (float): The frequency in Hz where the marker should be placed.
+        marker_name (str, optional): A descriptive name for the marker. Defaults to "Marker".
+    Process:
+        1. Checks if an instrument is connected.
+        2. Sends SCPI commands to activate Marker 1, set its frequency, and enable marker peak search.
+        3. Sets the trace type to Normal (or other desired mode).
+        4. Prints status messages.
+        5. Handles potential exceptions during VISA communication.
+    Outputs:
+        bool: True if commands were sent successfully, False otherwise.
+    """
+    if not app_instance.inst:
+        print("🚫 Instrument not connected. Cannot set marker or trace modes.")
+        messagebox.showwarning("Not Connected", "Please connect to an instrument to set markers.")
+        return False
+
+    try:
+        # Activate Marker 1
+        if not app_instance.inst.write(":CALCulate:MARKer1:STATe ON"): return False
+        debug_print("Sent: :CALCulate:MARKer1:STATe ON")
+
+        # Set Marker 1 frequency
+        if not app_instance.inst.write(f":CALCulate:MARKer1:X {marker_frequency_hz}"): return False
+        debug_print(f"Sent: :CALCulate:MARKer1:X {marker_frequency_hz} Hz")
+
+        # Enable Marker Peak Search (optional, but common for markers)
+        if not app_instance.inst.write(":CALCulate:MARKer1:MAXimum:PEAK"): return False
+        debug_print("Sent: :CALCulate:MARKer1:MAXimum:PEAK")
+
+        # Set trace type to Normal (or other desired mode like Clear Write)
+        # This might be needed if the instrument was in Max Hold or Min Hold
+        if not app_instance.inst.write(":DISPlay:WINDow:TRACe:TYPE NORM"): return False
+        debug_print("Sent: :DISPlay:WINDow:TRACe:TYPE NORM")
+
+        print(f"✅ Marker '{marker_name}' set at {marker_frequency_hz / MHZ_TO_HZ:.3f} MHz. Trace mode set to Normal.")
+        return True
+    except pyvisa.errors.VisaIOError as e:
+        print(f"❌ VISA error while setting marker/trace modes: {e}")
+        messagebox.showerror("VISA Error", f"Failed to set instrument marker/trace modes: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ An unexpected error occurred while setting marker/trace modes: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred while setting instrument marker/trace modes: {e}")
         return False

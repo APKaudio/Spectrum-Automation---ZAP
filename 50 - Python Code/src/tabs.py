@@ -4,29 +4,13 @@ from tkinter import messagebox, scrolledtext, filedialog, ttk
 import os
 import csv
 import xml.etree.ElementTree as ET
-import subprocess # For BeautifulSoup installation check if kept here
 import sys
-
-# BeautifulSoup Installation Check (can be moved to a separate install_deps.py if preferred)
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    print("BeautifulSoup4 not found. Attempting to install...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "beautifulsoup4"])
-        from bs4 import BeautifulSoup
-        print("BeautifulSoup4 installed successfully.")
-    except subprocess.CalledProcessError as e:
-        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\\nPlease install it manually by running: pip install beautifulsoup4")
-        sys.exit(1)
-    except Exception as e:
-        messagebox.showerror("Installation Error", f"An unexpected error occurred during BeautifulSoup4 installation: {e}")
-        sys.exit(1)
 
 # Import the new report converter utility functions
 from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw
 # Import instrument_logic for setting focus frequency
-from src.instrument_logic import set_focus_frequency_logic
+from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic # Ensure both are imported
+from utils.instrument_control import debug_print, write_safe # Import debug_print and write_safe
 
 class MarkersDisplayTab(tk.Frame):
     """
@@ -87,12 +71,25 @@ class MarkersDisplayTab(tk.Frame):
         main_split_frame.grid_rowconfigure(0, weight=1)
 
         # Left Half: Treeview for Zones and Groups
-        tree_frame = tk.LabelFrame(main_split_frame, text="Zones & Groups", bg="black", fg="white", padx=5, pady=5)
+        tree_frame = tk.LabelFrame(main_split_frame, text="Zones & Groups", bg="#333333", fg="white", padx=5, pady=5) # Darker grey
         tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree") # Only show tree, not headings
+        # Configure a specific style for this Treeview to apply the darker grey
+        style = ttk.Style()
+        style.configure("Markers.Treeview", 
+                        background="#333333", # Darker grey
+                        foreground="white", 
+                        fieldbackground="#333333", # Darker grey
+                        bordercolor="black",
+                        lightcolor="#333333", # Darker grey
+                        darkcolor="#333333") # Darker grey
+        style.map("Markers.Treeview", 
+                  background=[("selected", "#F4902C")], # New highlight color
+                  foreground=[("selected", "white")])
+
+        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree", style="Markers.Treeview") # Apply the new style
         self.zone_group_tree.pack(fill=tk.BOTH, expand=True)
 
         tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.zone_group_tree.yview)
@@ -105,11 +102,11 @@ class MarkersDisplayTab(tk.Frame):
         self._populate_zone_group_tree()
 
         # Right Half: Buttons for Devices
-        buttons_frame = tk.LabelFrame(main_split_frame, text="Devices", bg="black", fg="white", padx=5, pady=5)
+        buttons_frame = tk.LabelFrame(main_split_frame, text="Devices", bg="#333333", fg="white", padx=5, pady=5) # Darker grey
         buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
         
         # Use a canvas with a scrollbar for buttons if there are many
-        self.buttons_canvas = tk.Canvas(buttons_frame, bg="black", highlightbackground="black") # Store canvas as instance variable
+        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#333333", highlightbackground="#333333") # Darker grey
         self.buttons_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         buttons_scrollbar = ttk.Scrollbar(buttons_frame, orient="vertical", command=self.buttons_canvas.yview)
@@ -118,7 +115,7 @@ class MarkersDisplayTab(tk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="black")
+        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") # Darker grey
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
@@ -168,14 +165,14 @@ class MarkersDisplayTab(tk.Frame):
 
         for zone_name in sorted(zones_data.keys()):
             # Insert zone node. Value tuple: (node_type, zone_name, group_name_if_group)
-            # For a zone node, group_name_if_group is None
+            # For a zone node, group_name_if_of_group is None
             zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True, values=("zone", zone_name, None))
             
-            # Determine if this zone has any named groups
+            # Determine if the current zone has any named groups.
+            # If so, insert them as children.
             has_named_groups = any(g for g in zones_data[zone_name].keys() if g)
 
             if has_named_groups:
-                # If there are named groups, insert them as children
                 for group_name in sorted(zones_data[zone_name].keys()):
                     if group_name: # Only insert if group name is not empty
                         group_id = self.zone_group_tree.insert(zone_id, "end", text=group_name, values=("group", zone_name, group_name))
@@ -258,7 +255,7 @@ class MarkersDisplayTab(tk.Frame):
             4. If `devices_to_display` is empty, displays a message.
             5. Iterates through each `row_data` in `devices_to_display`.
             6. Extracts "DEVICE", "NAME", and "FREQ" from the `row_data`.
-            7. Constructs the button text.
+            7. Constructs the button text (NAME, then DEVICE, then FREQUENCY).
             8. Creates a `tk.Button` for each device, using `grid` to place it.
             9. Increments `col_num` and `row_num` to move to the next grid cell.
             10. Updates the scroll region of the `buttons_canvas` to ensure all buttons are scrollable.
@@ -280,7 +277,7 @@ class MarkersDisplayTab(tk.Frame):
         if not devices_to_display:
             # Display a message if no devices are to be shown
             no_devices_label = tk.Label(self.inner_buttons_frame, text="Select a Zone or Group to view devices.",
-                                        bg="black", fg="grey", font=('Arial', 10, 'italic'), wraplength=250)
+                                        bg="#333333", fg="grey", font=('Arial', 10, 'italic'), wraplength=250) # Darker grey
             no_devices_label.grid(row=0, column=0, columnspan=num_columns, pady=20, sticky="nsew")
             # Access the main App instance to call _update_console_line
             # self.master is the notebook, self.master.master is the main_frame, self.master.master.master is the App instance
@@ -291,12 +288,13 @@ class MarkersDisplayTab(tk.Frame):
                 name = row_data.get("NAME", "N/A")
                 freq = row_data.get("FREQ", "N/A")
 
-                button_text = f"{device}\n{name}\n{freq}"
+                # Change button text order to NAME, then DEVICE, then FREQUENCY
+                button_text = f"{name}\n{device}\n{freq}"
                 
                 # Bind the button click to the new _on_device_button_click method
                 btn = tk.Button(self.inner_buttons_frame, text=button_text, 
-                                font=('Arial', 9), bg='darkblue', fg='white',
-                                activebackground='blue', activeforeground='white',
+                                font=('Arial', 9), bg='#F4902C', fg='white', # New RGB color
+                                activebackground='#CC7B26', activeforeground='white', # Slightly darker for active
                                 relief=tk.RAISED, bd=2, padx=5, pady=3, wraplength=150,
                                 command=lambda f=freq, n=name: self._on_device_button_click(f, n))
                 
@@ -318,19 +316,24 @@ class MarkersDisplayTab(tk.Frame):
         Handles the event when a device button is clicked. It pauses any ongoing scan
         and then attempts to set the instrument's center frequency and span based on
         the clicked device's frequency and the default focus width.
+        Additionally, it triggers a plot with the selected marker if scan data is available.
 
         Inputs:
             freq (str/float): The frequency of the clicked device (from CSV).
             name (str): The name of the clicked device (from CSV).
         Process:
             1. Checks if an `app_instance` is available. If not, prints an error.
-            2. If a scan is currently running (`self.app_instance.scanning` is True),
-               it calls `self.app_instance.toggle_pause_scan()` to pause it.
+            2. If a scan is currently running (`self.app_instance.scanning` is True):
+               - Sets `self.app_instance.paused = True` to ensure it's paused.
+               - Updates the "Pause/Resume Scan" button text and color.
+               - Starts the pause button blinking.
+               - Prints a message indicating the scan has been paused.
             3. Retrieves the `default_focus_width` from `self.app_instance.default_focus_width_var`.
-            4. Converts the `freq` to a float (assuming MHz from CSV, convert to Hz).
+            4. Converts the `freq` to a float (assuming kHz from CSV, convert to Hz).
             5. Calls `set_focus_frequency_logic` from `src.instrument_logic` to send
                commands to the connected instrument.
-            6. Prints success or failure messages to the console.
+            6. **Sets the RBW to auto.**
+            7. Prints success or failure messages to the console.
         Outputs: None (modifies instrument state, updates GUI console)
         """
         if not self.app_instance:
@@ -338,27 +341,41 @@ class MarkersDisplayTab(tk.Frame):
             return
 
         if self.app_instance.inst:
-            # Pause any ongoing scan
+            # Pause any ongoing scan if it's running
             if self.app_instance.scanning:
-                self.app_instance.toggle_pause_scan()
-                print("Scan paused to set focus frequency.")
+                # Explicitly set paused to True and update button state
+                self.app_instance.paused = True
+                self.app_instance.pause_resume_button.config(text="Resume Scan", bg="blue")
+                self.app_instance._start_pause_button_blink() # Start blinking
+                print("Scan paused by device button click.")
             
             try:
-                center_frequency_hz = float(freq) * 1_000_000 # Assuming freq from CSV is in MHz
+                # Convert freq from kHz (as processed by report_converter_utils) to Hz for instrument
+                center_frequency_hz = float(freq) * 1000 # Convert kHz to Hz
                 span_hz = self.app_instance.default_focus_width_var.get()
 
                 print(f"Attempting to set instrument focus for '{name}' at {center_frequency_hz / 1_000_000:.3f} MHz with span {span_hz} Hz...")
                 
+                # The set_focus_frequency_logic expects center_frequency_hz, span_hz, and device_name
                 success = set_focus_frequency_logic(
                     self.app_instance,
                     center_frequency_hz,
-                    name,
-                    span_hz
+                    span_hz, # Pass span_hz as the second argument
+                    name     # Pass name as the third argument (device_name)
                 )
                 if success:
                     print(f"✅ Instrument focused on '{name}' at {center_frequency_hz / 1_000_000:.3f} MHz with span {span_hz} Hz.")
+                    # Set RBW to auto
+                    if write_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution:AUTO ON"):
+                        print("✅ Instrument RBW set to AUTO.")
+                    else:
+                        print("❌ Failed to set instrument RBW to AUTO.")
+
+                    # Also set a marker on the instrument
+                    set_marker_and_trace_modes_logic(self.app_instance, center_frequency_hz, name)
                 else:
                     print(f"❌ Failed to set instrument focus for '{name}'. See console for details.")
+
             except ValueError:
                 messagebox.showerror("Input Error", f"Invalid frequency value for device '{name}': {freq}")
                 print(f"❌ Invalid frequency value for device '{name}': {freq}")
@@ -497,7 +514,7 @@ class ReportConverterTab(tk.Frame):
             9. If conversion is successful and rows are extracted:
                - Writes the extracted `headers` and `rows` to the `output_csv_file`.
                - Shows a success messagebox.
-               - Calls `self.master.master.master.add_markers_tab(headers, rows)` to add/update the Markers Display tab.
+               - Calls `self.app_instance.add_markers_tab(headers, rows)` to add/update the Markers Display tab.
             10. If no data is extracted, shows a warning.
             11. Includes comprehensive error handling for `FileNotFoundError`, `ET.ParseError`, and general `Exception`.
             12. If an error occurs, prints an error message to the console and shows an error messagebox.
@@ -515,12 +532,13 @@ class ReportConverterTab(tk.Frame):
         base_name, extension = os.path.splitext(file_name)
         
         # Get the output directory from the main App instance's output_folder_var
-        # self.master is the notebook, self.master.master is the main_frame, self.master.master.master is the App instance
         output_dir = self.app_instance.output_folder_var.get()
         if not os.path.exists(output_dir):
             os.makedirs(output_dir) # Ensure the output directory exists
         
+        # Always save to MARKERS.CSV in the specified output directory
         output_csv_file = os.path.join(output_dir, "MARKERS.CSV")
+        print(f"DEBUG (tabs): Attempting to save MARKERS.CSV to: {output_csv_file}") # Debug print
 
         headers = []
         rows = []
@@ -529,9 +547,10 @@ class ReportConverterTab(tk.Frame):
 
         try:
             if extension.lower() == '.html':
+                # Read HTML content from file and pass to converter
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    html_report_content = f.read()
-                headers, rows = convert_html_report_to_csv(html_report_content)
+                    html_content = f.read()
+                headers, rows = convert_html_report_to_csv(html_content)
                 conversion_successful = True
             
             elif extension.lower() == '.shw':
@@ -551,6 +570,7 @@ class ReportConverterTab(tk.Frame):
                     messagebox.showinfo("Success", f"Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
                     
                     # Call the method on the main App instance to add the new tab
+                    # This call is correct based on the App class structure.
                     self.app_instance.add_markers_tab(headers, rows)
                 else:
                     messagebox.showwarning("No Data Extracted", f"No relevant data could be extracted from '{file_name}'. CSV file was not created.")
@@ -567,3 +587,4 @@ class ReportConverterTab(tk.Frame):
         
         if error_message:
             print(f"❌ Conversion failed for {file_name}: {error_message}")
+
