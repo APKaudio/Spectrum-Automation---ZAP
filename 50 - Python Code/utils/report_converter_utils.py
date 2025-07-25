@@ -3,8 +3,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox
+# messagebox is no longer needed here as the GUI will handle messages
+# from tkinter import messagebox 
 
 # --- BeautifulSoup Installation Check ---
 # This block checks if BeautifulSoup4 is installed. If not, it attempts to install it.
@@ -19,15 +19,18 @@ except ImportError:
         from bs4 import BeautifulSoup
         print("BeautifulSoup4 installed successfully.")
     except subprocess.CalledProcessError as e:
-        # If installation fails, show an error message and exit
-        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\nPlease install it manually by running: pip install beautifulsoup4")
+        # If installation fails, we need to exit or ensure the main app handles it.
+        # For a utility file, it's better to raise an error or print a critical message.
+        # Keeping messagebox for critical installation error, but generally avoid in utils.
+        from tkinter import messagebox
+        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\\nPlease install it manually by running: pip install beautifulsoup4")
         sys.exit(1)
     except Exception as e:
-        # Catch any other unexpected errors during installation
+        from tkinter import messagebox
         messagebox.showerror("Installation Error", f"An unexpected error occurred during BeautifulSoup4 installation: {e}")
         sys.exit(1)
 
-# --- HTML to CSV Conversion Function (Adapted from IAS HTML to CSV.py) ---
+
 def convert_html_report_to_csv(html_content):
     """
     Converts the HTML frequency coordination report into a list of dictionaries
@@ -156,14 +159,22 @@ def convert_html_report_to_csv(html_content):
     
     return csv_headers, data_rows
 
-# --- SHW to CSV Conversion Function (Adapted from SHOW to CSV.py) ---
-def generate_csv_from_shw(xml_file_path, csv_file_path):
+def generate_csv_from_shw(xml_file_path):
     """
-    Generates a CSV file from a .shw XML file, extracting frequency entry information.
+    Generates CSV data from a .shw XML file, extracting frequency entry information.
 
     Args:
         xml_file_path (str): The path to the input .shw XML file.
-        csv_file_path (str): The path for the output CSV file.
+
+    Returns:
+        tuple: A tuple containing:
+               - list: A list of strings representing the CSV headers.
+               - list: A list of dictionaries, where each dictionary represents a row
+                       in the CSV and keys are column headers.
+    Raises:
+        FileNotFoundError: If the specified XML file does not exist.
+        ET.ParseError: If there is an error parsing the XML file.
+        Exception: For any other unexpected errors during processing.
     """
     try:
         tree = ET.parse(xml_file_path) # Parse the XML file
@@ -209,95 +220,12 @@ def generate_csv_from_shw(xml_file_path, csv_file_path):
                 "NAME": name,
                 "FREQ": freq
             })
-
-        # Write the extracted data to the specified CSV file
-        with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=headers)
-            writer.writeheader() # Write the header row
-            writer.writerows(csv_data) # Write all data rows
-
-        # Show success message to the user
-        messagebox.showinfo("Success", f"CSV file '{os.path.basename(csv_file_path)}' generated successfully!")
-        
-        # Open the folder containing the generated CSV file
-        if sys.platform == 'win32':
-            os.startfile(os.path.dirname(csv_file_path))
+        return headers, csv_data
 
     except FileNotFoundError:
-        messagebox.showerror("Error", f"The file '{xml_file_path}' was not found.")
+        raise FileNotFoundError(f"The file '{xml_file_path}' was not found.")
     except ET.ParseError as e:
-        messagebox.showerror("Error", f"Error parsing XML file: {e}")
+        raise ET.ParseError(f"Error parsing XML file: {e}")
     except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+        raise Exception(f"An unexpected error occurred during SHW conversion: {e}")
 
-# --- GUI Logic ---
-def select_file():
-    """
-    Opens a file dialog for the user to select an HTML or SHW file,
-    then processes it accordingly.
-    """
-    file_path = filedialog.askopenfilename(
-        title="Select an IAS HTML Report or a SHURE Wireless Workbench Show File",
-        filetypes=[("Report Files", "*.html *.shw"), ("HTML files", "*.html"), ("SHW files", "*.shw")]
-    )
-
-    if not file_path:
-        return # User cancelled file selection
-
-    file_name = os.path.basename(file_path)
-    base_name, extension = os.path.splitext(file_name)
-    # Determine the output CSV file path (same directory, same base name, .csv extension)
-    output_csv_file = os.path.join(os.path.dirname(file_path), f"{base_name}.csv")
-
-    if extension.lower() == '.html':
-        try:
-            # Read HTML content
-            with open(file_path, 'r', encoding='utf-8') as f:
-                html_report_content = f.read()
-            
-            # Convert HTML to CSV data
-            headers, rows = convert_html_report_to_csv(html_report_content)
-
-            # Write data to CSV file
-            with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
-                csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
-                csv_writer.writeheader()
-                csv_writer.writerows(rows)
-            # Show success message
-            messagebox.showinfo("Success", f"Successfully converted HTML report from '{file_name}' to '{os.path.basename(output_csv_file)}'")
-            
-            # Open the folder containing the generated CSV file
-            if sys.platform == 'win32':
-                os.startfile(os.path.dirname(output_csv_file))
-
-        except Exception as e:
-            # Show error message if HTML conversion fails
-            messagebox.showerror("Conversion Error", f"An error occurred during HTML conversion: {e}")
-    
-    elif extension.lower() == '.shw':
-        # Call the SHW conversion function
-        generate_csv_from_shw(file_path, output_csv_file)
-    
-    else:
-        # Warn user about invalid file type
-        messagebox.showwarning("Invalid File Type", "Please select a .html or .shw file.")
-
-# Create the main Tkinter window
-root = tk.Tk()
-root.title("Report Converter")
-root.geometry("400x150") # Set a default size for the window
-root.resizable(False, False) # Make the window not resizable
-
-# Create a label for instructions
-instruction_label = tk.Label(root, text="Click the button below to select a report file (.html or .shw)", wraplength=350)
-instruction_label.pack(pady=10)
-
-# Create a button to open the file dialog
-select_button = tk.Button(root, text="Select Report File", command=select_file,
-                          font=('Arial', 12, 'bold'), bg='#4CAF50', fg='white',
-                          activebackground='#45a049', activeforeground='white',
-                          relief=tk.RAISED, bd=3, padx=10, pady=5)
-select_button.pack(pady=20)
-
-# Run the Tkinter event loop
-root.mainloop()

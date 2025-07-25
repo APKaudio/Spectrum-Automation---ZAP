@@ -31,6 +31,29 @@ import pandas as pd
 import csv
 import pyvisa
 import configparser
+import xml.etree.ElementTree as ET # Added for SHW conversion
+
+# --- BeautifulSoup Installation Check ---
+# This block checks if BeautifulSoup4 is installed. If not, it attempts to install it.
+# This is crucial for parsing HTML files.
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    print("BeautifulSoup4 not found. Attempting to install...")
+    try:
+        # Use subprocess to run pip install for BeautifulSoup4
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "beautifulsoup4"])
+        from bs4 import BeautifulSoup
+        print("BeautifulSoup4 installed successfully.")
+    except subprocess.CalledProcessError as e:
+        # If installation fails, show an error message and exit
+        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\\nPlease install it manually by running: pip install beautifulsoup4")
+        sys.exit(1)
+    except Exception as e:
+        # Catch any other unexpected errors during installation
+        messagebox.showerror("Installation Error", f"An unexpected error occurred during BeautifulSoup4 installation: {e}")
+        sys.exit(1)
+
 
 # Import constants from frequency_bands.py
 try:
@@ -67,6 +90,9 @@ from utils.instrument_control import (
     query_device_presets as control_query_device_presets,
     load_selected_preset as control_load_selected_preset
 )
+
+# Import the new report converter utility functions
+from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw
 
 # Define the config file name, ensuring it's in the same directory as the script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -141,6 +167,194 @@ class TextRedirector(object):
         Required method for file-like objects. Does nothing in this implementation.
         """
         pass
+
+class MarkersDisplayTab(tk.Frame):
+    """
+    A Tkinter Frame that displays extracted frequency markers in a hierarchical treeview
+    and as clickable buttons.
+    """
+    def __init__(self, master=None, headers=None, rows=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(bg="black")
+        self.headers = headers if headers is not None else []
+        self.rows = rows if rows is not None else []
+        self.create_widgets()
+
+    def create_widgets(self):
+        # Main frame for the split layout
+        main_split_frame = tk.Frame(self, bg="black")
+        main_split_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_split_frame.grid_columnconfigure(0, weight=1) # Left half
+        main_split_frame.grid_columnconfigure(1, weight=1) # Right half
+        main_split_frame.grid_rowconfigure(0, weight=1)
+
+        # Left Half: Treeview for Zones and Groups
+        tree_frame = tk.LabelFrame(main_split_frame, text="Zones & Groups", bg="black", fg="white", padx=5, pady=5)
+        tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree") # Only show tree, not headings
+        self.zone_group_tree.pack(fill=tk.BOTH, expand=True)
+
+        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.zone_group_tree.yview)
+        tree_scrollbar.pack(side=tk.RIGHT, fill="y")
+        self.zone_group_tree.configure(yscrollcommand=tree_scrollbar.set)
+
+        self._populate_zone_group_tree()
+
+        # Right Half: Buttons for Devices
+        buttons_frame = tk.LabelFrame(main_split_frame, text="Devices", bg="black", fg="white", padx=5, pady=5)
+        buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
+        
+        # Use a canvas with a scrollbar for buttons if there are many
+        buttons_canvas = tk.Canvas(buttons_frame, bg="black", highlightbackground="black")
+        buttons_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        buttons_scrollbar = ttk.Scrollbar(buttons_frame, orient="vertical", command=buttons_canvas.yview)
+        buttons_scrollbar.pack(side=tk.RIGHT, fill="y")
+
+        buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
+        buttons_canvas.bind('<Configure>', lambda e: buttons_canvas.configure(scrollregion = buttons_canvas.bbox("all")))
+
+        self.inner_buttons_frame = tk.Frame(buttons_canvas, bg="black")
+        buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
+
+        self._populate_device_buttons()
+
+    def _populate_zone_group_tree(self):
+        self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing items
+        
+        zones = {}
+        for row in self.rows:
+            zone_name = row.get("ZONE", "Unknown Zone")
+            group_name = row.get("GROUP", "Unknown Group")
+
+            if zone_name not in zones:
+                zones[zone_name] = {}
+            if group_name not in zones[zone_name]:
+                zones[zone_name][group_name] = []
+            zones[zone_name][group_name].append(row) # Store the full row for later use if needed
+
+        for zone_name in sorted(zones.keys()):
+            zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True)
+            for group_name in sorted(zones[zone_name].keys()):
+                self.zone_group_tree.insert(zone_id, "end", text=group_name)
+
+    def _populate_device_buttons(self):
+        # Clear existing buttons
+        for widget in self.inner_buttons_frame.winfo_children():
+            widget.destroy()
+
+        for row_data in self.rows:
+            device = row_data.get("DEVICE", "N/A")
+            name = row_data.get("NAME", "N/A")
+            freq = row_data.get("FREQ", "N/A")
+
+            button_text = f"{device}\n{name}\n{freq}"
+            btn = tk.Button(self.inner_buttons_frame, text=button_text, 
+                            font=('Arial', 9), bg='darkblue', fg='white',
+                            activebackground='blue', activeforeground='white',
+                            relief=tk.RAISED, bd=2, padx=5, pady=3, wraplength=150)
+            btn.pack(fill=tk.X, pady=2) # Pack buttons vertically
+
+
+class ReportConverterTab(tk.Frame):
+    """
+    A Tkinter Frame that encapsulates the functionality of the Report Converter.
+    This includes converting HTML and SHW files to CSV format.
+    """
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(bg="black")
+        self.create_widgets()
+
+    def create_widgets(self):
+        """
+        Creates the widgets for the Report Converter tab.
+        """
+        # Create a label for instructions
+        instruction_label = tk.Label(self, text="Click the button below to select a report file (.html or .shw)", 
+                                     wraplength=350, bg="black", fg="white")
+        instruction_label.pack(pady=10)
+
+        # Create a button to open the file dialog
+        select_button = tk.Button(self, text="Select Report File", command=self.select_file,
+                                  font=('Arial', 12, 'bold'), bg='#4CAF50', fg='white',
+                                  activebackground='#45a049', activeforeground='white',
+                                  relief=tk.RAISED, bd=3, padx=10, pady=5)
+        select_button.pack(pady=20)
+
+    def select_file(self):
+        """
+        Opens a file dialog for the user to select an HTML or SHW file,
+        then processes it accordingly.
+        """
+        file_path = filedialog.askopenfilename(
+            title="Select an IAS HTML Report or a SHURE Wireless Workbench Show File",
+            filetypes=[("Report Files", "*.html *.shw"), ("HTML files", "*.html"), ("SHW files", "*.shw")]
+        )
+
+        if not file_path:
+            return # User cancelled file selection
+
+        file_name = os.path.basename(file_path)
+        base_name, extension = os.path.splitext(file_name)
+        
+        # Get the output directory from the main App instance's output_folder_var
+        # self.master is the notebook, self.master.master is the main_frame, self.master.master.master is the App instance
+        output_dir = self.master.master.master.output_folder_var.get()
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir) # Ensure the output directory exists
+        
+        output_csv_file = os.path.join(output_dir, "MARKERS.CSV")
+
+        headers = []
+        rows = []
+        conversion_successful = False
+        error_message = ""
+
+        try:
+            if extension.lower() == '.html':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    html_report_content = f.read()
+                headers, rows = convert_html_report_to_csv(html_report_content)
+                conversion_successful = True
+            
+            elif extension.lower() == '.shw':
+                headers, rows = generate_csv_from_shw(file_path)
+                conversion_successful = True
+            
+            else:
+                messagebox.showwarning("Invalid File Type", "Please select a .html or .shw file.")
+                return # Exit if file type is invalid
+
+            if conversion_successful:
+                if rows: # Only write if there's data to write
+                    with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+                        csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
+                        csv_writer.writeheader()
+                        csv_writer.writerows(rows)
+                    messagebox.showinfo("Success", f"Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
+                    
+                    # Call the method on the main App instance to add the new tab
+                    self.master.master.master.add_markers_tab(headers, rows)
+                else:
+                    messagebox.showwarning("No Data Extracted", f"No relevant data could be extracted from '{file_name}'. CSV file was not created.")
+
+        except FileNotFoundError as e:
+            error_message = f"File not found: {e}"
+            messagebox.showerror("File Error", error_message)
+        except ET.ParseError as e:
+            error_message = f"Error parsing XML (SHW) file: {e}"
+            messagebox.showerror("Parsing Error", error_message)
+        except Exception as e:
+            error_message = f"An unexpected error occurred during conversion: {e}"
+            messagebox.showerror("Conversion Error", error_message)
+        
+        if error_message:
+            print(f"❌ Conversion failed for {file_name}: {error_message}")
+
 
 class App(tk.Tk):
     """
@@ -564,10 +778,11 @@ class App(tk.Tk):
                - Checkboxes for including TV and Government band markers in plots
                - Checkbox for auto-opening HTML plots
                - Buttons for "Apply Settings to Device" and "Generate Plot (Average)"
-            4. Creates `bands_and_presets_frame` to hold band selection and preset lists:
-               - `band_selection_frame` with a scrollable canvas for frequency band checkboxes.
-               - `preset_files_frame` with a "Load Selected Preset" button and a `ttk.Treeview`
+            4. Creates `ttk.Notebook` for tabbed interface:
+               - "Frequency Band Selection" tab with a scrollable canvas for frequency band checkboxes.
+               - "Device Preset Files" tab with a "Load Selected Preset" button and a `ttk.Treeview`
                  to display device preset files.
+               - "Report Converter" tab with the functionality from `import_markers.py`.
             5. Creates a `debug_frame` with a checkbox to enable/disable debug mode.
             6. Configures grid weights for responsive layout.
             7. Calls `update_vbw_display()` to initialize the VBW display.
@@ -599,6 +814,14 @@ class App(tk.Tk):
                         arrowcolor="white")
         style.map("Vertical.TScrollbar",
                   background=[('active', 'gray')])
+
+        # Style for the Notebook (tabs)
+        style.configure("TNotebook", background="black", borderwidth=0)
+        style.configure("TNotebook.Tab", background="darkgrey", foreground="white",
+                        lightcolor="grey", darkcolor="grey", borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", "grey")],
+                                   foreground=[("selected", "white")])
+
 
         resource_frame = tk.LabelFrame(self.main_frame, text="Instrument Connection", padx=10, pady=10, bg="black", fg="white")
         resource_frame.pack(pady=10, padx=10, fill=tk.X)
@@ -778,22 +1001,18 @@ class App(tk.Tk):
         self.plot_button = tk.Button(button_row_frame, text="Generate Plot (Average)", command=lambda: self.generate_average_plot(), state=tk.NORMAL, bg="blue", fg="white")
         self.plot_button.grid(row=0, column=1, padx=5, sticky=tk.EW)
 
-        bands_and_presets_frame = tk.Frame(self.main_frame, bg="black")
-        bands_and_presets_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
-        bands_and_presets_frame.grid_columnconfigure(0, weight=1)
-        bands_and_presets_frame.grid_columnconfigure(1, weight=1)
-        bands_and_presets_frame.grid_rowconfigure(0, weight=1)
+        # --- Tabbed Interface for Bands and Presets ---
+        self.notebook = ttk.Notebook(self.main_frame)
+        self.notebook.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        band_selection_frame = tk.LabelFrame(bands_and_presets_frame, text="Frequency Band Selection", padx=10, pady=10, bg="black", fg="white")
-        band_selection_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        # Tab 1: Frequency Band Selection
+        band_selection_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(band_selection_tab, text="Frequency Band Selection")
 
-        # self.band_checkboxes = [] # Moved to __init__
-        # self.band_vars = [] # Moved to __init__
-
-        band_canvas = tk.Canvas(band_selection_frame, bg="black", highlightbackground="black")
+        band_canvas = tk.Canvas(band_selection_tab, bg="black", highlightbackground="black")
         band_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        band_scrollbar = ttk.Scrollbar(band_selection_frame, orient="vertical", command=band_canvas.yview)
+        band_scrollbar = ttk.Scrollbar(band_selection_tab, orient="vertical", command=band_canvas.yview)
         band_scrollbar.pack(side=tk.RIGHT, fill="y")
 
         band_canvas.configure(yscrollcommand=band_scrollbar.set)
@@ -806,37 +1025,36 @@ class App(tk.Tk):
             var = tk.BooleanVar(self)
             chk = tk.Checkbutton(self.inner_band_frame, text=f"{band['Band Name']} ({band['Start MHz']:.3f}-{band['Stop MHz']:.3f} MHz)", variable=var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
             chk.grid(row=i, column=0, sticky=tk.W, padx=5, pady=1)
-            # Initial state will be set by _set_band_checkboxes_from_config after all are created
             self.band_checkboxes.append(chk)
             self.band_vars.append({"band": band, "var": var})
         
-        # After creating all checkboxes, set their initial state based on loaded config
-        # This call is moved here to ensure self.band_vars is populated.
         self._set_band_checkboxes_from_config()
 
+        # Tab 2: Device Preset Files
+        preset_files_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(preset_files_tab, text="Device Preset Files")
 
-        preset_files_frame = tk.LabelFrame(bands_and_presets_frame, text="Device Preset Files (C:\\PRESETS\\)", padx=10, pady=10, bg="black", fg="white")
-        preset_files_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
-
-        self.load_preset_button = tk.Button(preset_files_frame, text="Load Selected Preset", command=self.load_selected_preset, state=tk.DISABLED, bg="darkgrey", fg="white")
+        self.load_preset_button = tk.Button(preset_files_tab, text="Load Selected Preset", command=self.load_selected_preset, state=tk.DISABLED, bg="darkgrey", fg="white")
         self.load_preset_button.pack(pady=5)
 
-        self.preset_tree = ttk.Treeview(preset_files_frame, columns=("Name",), show="headings", selectmode="browse")
+        self.preset_tree = ttk.Treeview(preset_files_tab, columns=("Name",), show="headings", selectmode="browse")
         self.preset_tree.heading("Name", text="Preset File Name")
         self.preset_tree.column("Name", width=200, anchor="w")
         self.preset_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.preset_tree.tag_configure("Mon", foreground="blue")
 
-        preset_scrollbar = ttk.Scrollbar(preset_files_frame, orient="vertical", command=self.preset_tree.yview)
+        preset_scrollbar = ttk.Scrollbar(preset_files_tab, orient="vertical", command=self.preset_tree.yview)
         preset_scrollbar.pack(side=tk.RIGHT, fill="y")
         self.preset_tree.configure(yscrollcommand=preset_scrollbar.set)
 
         self.preset_tree.bind("<<TreeviewSelect>>", self._on_preset_select)
+        
+        # Tab 3: Report Converter
+        report_converter_tab = ReportConverterTab(self.notebook, bg="black")
+        self.notebook.add(report_converter_tab, text="Report Converter")
 
-        # Removed progress_label as it's being replaced by console output
-        # self.progress_label = tk.Label(self.main_frame, text="Ready.", bg="black", fg="white")
-        # self.progress_label.pack(pady=5)
+        # --- End Tabbed Interface ---
 
         debug_frame = tk.Frame(self.main_frame, bg="black")
         debug_frame.pack(pady=10, padx=10, fill=tk.X)
@@ -848,6 +1066,35 @@ class App(tk.Tk):
         scan_settings_frame.grid_columnconfigure(1, weight=1)
 
         self.update_vbw_display()
+
+    def add_markers_tab(self, headers, rows):
+        """
+        Adds a new 'Markers Display' tab to the notebook and populates it
+        with the extracted marker data. This tab will display the zones,
+        groups, and devices in a structured way.
+
+        Inputs:
+            headers (list): A list of column headers for the marker data.
+            rows (list): A list of dictionaries, where each dictionary represents
+                         a row of marker data with keys matching the headers.
+        Process:
+            1. Creates a new `MarkersDisplayTab` instance, passing the extracted
+               `headers` and `rows`.
+            2. Adds this new tab to the `self.notebook` with the text "Markers Display".
+            3. Selects the newly created tab to bring it into view.
+        Outputs: None
+        """
+        # Check if a "Markers Display" tab already exists and remove it
+        for i, tab_id in enumerate(self.notebook.tabs()):
+            tab_text = self.notebook.tab(tab_id, "text")
+            if tab_text == "Markers Display":
+                self.notebook.forget(tab_id)
+                print("Existing 'Markers Display' tab removed.")
+                break
+
+        markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, bg="black")
+        self.notebook.add(markers_display_tab, text="Markers Display")
+        self.notebook.select(markers_display_tab) # Switch to the new tab
 
     def _set_band_checkboxes_from_config(self):
         """
@@ -1113,7 +1360,7 @@ class App(tk.Tk):
             1. Clears all existing items from the `preset_tree`.
             2. If `preset_files` is not empty, it inserts each preset name into the treeview,
                sorted alphabetically. It also applies a "Mon" tag for blue foreground if
-               "MON" is in the preset name (likely for 'Monitor' presets).
+               "MON" in the preset name (likely for 'Monitor' presets).
             3. If `preset_files` is empty, it inserts a "No .STA preset files found." message.
             4. Disables the "Load Selected Preset" button.
         Outputs: None
@@ -1600,7 +1847,8 @@ class App(tk.Tk):
         Toggles the background and foreground colors of the "Connect" button
         at a set interval (500ms) to create the blinking animation.
 
-        Inputs: None
+        Inputs:
+            None
         Process:
             1. If `self.blink_on` is `True`:
                - Retrieves the current background color of the button.
@@ -1687,7 +1935,7 @@ class App(tk.Tk):
         self.preset_tree.insert("", "end", values=("No instrument connected.",))
         self.connect_button.config(state=tk.NORMAL)
         # Start blinking if resources are found after a reset/error and not connected
-        if self.instrument_list and self.resource_var.get() != "No resources found" and not self.inst:
+        if self.instrument_list and self.resource_var.get() != "No resources found":
             self._start_connect_button_blink()
         else:
             self._stop_connect_button_blink() # Ensure blinking is off if no resources or already connected
