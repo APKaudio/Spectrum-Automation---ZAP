@@ -263,24 +263,35 @@ def scan_bands(app_instance, inst, selected_bands, output_folder, scan_name, fre
             if not write_safe(inst, f":SENSE:FREQ:STAR {segment_start_freq_hz}"): raise Exception("Failed to set start frequency.")
             if not write_safe(inst, f":SENSE:FREQ:STOP {segment_stop_freq_hz}"): raise Exception("Failed to set stop frequency.")
             
-            # Configure Max Hold if enabled
+            # --- Reverting to explicit trace mode settings from the working prototype ---
+            # Blank out all traces first
+            if not write_safe(inst, ":TRAC1:MODE BLANk"): raise Exception("Failed to blank Trace 1.")
+            if not write_safe(inst, ":TRAC2:MODE BLANk"): raise Exception("Failed to blank Trace 2.")
+            if not write_safe(inst, ":TRAC3:MODE BLANk"): raise Exception("Failed to blank Trace 3.")
+
+            # Configure Trace 2 for Max Hold if enabled, otherwise Trace 1 for Normal
             if max_hold_time > 0:
-                if not write_safe(inst, ":TRACe:TYPE MAXH"): raise Exception("Failed to set trace type to Max Hold.")
-                # For N9340B, there isn't a direct "max hold time" command. Max hold is usually continuous until reset.
-                # If a specific hold time is needed, it might involve polling or a custom sweep.
-                # For now, we'll just enable Max Hold. The 'max_hold_time' might be used for a software-based hold.
-                print(f"  Max Hold Enabled (Instrument side).")
+                if not write_safe(inst, ":TRAC2:MODE MAXHold"): raise Exception("Failed to set Trace 2 to Max Hold.")
+                print(f"  Max Hold Enabled (Instrument side, Trace 2).")
+                trace_to_query = "TRACe2" # Query Trace 2 for Max Hold data
             else:
-                if not write_safe(inst, ":TRACe:TYPE NORM"): raise Exception("Failed to set trace type to Normal.")
-                print("  Max Hold Disabled (Instrument side).")
+                if not write_safe(inst, ":TRACe:TYPE NORM"): raise Exception("Failed to set trace type to Normal.") # This applies to the currently selected trace
+                print("  Max Hold Disabled (Instrument side, Trace 1).")
+                trace_to_query = "TRACe1" # Query Trace 1 for Normal data
 
             # Initiate a single sweep and wait for it to complete
             if not write_safe(inst, ":INIT:IMMed"): raise Exception("Failed to initiate immediate sweep.")
             if not write_safe(inst, "*WAI"): raise Exception("Failed to wait for sweep completion.")
             
-            # Fetch trace data (Trace1)
-            trace_data_str = query_safe(inst, ":TRACe:DATA? TRACe1")
-            
+            # Fetch trace data from the correctly configured trace
+            # Use conditional query based on instrument model, as in the old working code
+            if app_instance.instrument_model == "N9340B":
+                trace_data_str = query_safe(inst, ":TRAC2:DATA?") # N9340B specific syntax for Trace 2
+            elif app_instance.instrument_model == "N9342CN":
+                trace_data_str = query_safe(inst, ":TRACe:DATA? TRACe2") # N9342CN specific syntax for Trace 2
+            else: # Fallback for unknown models, or other N9342 variants if needed
+                trace_data_str = query_safe(inst, f":TRACe:DATA? {trace_to_query}") # Use the determined trace_to_query
+
             if not trace_data_str:
                 print(f"🚫 No trace data received for band {band_name}.")
                 continue
@@ -312,7 +323,7 @@ def scan_bands(app_instance, inst, selected_bands, output_folder, scan_name, fre
 
         except pyvisa.errors.VisaIOError as e:
             print(f"🚫 VISA IO Error during scan for band {band_name}: {e}")
-            print(f"🐛 Raw data string potentially causing error: {e}") # This line seems misplaced
+            # Removed the misplaced debug print: print(f"🐛 Raw data string potentially causing error: {e}")
             raise # Re-raise the exception to be caught by the main loop for recovery
         except ValueError as e:
             print(f"🚫 Error processing ASCII trace data (ValueError - cannot convert/unpack) for band {band_name}: {e}")
