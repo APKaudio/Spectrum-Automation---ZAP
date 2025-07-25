@@ -316,6 +316,7 @@ def reset_gui_on_disconnect_or_error(app_instance):
 def set_focus_frequency_logic(app_instance, center_frequency_hz, span_hz, device_name="N/A"):
     """
     Sets the instrument's center frequency and span.
+    Also configures Trace 1 to Normal, Trace 2 to Max Hold, and Trace 3 to Min Hold.
 
     Inputs:
         app_instance (App): The main application instance.
@@ -326,13 +327,14 @@ def set_focus_frequency_logic(app_instance, center_frequency_hz, span_hz, device
         1. Checks if an instrument is connected. If not, prints a warning and returns False.
         2. Sends the `[:SENSe]:FREQuency:CENTer <freq>` command to the instrument.
         3. Sends the `[:SENSe]:FREQuency:SPAN <freq>` command to the instrument.
-        4. Prints success or error messages to the console.
-        5. Handles potential exceptions during VISA communication.
+        4. Sets Trace 1 to 'NORM', Trace 2 to 'MAXHold', and Trace 3 to 'MINHold'.
+        5. Prints success or error messages to the console.
+        6. Handles potential exceptions during VISA communication.
     Outputs:
         bool: True if commands were sent successfully, False otherwise.
     """
     if not app_instance.inst:
-        print("🚫 Instrument not connected. Cannot set focus frequency.")
+        print("🚫 Instrument not connected. Cannot set focus frequency or trace modes.")
         return False
     
     debug_print(f"DEBUG (inst_logic): Received center_frequency_hz: {center_frequency_hz} (type: {type(center_frequency_hz)})")
@@ -341,16 +343,25 @@ def set_focus_frequency_logic(app_instance, center_frequency_hz, span_hz, device
 
     try:
         # Set center frequency
-        app_instance.inst.write(f":SENSe:FREQuency:CENTer {center_frequency_hz}")
+        if not app_instance.inst.write(f":SENSe:FREQuency:CENTer {center_frequency_hz}"): return False
         debug_print(f"Sent: :SENSe:FREQuency:CENTer {center_frequency_hz} Hz")
 
         # Set span
-        # Ensure span_hz is a float before formatting
         span_hz_float = float(span_hz)
-        app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz_float}")
+        if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz_float}"): return False
         debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz_float} Hz")
 
-        print(f"✅ Instrument focused on '{device_name}' at {center_frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_hz_float} Hz.")
+        # Set Trace Modes as requested
+        if not app_instance.inst.write(":TRAC1:MODE WRITe"): return False
+        debug_print("Sent: :TRAC1:MODE NORM")
+
+        if not app_instance.inst.write(":TRAC2:MODE MAXHold"): return False
+        debug_print("Sent: :TRAC2:MODE MAXHold")
+
+        if not app_instance.inst.write(":TRAC3:MODE MINHold"): return False
+        debug_print("Sent: :TRAC3:MODE MINHold")
+
+        print(f"✅ Instrument focused on '{device_name}' at {center_frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_hz_float} Hz. Trace modes set.")
         return True
     except ValueError as e:
         error_msg = f"❌ Error converting span_hz to float in set_focus_frequency_logic: {e}. Received value: '{span_hz}' (type: {type(span_hz)})"
@@ -358,12 +369,12 @@ def set_focus_frequency_logic(app_instance, center_frequency_hz, span_hz, device
         messagebox.showerror("Type Conversion Error", error_msg)
         return False
     except pyvisa.errors.VisaIOError as e:
-        print(f"❌ VISA error while setting focus frequency: {e}")
-        messagebox.showerror("VISA Error", f"Failed to set instrument focus: {e}")
+        print(f"❌ VISA error while setting focus frequency or trace modes: {e}")
+        messagebox.showerror("VISA Error", f"Failed to set instrument focus or trace modes: {e}")
         return False
     except Exception as e:
-        print(f"❌ An unexpected error occurred while setting focus frequency: {e}")
-        messagebox.showerror("Error", f"An unexpected error occurred while setting instrument focus: {e}")
+        print(f"❌ An unexpected error occurred while setting focus frequency or trace modes: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred while setting instrument focus or trace modes: {e}")
         return False
 
 def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_name="Marker"):

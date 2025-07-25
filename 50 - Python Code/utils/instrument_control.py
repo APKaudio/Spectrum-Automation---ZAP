@@ -242,89 +242,112 @@ def disconnect_instrument(inst):
             return False
     return True # Already disconnected or no instrument to begin with
 
-def initialize_instrument(inst, ref_level, high_sensitivity_on, preamp_on, rbw_config, vbw_config, instrument_model):
+def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val, model_match):
     """
-    Initializes the instrument with basic settings (reset, reference level, preamp, RBW, VBW).
+    Initializes the spectrum analyzer with basic settings such as reference level,
+    preamplifier state, high sensitivity mode, and trace configurations.
+    This function sets up the instrument for a scan.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
-        ref_level (float): The desired reference level in dBm.
-        high_sensitivity_on (bool): True to enable high sensitivity (preamp).
-        preamp_on (bool): True to enable the preamplifier.
-        rbw_config (int): Resolution Bandwidth in Hz.
-        vbw_config (int): Video Bandwidth in Hz.
-        instrument_model (str): The model of the instrument (e.g., "N9340B").
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
+        ref_level_dbm (float): The desired reference level in dBm.
+        high_sensitivity_on (bool): True to enable high sensitivity mode, False otherwise.
+        preamp_on (bool): True to turn the preamplifier ON, False otherwise.
+        rbw_config_val (float): The Resolution Bandwidth (RBW) value to configure on the instrument in Hz.
+                                 (Note: This parameter is currently not directly used for setting RBW in this function
+                                 but is passed for consistency with the GUI's intent. RBW for scanning is set in `scan_bands`.)
+        vbw_config_val (float): The Video Bandwidth (VBW) value to configure on the instrument in Hz.
+                                 (Note: This parameter is currently not directly used for setting VBW in this function
+                                 but is passed for consistency with the GUI's intent. VBW for scanning is set in `scan_bands`.)
+        model_match (str): The detected model of the instrument (e.g., "N9340B", "N9342CN").
+                           Used for model-specific SCPI commands.
     Process:
-        1. Resets the instrument to its default state (`*RST`).
-        2. Sets the display to normal mode (`:DISPlay:ENABle ON`).
-        3. Sets the reference level (`:DISPlay:WINDow:TRACe:Y:RLEVel`).
-        4. Configures high sensitivity/preamp based on `instrument_model`.
-        5. Sets RBW and VBW.
-        6. Handles errors during instrument configuration.
+        1. **Reset**: Sends `*RST` to reset the instrument to a known state, then waits for operation completion.
+        2. **Reference Level**: Sets the display reference level.
+        3. **Preamplifier/High Sensitivity**: Configures the preamplifier and high sensitivity mode based on `preamp_on`
+           and `high_sensitivity_on` flags. This involves setting attenuation and gain.
+        4. **Trace Modes**: Configures Trace 1 to 'WRITe', Trace 2 to 'MAXHold', and Trace 3 to 'MINHold'.
+        5. **Display Scale**: Sets the Y-axis display scale to 'LOGarithmic'.
+        6. **Sweep Time**: Sets sweep time to 'AUTO'.
+        7. **Data Format**: Sets the trace data format to 'ASCII' for data transfer, with a model-specific command.
+        8. Prints status messages for each configuration step.
+        9. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
     Outputs:
-        bool: True if initialization is successful, False otherwise.
+        bool: True if initialization is successful; False on failure.
     """
-    if not inst:
-        print("Not connected to instrument, cannot initialize.")
-        return False
+    print("✨ Initializing instrument with desired settings...")
     try:
-        # Reset instrument
+        # Reset the instrument to a known state using *RST first
         if not write_safe(inst, "*RST"): return False
-        print("Instrument reset.")
-
-        # Set display on
-        if not write_safe(inst, ":DISPlay:ENABle ON"): return False
-        print("Display enabled.")
+        if not query_safe(inst, "*OPC?"): return False # Wait for operation to complete
+        time.sleep(1) # Give it a moment after reset
 
         # Set reference level
-        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level}DBM"): return False
-        print(f"Reference Level set to {ref_level} dBm.")
+        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}"): return False
+        print(f"✅ Set reference level to {ref_level_dbm} dBm.")
 
-        # Configure high sensitivity/preamp based on instrument model
-        if instrument_model == "N9340B":
-            # N9340B uses :INPut:ATTenuator:AUTO for high sensitivity
-            # and :INPut:GAIN:STATe for preamp
-            if high_sensitivity_on:
-                if not write_safe(inst, ":INPut:ATTenuator:AUTO OFF"): return False
-                if not write_safe(inst, ":INPut:ATTenuator 0DB"): return False # 0 dB attenuation for high sens
-                print("N9340B High Sensitivity (Attenuator 0dB) ON.")
-            else:
-                if not write_safe(inst, ":INPut:ATTenuator:AUTO ON"): return False
-                print("N9340B High Sensitivity (Attenuator Auto) OFF.")
-
-            if preamp_on:
-                if not write_safe(inst, ":INPut:GAIN:STATe ON"): return False
-                print("N9340B Preamp ON.")
-            else:
-                if not write_safe(inst, ":INPut:GAIN:STATe OFF"): return False
-                print("N9340B Preamp OFF.")
+        # Set preamplifier
+        if preamp_on:
+            if not write_safe(inst, ":POWer:ATTenuation:AUTO ON"): return False
+            if not write_safe(inst, ":POWer:GAIN ON"): return False
+            print("✅ Preamplifier ON.")
+            # Note: The original code re-set RLEVel here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return False
+            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
         else:
-            # Generic commands for other instruments (adjust as needed)
-            if high_sensitivity_on:
-                if not write_safe(inst, ":INPut:ATTenuator:AUTO OFF"): return False
-                if not write_safe(inst, ":INPut:ATTenuator 0DB"): return False
-                print("Generic High Sensitivity (Attenuator 0dB) ON.")
-            else:
-                if not write_safe(inst, ":INPut:ATTenuator:AUTO ON"): return False
-                print("Generic High Sensitivity (Attenuator Auto) OFF.")
+            if not write_safe(inst, ":POWer:GAIN OFF"): return False
+            print("✅ Preamplifier OFF.")
 
-            if preamp_on:
-                if not write_safe(inst, ":INPut:GAIN:STATe ON"): return False
-                print("Generic Preamp ON.")
-            else:
-                if not write_safe(inst, ":INPut:GAIN:STATe OFF"): return False
-                print("Generic Preamp OFF.")
+        # Set high sensitivity (preamplifier)
+        if high_sensitivity_on:
+            # Note: The original code set RLEVel to -50 here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50"): return False
+            if not write_safe(inst, ":POWer:ATTenuation 0"): return False
+            if not write_safe(inst, ":POWer:GAIN 1"): return False
+            if not write_safe(inst, ":POWer:HSENsitive ON"): return False
+            print("✅ High sensitivity turned ON.")
+        else:
+            if not write_safe(inst, ":POWer:HSENsitive OFF"): return False
+            if not write_safe(inst, ":POWer:ATTenuation 10"): return False
+            # Note: The original code re-set RLEVel here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return False
+            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
+            print("✅ High sensitivity turned OFF.")
+        
+        # Configure Trace Modes
+        if not write_safe(inst, ":TRAC1:MODE WRITe"): return False
+        print(f"✅ Trace 1 sent to write")
 
-        # Set RBW and VBW
-        if not write_safe(inst, f":SENSe:BANDwidth:RESolution {rbw_config}"): return False
-        print(f"RBW set to {rbw_config} Hz.")
-        if not write_safe(inst, f":SENSe:BANDwidth:VIDeo {vbw_config}"): return False
-        print(f"VBW set to {vbw_config} Hz.")
+        if not write_safe(inst, ":TRAC2:MODE MAXHold"): return False
+        print(f"✅ Trace 2 sent to MAX HOLD")
 
+        if not write_safe(inst, ":TRAC3:MODE MINHold"): return False
+        print(f"✅ Trace 3 sent to Min Hold")
+        
+        # Display scale is always LOGarithmic
+        if not write_safe(inst, ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic"): return False
+        print("✅ Display scale set to LOGarithmic (always).")
+        
+        # Set VBW and Sweep Time to AUTO
+        if not write_safe(inst, ":SENSe:BANDwidth:VIDeo:AUTO ON"): return False
+        if not write_safe(inst, ":SENSe:SWEep:TIME:AUTO ON"): return False
+        print("✅ VBW and Sweep time set to AUTO.")
+
+        # Set trace data format
+        if model_match == "N9340B":
+            if not write_safe(inst, ":TRACe:FORMat:DATA ASCii"): return False
+        else:
+            if not write_safe(inst, ":FORMat:DATA ASCii"): return False
+        print("✅ Set trace data format to ASCII for data transfer.")
+      
+        print("🎉 Instrument initialized successfully with desired settings.")
         return True
+    except pyvisa.errors.VisaIOError as e:
+        print(f"🛑 Failed to initialize instrument with desired settings: {e}")
+        return False
     except Exception as e:
-        messagebox.showerror("Initialization Error", f"Failed to initialize instrument settings: {e}")
-        print(f"❌ Initialization Error: {e}")
+        print(f"❌ An unexpected error occurred during instrument initialization: {e}")
+        messagebox.showerror("Initialization Error", f"An unexpected error occurred during initialization: {e}")
         return False
 
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
@@ -335,7 +358,7 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         inst (pyvisa.resources.Resource): The VISA instrument object.
         MHZ_TO_HZ (int): Conversion factor from MHz to Hz.
     Process:
-        1. Queries various settings (center frequency, span, RBW, VBW, Ref Level, Preamp, Attenuator).
+        1. Queries various settings (center frequency, span, RBW, VBW, Ref Level).
         2. Prints the queried settings to the console.
         3. Handles errors during querying.
     Outputs: None
@@ -361,14 +384,15 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         ref_level = query_safe(inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?")
         if ref_level: print(f"Reference Level: {float(ref_level):.2f} dBm")
 
-        preamp_state = query_safe(inst, ":INPut:GAIN:STATe?")
-        if preamp_state: print(f"Preamplifier State: {'ON' if int(preamp_state) == 1 else 'OFF'}")
+        # Removed the following queries as they were causing timeouts:
+        # preamp_state = query_safe(inst, ":INPut:GAIN:STATe?")
+        # if preamp_state: print(f"Preamplifier State: {'ON' if int(float(preamp_state)) == 1 else 'OFF'}")
 
-        attenuator_auto = query_safe(inst, ":INPut:ATTenuator:AUTO?")
-        if attenuator_auto: print(f"Attenuator Auto: {'ON' if int(attenuator_auto) == 1 else 'OFF'}")
+        # attenuator_auto = query_safe(inst, ":INPut:ATTenuator:AUTO?")
+        # if attenuator_auto: print(f"Attenuator Auto: {'ON' if int(float(attenuator_auto)) == 1 else 'OFF'}")
 
-        attenuator_value = query_safe(inst, ":INPut:ATTenuator?")
-        if attenuator_value: print(f"Attenuator Value: {float(attenuator_value):.1f} dB")
+        # attenuator_value = query_safe(inst, ":INPut:ATTenuator?")
+        # if attenuator_value: print(f"Attenuator Value: {float(attenuator_value):.1f} dB")
 
     except Exception as e:
         print(f"❌ Error querying current instrument settings: {e}")
@@ -376,57 +400,86 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
 
 def query_device_presets(inst):
     """
-    Queries the connected instrument for available preset (.STA) files.
-    This function is specific to instruments that support `:MMEMory:CATalog:STATe?`.
+    Queries the connected instrument for a list of preset files stored in its
+    internal "C:\\PRESETS\\" directory. This allows the GUI to display available
+    presets for loading.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
     Process:
-        1. Sends the SCPI command `:MMEMory:CATalog:STATe?` to list preset files.
-        2. Parses the response to extract individual preset file names.
-        3. Prints the list of found presets.
-        4. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
+        1. Checks if `inst` is connected.
+        2. Sends the SCPI command `:MMEMory:CATalog? "C:\\\\PRESETS\\\\"` to list directory contents.
+        3. Parses the comma-separated response string to extract file names and types.
+        4. Filters for files with the "STA" type (state files) and ending with ".STA".
+        5. Sorts the found preset names alphabetically.
+        6. Prints the number of found presets or a message if none are found.
+        7. Handles `pyvisa.errors.VisaIOError` and general `Exception` during the query/parsing.
     Outputs:
-        list: A list of preset file names (strings), or an empty list if none found or error.
+        list: A sorted list of `.STA` preset file names (e.g., `['MY_PRESET.STA', 'DEFAULT.STA']`).
+              Returns an empty list on failure or if no presets are found.
     """
     if not inst:
-        print("Not connected to instrument, cannot query presets.")
+        print("Not connected to instrument, cannot query device presets.")
         return []
-    
-    print("\nAttempting to query device presets...")
+
+    print("\nQuerying device preset files from C:\\PRESETS\\...")
+    preset_files = []
     try:
-        # Query preset files (e.g., "D:\PRESET\MY_PRESET.STA")
-        response = query_safe(inst, ":MMEMory:CATalog:STATe?")
-        
-        if response:
-            # Response format example: '"C:\PRESETS\DEFAULT.STA","C:\PRESETS\MY_PRESET.STA"'
-            # We need to split by comma and strip quotes, and only take the basename
-            preset_paths = [path.strip().strip('"') for path in response.split(',')]
-            preset_names = [p.split('\\')[-1] for p in preset_paths if p.lower().endswith('.sta')]
-            print(f"Found {len(preset_names)} preset files: {preset_names}")
-            return preset_names
-        else:
-            print("No .STA preset files found or empty response.")
+        response = query_safe(inst, ':MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
+
+        if response is None:
+            print("🚫 No response received for preset catalog query.")
             return []
+
+        parts = response.split(',')
+        if len(parts) < 3:
+            print(f"🚫 Unexpected response format for preset catalog: {response}")
+            return []
+
+        # The actual item listings start after the first 3 parts
+        for i in range(3, len(parts), 4):
+            if i + 3 < len(parts):
+                name = parts[i].strip().strip('"') # Strip quotes
+                item_type = parts[i+1].strip().strip('"') # Strip quotes
+                if item_type.upper() == "STA" and name.upper().endswith(".STA"):
+                    preset_files.append(name)
+            else:
+                print(f"Warning: Incomplete item entry found at index {i} in preset catalog response.")
+                break
+
+        if preset_files:
+            print(f"✅ Found {len(preset_files)} '.STA' preset files.")
+        else:
+            print("🚫 No '.STA' preset files found in C:\\PRESETS\\.")
+        return sorted(preset_files) # Return sorted list
+    except pyvisa.errors.VisaIOError as e:
+        print(f"🛑 VISA Error querying device presets: {e}")
+        messagebox.showerror("VISA Error", f"Error querying device presets: {e}")
+        return []
     except Exception as e:
         print(f"❌ An unexpected error occurred while querying presets: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred while querying presets: {e}")
         return []
 
 def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
     """
-    Loads a specified preset file onto the connected instrument.
+    Loads the selected preset file onto the instrument.
+    This function sends the SCPI command to instruct the spectrum analyzer
+    to load a previously saved state file (`.STA`). After loading, it
+    queries and prints the instrument's current settings to confirm the change.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
         selected_preset_name (str): The name of the preset file to load (e.g., "MY_PRESET.STA").
-        MHZ_TO_HZ (int): Conversion factor from MHz to Hz, used for querying settings after load.
+        MHZ_TO_HZ (int): Conversion factor from MHz to Hz, passed to `query_current_instrument_settings`.
     Process:
-        1. Constructs the full path for the preset (assumes C:\PRESETS\ on instrument).
-        2. Sends the SCPI command `:MMEMory:LOAD STA,"{preset_path}"` using `write_safe`.
-        3. If loading is successful, calls `query_current_instrument_settings` to display
+        1. Checks if `inst` is connected.
+        2. Constructs the full path to the preset file (e.g., `C:\\PRESETS\\MY_PRESET.STA`).
+        3. Sends the SCPI command `:MMEMory:LOAD STA,"{preset_path}"` using `write_safe`.
+        4. If loading is successful, calls `query_current_instrument_settings` to display
            the instrument's new configuration.
-        4. Prints status messages.
-        5. Handles general `Exception` during the loading process.
+        5. Prints status messages.
+        6. Handles general `Exception` during the loading process.
     Outputs:
         bool: True if the preset is loaded successfully; False otherwise.
     """
@@ -434,8 +487,7 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
         print("Not connected to instrument, cannot load preset.")
         return False
 
-    # Assuming presets are in C:\PRESETS on the instrument
-    preset_path = f"C:\\PRESETS\\{selected_preset_name}"
+    preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
     command = f':MMEMory:LOAD STA,"{preset_path}"'
     
     print(f"\nAttempting to load preset: {selected_preset_name}")
@@ -443,6 +495,11 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
         if write_safe(inst, command):
             print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
             
+            # --- Removed explicit delays and OPC query after preset load as requested ---
+            # The *OPC? after *RST in initialize_instrument should be sufficient for initial setup.
+            # If further stability issues arise, consider adding specific delays where needed.
+            # --- End removed section ---
+
             # Query and display current instrument settings after loading preset
             print("\n--- Current Instrument Settings after Preset Load ---")
             query_current_instrument_settings(inst, MHZ_TO_HZ) # Use the dedicated query function
@@ -453,4 +510,5 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
             return False
     except Exception as e:
         print(f"❌ An unexpected error occurred while loading preset: {e}")
+        messagebox.showerror("Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
         return False
