@@ -47,6 +47,7 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
     """
     Processes raw scan data by de-duplicating entries, sorting by frequency,
     and interpolating missing frequency points to ensure a continuous spectrum.
+    Returns frequencies in MHz, as required by the latest user request.
 
     Inputs:
         raw_data (list): A list of (frequency_hz, level_dbm) tuples, potentially with duplicates.
@@ -60,7 +61,7 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
            with a step size determined by the unique frequencies in the raw data.
         5. Merges the raw data with the complete frequency range, filling missing values using linear interpolation.
         6. Handles NaN values by filling them with the nearest valid data point.
-        7. Converts frequencies to MHz for consistency in the output.
+        7. Converts frequencies to MHz for consistency with the user's request.
     Outputs:
         list: A list of (frequency_mhz, level_dbm) tuples representing the processed,
               de-duplicated, sorted, and interpolated scan data.
@@ -73,10 +74,10 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
     df = pd.DataFrame(raw_data, columns=['Frequency_Hz', 'Level_dBm'])
 
     # Remove duplicates, keeping the first occurrence
-    df.drop_duplicates(subset=['Frequency_Hz'], keep='first', inplace=True)
+    df = df.drop_duplicates(subset=['Frequency_Hz'], keep='first') # Removed inplace=True
 
     # Sort by frequency
-    df.sort_values(by='Frequency_Hz', inplace=True)
+    df = df.sort_values(by='Frequency_Hz') # Removed inplace=True
 
     # Create a complete frequency range for interpolation
     # Determine step size from the existing data or use a default if not enough points
@@ -105,16 +106,16 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
 
     # Fill any remaining NaN values (e.g., at the very start/end if interpolation can't reach)
     # Use ffill (forward fill) then bfill (backward fill) to fill from nearest valid data
-    df_merged['Level_dBm'].ffill(inplace=True)
-    df_merged['Level_dBm'].bfill(inplace=True)
+    df_merged['Level_dBm'] = df_merged['Level_dBm'].ffill() # Removed inplace=True
+    df_merged['Level_dBm'] = df_merged['Level_dBm'].bfill() # Removed inplace=True
 
     # Drop any rows where Level_dBm is still NaN (shouldn't happen with ffill/bfill but as a safeguard)
-    df_merged.dropna(subset=['Level_dBm'], inplace=True)
+    df_merged = df_merged.dropna(subset=['Level_dBm']) # Removed inplace=True
 
-    # Convert frequencies to MHz for output
+    # IMPORTANT: Convert frequencies to MHz here as requested.
     df_merged['Frequency_MHz'] = df_merged['Frequency_Hz'] / MHZ_TO_HZ
 
-    return df_merged[['Frequency_MHz', 'Level_dBm']].values.tolist()
+    return df_merged[['Frequency_MHz', 'Level_dBm']].values.tolist() # Return Frequency_MHz
 
 
 def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rbw_config_val, vbw_config_val, max_hold_time, current_freq_offset, last_scanned_band_index=0):
@@ -131,7 +132,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
     Args:
         app_instance_ref (object): A reference to the main Tkinter App instance for GUI updates.
-                                    Expected to have .scanning, .paused, .after, ._update_console_line, .instrument_model attributes.
+                                   Expected to have .scanning, .paused, .after, ._update_console_line, .instrument_model attributes.
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
         selected_bands (list): A list of band dictionaries to scan.
         scan_rbw_segmentation (float): Resolution Bandwidth for segmenting bands (from new GUI input).
@@ -143,12 +144,11 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         last_scanned_band_index (int): Index of the band to start scanning from.
                                         Used for resuming scans after an error.
     Returns:
-        tuple: (list: all_scan_data_cleaned, int: last_successful_band_index, str: csv_filename_current_cycle)
-               all_scan_data_cleaned: A list of de-duplicated and filtered data points
-                                      for the entire sweep (or up to interruption).
+        tuple: (int: last_successful_band_index, str: csv_filename_current_cycle)
                last_successful_band_index: The index of the last band that was fully
                                            or partially scanned successfully.
                csv_filename_current_cycle: The full path to the CSV file where the scan data was saved.
+                                           Returns None if no data was collected or saved.
     """
     # This will accumulate all raw data points for the *current single scan sweep*
     # before final de-duplication for plotting.
@@ -173,30 +173,31 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         vbw_config_val_float = 10000.0 # Fallback to a safe default
 
     try:
-        rbw_config_val_int = int(float(rbw_config_val)) # Convert to float first, then int
+        # rbw_config_val is from desired_rbw_var, which is a StringVar, so convert from string
+        rbw_config_val_int = int(float(rbw_config_val)) 
     except ValueError:
         print(f"ERROR: rbw_config_val '{rbw_config_val}' cannot be converted to int. Using a default of 1000000 Hz.")
         rbw_config_val_int = 1000000 # Fallback to a safe default
 
     try:
-        max_hold_time_int = int(float(max_hold_time)) # Convert to float first, then int
+        max_hold_time_float = float(max_hold_time) # Keep as float for max hold time calculations
     except ValueError:
-        print(f"ERROR: max_hold_time '{max_hold_time}' cannot be converted to int. Using a default of 3 seconds.")
-        max_hold_time_int = 3 # Fallback to a safe default
+        print(f"ERROR: max_hold_time '{max_hold_time}' cannot be converted to float. Using a default of 3.0 seconds.")
+        max_hold_time_float = 3.0 # Fallback to a safe default
 
     try:
-        current_freq_offset_int = int(float(current_freq_offset)) # Convert to float first, then int
+        current_freq_offset_float = float(current_freq_offset) # Keep as float for frequency calculations
     except ValueError:
-        print(f"ERROR: current_freq_offset '{current_freq_offset}' cannot be converted to int. Using a default of 0 Hz.")
-        current_freq_offset_int = 0 # Fallback to a safe default
+        print(f"ERROR: current_freq_offset '{current_freq_offset}' cannot be converted to float. Using a default of 0.0 Hz.")
+        current_freq_offset_float = 0.0 # Fallback to a safe default
 
 
     # Debugging print to confirm types at this point
-    print(f"DEBUG: Type of scan_rbw_segmentation_float: {type(scan_rbw_segmentation_float)}, Value: {scan_rbw_segmentation_float}")
-    print(f"DEBUG: Type of vbw_config_val_float: {type(vbw_config_val_float)}, Value: {vbw_config_val_float}")
-    print(f"DEBUG: Type of rbw_config_val_int: {type(rbw_config_val_int)}, Value: {rbw_config_val_int}")
-    print(f"DEBUG: Type of max_hold_time_int: {type(max_hold_time_int)}, Value: {max_hold_time_int}")
-    print(f"DEBUG: Type of current_freq_offset_int: {type(current_freq_offset_int)}, Value: {current_freq_offset_int}")
+    debug_print(f"Type of scan_rbw_segmentation_float: {type(scan_rbw_segmentation_float)}, Value: {scan_rbw_segmentation_float}")
+    debug_print(f"Type of vbw_config_val_float: {type(vbw_config_val_float)}, Value: {vbw_config_val_float}")
+    debug_print(f"Type of rbw_config_val_int: {type(rbw_config_val_int)}, Value: {rbw_config_val_int}")
+    debug_print(f"Type of max_hold_time_float: {type(max_hold_time_float)}, Value: {max_hold_time_float}")
+    debug_print(f"Type of current_freq_offset_float: {type(current_freq_offset_float)}, Value: {current_freq_offset_float}")
 
 
     # Apply RBW and VBW settings here once at the start of the scan
@@ -213,16 +214,16 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") # YYYYMMDD_HHMM (no seconds)
     
     # Define the CSV filename for the *current scan cycle's raw data*
-    # Use the _int versions of variables here
-    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val_int/1000)}K_HOLD{max_hold_time_int}_Offset{current_freq_offset_int}_{timestamp_hm}.csv")
+    # Use the _int versions of variables where appropriate for filename, _float for calculations
+    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val_int/1000)}K_HOLD{int(max_hold_time_float)}_Offset{int(current_freq_offset_float)}_{timestamp_hm}.csv")
 
 
     # Ensure output directory exists before starting to write
     os.makedirs(output_folder, exist_ok=True)
 
     # Calculate overall start and stop frequencies for the entire selected_bands list
-    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
-    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_float # Use _float version
+    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_float # Use _float version
 
 
     # *** Use selected_bands for scanning the instrument ***
@@ -231,8 +232,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         band = selected_bands[i]
         band_name = band["Band Name"]
         # Apply the frequency offset here
-        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
-        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_float # Use _float version
+        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_float # Use _float version
 
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M") # Use datetime.datetime
         print(f"\n📈 [{current_time}] Processing Band: {band_name} (Shifted Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)")
@@ -280,7 +281,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         segment_counter = 0
 
         # Loop until the current segment start frequency reaches or exceeds the effective scan stop frequency
-        while current_segment_start_freq_hz < effective_scan_stop_freq_hz:
+        while app_instance_ref.scanning and current_segment_start_freq_hz < effective_scan_stop_freq_hz: # Added app_instance_ref.scanning check here
             # Check for pause state at the beginning of each segment
             while app_instance_ref.paused:
                 app_instance_ref.after(100, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
@@ -288,11 +289,14 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
                 if not app_instance_ref.scanning: # Allow stopping even when paused
                     print(f"Scan for {band_name} interrupted during pause in segment {segment_counter + 1}.")
                     # Process and return data collected so far for the entire sweep
-                    return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
+                    # Only return filename and index now
+                    _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz) # Process for saving if needed
+                    return last_successful_band_index, None # Return None for filename if interrupted
             if not app_instance_ref.scanning: # Check scan flag after pause loop
                 print(f"Scan for {band_name} interrupted during segment {segment_counter + 1}.")
                 # Process and return data collected so far for the entire sweep
-                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
+                _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz) # Process for saving if needed
+                return last_successful_band_index, None # Return None for filename if interrupted
 
             segment_counter += 1
             # The segment stop frequency is now always based on the optimal span
@@ -305,23 +309,25 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             write_safe(inst, ":TRAC2:MODE MAXHold;")
 
             # Add settling time for max hold values to show up, if max hold is enabled
-            if max_hold_time_int > 0: # Use _int version
-                for _ in range(int(max_hold_time_int * 10)): # Check every 0.1 seconds
+            if max_hold_time_float > 0: # Use _float version
+                for _ in range(int(max_hold_time_float * 10)): # Check every 0.1 seconds
                     while app_instance_ref.paused:
                         app_instance_ref.after(100, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
                         time.sleep(0.1) # Sleep briefly while paused
                         if not app_instance_ref.scanning: # Allow stopping even when paused
                             print(f"Scan for {band_name} interrupted during pause in max hold for segment {segment_counter + 1}.")
                             # Process and return data collected so far for the entire sweep
-                            return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
+                            _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz) # Process for saving if needed
+                            return last_successful_band_index, None # Return None for filename if interrupted
                     if not app_instance_ref.scanning: # Check scan flag after pause loop
                         print(f"Scan for {band_name} interrupted during max hold for segment {segment_counter + 1}.")
                         # Process and return data collected so far for the entire sweep
-                        return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
+                        _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz) # Process for saving if needed
+                        return last_successful_band_index, None # Return None for filename if interrupted
 
                     # Update display for countdown (only update every second for cleaner output)
                     if _ % 10 == 0: # Every 10 iterations (1, second)
-                        sec_remaining = int(max_hold_time_int - (_ / 10)) # Use _int version
+                        sec_remaining = int(max_hold_time_float - (_ / 10)) # Use _float version
                         display_text = f"⏳ {sec_remaining}"
                         app_instance_ref.after(0, app_instance_ref._update_console_line, display_text, False)
                     time.sleep(0.1) # Small sleep to allow other threads/GUI to run
@@ -331,7 +337,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             if not app_instance_ref.scanning: # Check scan flag after max hold loop
                 print(f"Scan for {band_name} interrupted after max hold for segment {segment_counter + 1}.")
                 # Process and return data collected so far for the entire sweep
-                return _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz), last_successful_band_index, csv_filename_current_cycle
+                _process_raw_scan_data(raw_scan_data_for_current_sweep, overall_start_freq_hz, overall_stop_freq_hz) # Process for saving if needed
+                return last_successful_band_index, None # Return None for filename if interrupted
 
             # Calculate progress for the emoji bar - Using more compatible ASCII characters
             progress_percentage = (segment_counter / total_segments_in_band)
@@ -397,11 +404,11 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
                 # Write filtered segment data to CSV immediately after processing
                 if filtered_segment_data_for_csv: # Only write if there's data after filtering
-                    header = ["Frequency_MHz", "Power_dBm"] # Define header for this CSV
-                    # Convert frequencies to MHz for the CSV
+                    # Convert frequencies to MHz for the CSV as requested
                     csv_data_to_write = [(f / MHZ_TO_HZ, amp) for f, amp in filtered_segment_data_for_csv]
                     # This will create/append to the CSV file defined at the start of scan_bands
-                    write_scan_data_to_csv(csv_filename_current_cycle, header, csv_data_to_write, append_mode=True)
+                    # Pass header as None to indicate no header should be written
+                    write_scan_data_to_csv(csv_filename_current_cycle, None, csv_data_to_write, append_mode=True)
                     # Removed the print statement here as requested
 
 
@@ -424,7 +431,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     # --- After all bands are scanned, or if interrupted, process the collected raw data for the full sweep ---
     if not raw_scan_data_for_current_sweep:
         print("🚫 No raw data collected across all bands for the current sweep.")
-        return None, -1, None # Return -1 for last_successful_band_index if no data
+        return last_successful_band_index, None # Return None for filename if no data
 
     print("\n--- 🎉 Band Scan Complete! Processing collected data... ---")
     final_sweep_data_for_plotting = _process_raw_scan_data(
@@ -435,18 +442,18 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
     if not final_sweep_data_for_plotting:
         print(f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name'] if last_successful_band_index != -1 else 'N/A'}.")
+        return last_successful_band_index, None # Return None for filename if no data after processing
     else:
-        # Corrected: Use final_sweep_data_for_plotting instead of final_sweep_data_for_current_sweep
         print(f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.")
 
     # Save the final processed data to CSV
     try:
         # write_scan_data_to_csv expects (freq_mhz, level_dbm)
-        # _process_raw_scan_data already returns (freq_mhz, level_dbm)
-        write_scan_data_to_csv(csv_filename_current_cycle, ["Frequency_MHz", "Power_dBm"], final_sweep_data_for_plotting, append_mode=False)
+        # _process_raw_scan_data now returns (freq_mhz, level_dbm)
+        # Pass header as None to indicate no header should be written
+        write_scan_data_to_csv(csv_filename_current_cycle, None, final_sweep_data_for_plotting, append_mode=False)
         print(f"✅ Full sweep data saved to: {csv_filename_current_cycle}")
+        return last_successful_band_index, csv_filename_current_cycle # Return filename only if successfully saved
     except Exception as e:
         print(f"❌ Error saving full sweep data to CSV: {e}")
-        return None, last_successful_band_index, None
-
-    return final_sweep_data_for_plotting, last_successful_band_index, csv_filename_current_cycle
+        return last_successful_band_index, None # Return None for filename on error

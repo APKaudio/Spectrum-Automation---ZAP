@@ -41,6 +41,7 @@ def start_scan_thread_logic(app_instance):
     app_instance.current_freq_offset = 0 # Reset frequency offset for a new scan
     app_instance.collected_scans_dataframes = [] # Clear previous scan data
     app_instance.last_scanned_band_index = 0 # Reset last scanned band index
+    app_instance.csv_filename_current_cycle = None # Initialize to None
 
     selected_bands = [item["band"] for item in app_instance.band_vars if item["var"].get()]
     if not selected_bands:
@@ -62,13 +63,13 @@ def start_scan_thread_logic(app_instance):
     max_hold_time = app_instance.desired_max_hold_time_var.get()
 
     # Debug prints to verify values before starting the thread
-    print(f"DEBUG: Starting scan with parameters:")
-    print(f"DEBUG:   selected_bands: {[b['Band Name'] for b in selected_bands]}")
-    print(f"DEBUG:   scan_rbw_segmentation_val: {scan_rbw_segmentation_val} (Type: {type(scan_rbw_segmentation_val)})")
-    print(f"DEBUG:   freq_shift_val: {freq_shift_val} (Type: {type(freq_shift_val)})")
-    print(f"DEBUG:   rbw_config_val: {rbw_config_val} (Type: {type(rbw_config_val)})")
-    print(f"DEBUG:   vbw_config_val: {vbw_config_val} (Type: {type(vbw_config_val)})")
-    print(f"DEBUG:   max_hold_time: {max_hold_time} (Type: {type(max_hold_time)})")
+    debug_print(f"Starting scan with parameters:")
+    debug_print(f"  selected_bands: {[b['Band Name'] for b in selected_bands]}")
+    debug_print(f"  scan_rbw_segmentation_val: {scan_rbw_segmentation_val} (Type: {type(scan_rbw_segmentation_val)})")
+    debug_print(f"  freq_shift_val: {freq_shift_val} (Type: {type(freq_shift_val)})")
+    debug_print(f"  rbw_config_val: {rbw_config_val} (Type: {type(rbw_config_val)})")
+    debug_print(f"  vbw_config_val: {vbw_config_val} (Type: {type(vbw_config_val)})")
+    debug_print(f"  max_hold_time: {max_hold_time} (Type: {type(max_hold_time)})")
 
     # Start the scan in a separate thread
     app_instance.scan_thread = threading.Thread(target=app_instance._run_scan, args=(
@@ -128,7 +129,8 @@ def run_scan_logic(app_instance, selected_bands, scan_rbw_segmentation, freq_shi
 
             try:
                 # Call scan_bands with the correct parameters
-                final_sweep_data, last_successful_band_index, csv_filename = scan_bands(
+                # Now only expects last_successful_band_index and csv_filename
+                last_successful_band_index, csv_filename = scan_bands(
                     app_instance,
                     app_instance.inst,
                     selected_bands,
@@ -140,24 +142,32 @@ def run_scan_logic(app_instance, selected_bands, scan_rbw_segmentation, freq_shi
                     last_scanned_band_index=app_instance.last_scanned_band_index
                 )
                 app_instance.last_scanned_band_index = last_successful_band_index # Update for potential resume
+                app_instance.csv_filename_current_cycle = csv_filename # Store the filename in app_instance
 
-                if final_sweep_data:
-                    # Convert the list of tuples to a DataFrame for plotting and storage
-                    df = pd.DataFrame(final_sweep_data, columns=["Frequency_MHz", "Power_dBm"])
-                    app_instance.collected_scans_dataframes.append(df)
-                    print(f"✅ Data from Cycle {app_instance.scan_cycle_count} collected and stored.")
+                # Check if a valid CSV filename was returned AND if the file actually exists and is not empty
+                if csv_filename and os.path.exists(csv_filename) and os.path.getsize(csv_filename) > 0:
+                    # For plotting, we now load the data directly from the CSV
+                    try:
+                        # Load CSV without header and assign column names
+                        df_for_plotting = pd.read_csv(csv_filename, header=None)
+                        df_for_plotting.columns = ['Frequency_MHz', 'Power_dBm']
+                        
+                        app_instance.collected_scans_dataframes.append(df_for_plotting)
+                        print(f"✅ Data from Cycle {app_instance.scan_cycle_count} loaded from CSV and stored for averaging.")
+                    except Exception as e:
+                        print(f"❌ Error loading data from CSV for plotting: {e}")
+                        messagebox.showerror("CSV Load Error", f"Could not load data from {csv_filename} for plotting: {e}")
+                        # Continue, but plot might not be accurate if data couldn't be loaded
 
                     # Generate plot for the single scan
-                    plot_title_suffix = f"Cycle {app_instance.scan_cycle_count} (Offset: {app_instance.current_freq_offset/MHZ_TO_HZ:.3f} MHz)"
-                    output_html_path = os.path.join(app_instance.output_folder_var.get(), f"{app_instance.scan_name_var.get()}_Cycle{app_instance.scan_cycle_count}.html")
+                    output_html_path = os.path.join(app_instance.output_folder_var.get(), f"{os.path.basename(csv_filename).replace('.csv', '.html')}")
                     
                     app_instance.after(0, app_instance.generate_single_scan_plot_and_open_wrapper,
-                                       csv_filename, # Use the CSV filename returned by scan_bands
-                                       plot_title_suffix,
+                                       csv_filename, # Pass the CSV filename to the plotting wrapper
                                        output_html_path,
                                        app_instance.open_html_after_complete_var.get())
                 else:
-                    print(f"🚫 No data collected for Cycle {app_instance.scan_cycle_count}.")
+                    print(f"🚫 No valid CSV file generated or found for Cycle {app_instance.scan_cycle_count}. Skipping plotting for this cycle.")
 
             except pyvisa.errors.VisaIOError as e:
                 print(f"❌ VISA communication error during scan: {e}")
@@ -176,9 +186,9 @@ def run_scan_logic(app_instance, selected_bands, scan_rbw_segmentation, freq_shi
                 break # Exit scan loop
 
             # Wait for the next cycle, respecting pause
-            if app_instance.scanning and app_instance.cycle_wait_time_seconds_var.get() > 0:
-                print(f"Waiting for {app_instance.cycle_wait_time_seconds_var.get()} seconds before next cycle...")
-                for remaining in range(int(app_instance.cycle_wait_time_seconds_var.get()), 0, -1):
+            if app_instance.scanning and app_instance.desired_cycle_wait_time_var.get() > 0:
+                print(f"Waiting for {app_instance.desired_cycle_wait_time_var.get()} seconds before next cycle...")
+                for remaining in range(int(app_instance.desired_cycle_wait_time_var.get()), 0, -1):
                     while app_instance.paused:
                         app_instance.after(100, app_instance._update_console_line, "Scan Paused. Click Resume to continue.", False)
                         time.sleep(0.1) # Sleep briefly while paused

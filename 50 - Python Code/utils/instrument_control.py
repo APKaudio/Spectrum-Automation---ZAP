@@ -18,51 +18,83 @@
 import pyvisa
 import time
 from tkinter import messagebox # Corrected import: directly import messagebox
+import inspect # Import inspect module
+import os # Import os module to fix NameError
 
 # Global variable for debug mode, controlled by GUI checkbox
 DEBUG_MODE = False
+LOG_VISA_COMMANDS = False # New global variable for VISA command logging
 
 def set_debug_mode(mode):
     """
     Sets the global debug mode flag. When debug mode is True,
-    VISA commands and responses are printed to the console.
+    general debug messages are printed to the console.
 
     Inputs:
         mode (bool): True to enable debug mode, False to disable.
     Process:
         1. Updates the global `DEBUG_MODE` variable.
-        2. Prints the new debug mode status.
+        2. Prints the new debug mode status using `debug_print`.
     Outputs: None
     """
     global DEBUG_MODE
     DEBUG_MODE = mode
-    debug_print(f"Debug Mode set to: {DEBUG_MODE}") # Changed to debug_print
+    debug_print(f"Debug Mode set to: {DEBUG_MODE}", file=__file__, function=inspect.currentframe().f_code.co_name)
 
-def debug_print(message):
+def set_log_visa_commands_mode(mode):
+    """
+    Sets the global flag for logging VISA commands.
+
+    Inputs:
+        mode (bool): True to enable VISA command logging, False to disable.
+    Outputs: None
+    """
+    global LOG_VISA_COMMANDS
+    LOG_VISA_COMMANDS = mode
+    debug_print(f"Log VISA Commands mode set to: {LOG_VISA_COMMANDS}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+
+def debug_print(message, file=None, function=None):
     """
     Prints a debug message to the console only if DEBUG_MODE is enabled.
+    Includes the file name and function name where the call originated.
 
     Inputs:
         message (str): The message string to print.
+        file (str, optional): The path to the file where the debug_print call originated.
+                              Defaults to None.
+        function (str, optional): The name of the function where the debug_print call originated.
+                                  Defaults to None.
     Outputs: None
     """
     if DEBUG_MODE:
-        print(f"DEBUG: {message}")
+        if file and function:
+            # Extract just the filename from the full path
+            filename = os.path.basename(file)
+            print(f"🚫🐛 [{filename}:{function}] {message}")
+        else:
+            print(f"🚫🐛 {message}")
 
-def log_visa_command(direction, command_or_response):
+def log_visa_command(direction, command_or_response, file=None, function=None):
     """
     Logs VISA commands sent to and responses received from the instrument
-    if debug mode is enabled.
+    if LOG_VISA_COMMANDS is enabled. Includes the file and function name.
 
     Inputs:
         direction (str): "SENT" for commands sent, "RECV" for responses received.
         command_or_response (str): The actual SCPI command string or instrument response.
-    Process:
-        1. If `DEBUG_MODE` is True, prints the direction and the command/response.
+        file (str, optional): The path to the file where the log_visa_command call originated.
+                              Defaults to None.
+        function (str, optional): The name of the function where the log_visa_command call originated.
+                                  Defaults to None.
     Outputs: None
     """
-    if DEBUG_MODE:
-        print(f"VISA {direction}: {command_or_response.strip()}")
+    if DEBUG_MODE and LOG_VISA_COMMANDS: # Only log if both general debug and VISA logging are enabled
+        if file and function:
+            filename = os.path.basename(file)
+            print(f"VISA {direction}: [{filename}:{function}] {command_or_response.strip()}")
+        else:
+            print(f"VISA {direction}: {command_or_response.strip()}")
 
 def query_safe(inst, command, delay=0.1):
     """
@@ -83,13 +115,16 @@ def query_safe(inst, command, delay=0.1):
     Outputs:
         str: The instrument's response if successful, an empty string otherwise.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if not inst:
-        debug_print("Not connected to instrument, cannot query.") # Changed to debug_print
+        debug_print("Not connected to instrument, cannot query.", file=current_file, function=current_function)
         return ""
     try:
-        log_visa_command("SENT", command)
+        log_visa_command("SENT", command, file=current_file, function=current_function)
         response = inst.query(command).strip()
-        log_visa_command("RECV", response)
+        log_visa_command("RECV", response, file=current_file, function=current_function)
         time.sleep(delay) # Small delay for stability
         return response
     except pyvisa.errors.VisaIOError as e:
@@ -119,11 +154,14 @@ def write_safe(inst, command, delay=0.1):
     Outputs:
         bool: True if the command was written successfully, False otherwise.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if not inst:
-        debug_print("Not connected to instrument, cannot write.") # Changed to debug_print
+        debug_print("Not connected to instrument, cannot write.", file=current_file, function=current_function)
         return False
     try:
-        log_visa_command("SENT", command)
+        log_visa_command("SENT", command, file=current_file, function=current_function)
         inst.write(command)
         time.sleep(delay) # Small delay for stability
         return True
@@ -149,9 +187,12 @@ def list_visa_resources(rm):
     Outputs:
         list: A list of available VISA resource strings.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     try:
         resources = rm.list_resources()
-        debug_print(f"Found VISA resources: {resources}") # Changed to debug_print
+        debug_print(f"Found VISA resources: {resources}", file=current_file, function=current_function)
         return list(resources)
     except pyvisa.errors.VisaIOError as e:
         messagebox.showerror("VISA Error", f"Could not list VISA resources. Is NI-VISA or Keysight VISA installed?\nError: {e}")
@@ -180,6 +221,9 @@ def connect_to_instrument(rm, resource_name):
     """
     inst = None
     instrument_model = None
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     try:
         inst = rm.open_resource(resource_name)
         inst.timeout = 5000 # Set a timeout (5 seconds)
@@ -191,13 +235,13 @@ def connect_to_instrument(rm, resource_name):
             parts = idn.split(',')
             if len(parts) > 1:
                 instrument_model = parts[1].strip()
-                debug_print(f"Instrument Model: {instrument_model}") # Changed to debug_print
+                debug_print(f"Instrument Model: {instrument_model}", file=current_file, function=current_function)
             else:
                 instrument_model = "Unknown Model"
-                debug_print(f"Instrument IDN: {idn} (Model not parsed)") # Changed to debug_print
+                debug_print(f"Instrument IDN: {idn} (Model not parsed)", file=current_file, function=current_function)
         else:
             instrument_model = "Unknown Model"
-            debug_print("Could not query instrument IDN.") # Changed to debug_print
+            debug_print("Could not query instrument IDN.", file=current_file, function=current_function)
         
         return inst, instrument_model
     except pyvisa.errors.VisaIOError as e:
@@ -227,6 +271,9 @@ def disconnect_instrument(inst):
     Outputs:
         bool: True if disconnected successfully, False otherwise.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if inst:
         try:
             inst.close()
@@ -275,6 +322,8 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
     Outputs:
         bool: True if initialization is successful; False on failure.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
     print("✨ Initializing instrument with desired settings...")
     try:
         # Reset the instrument to a known state using *RST first
@@ -347,7 +396,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
         return False
     except Exception as e:
         print(f"❌ An unexpected error occurred during instrument initialization: {e}")
-        messagebox.showerror("Initialization Error", f"An unexpected error occurred during initialization: {e}")
+        messagebox.showerror("❌Initialization Error", f"An unexpected error occurred during initialization: {e}")
         return False
 
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
@@ -363,6 +412,9 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         3. Handles errors during querying.
     Outputs: None
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if not inst:
         print("Not connected to instrument, cannot query settings.")
         return
@@ -418,6 +470,9 @@ def query_device_presets(inst):
         list: A sorted list of `.STA` preset file names (e.g., `['MY_PRESET.STA', 'DEFAULT.STA']`).
               Returns an empty list on failure or if no presets are found.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if not inst:
         print("Not connected to instrument, cannot query device presets.")
         return []
@@ -428,12 +483,12 @@ def query_device_presets(inst):
         response = query_safe(inst, ':MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
 
         if response is None:
-            print("🚫 No response received for preset catalog query.")
+            debug_print("No response received for preset catalog query.", file=current_file, function=current_function)
             return []
 
         parts = response.split(',')
         if len(parts) < 3:
-            print(f"🚫 Unexpected response format for preset catalog: {response}")
+            debug_print(f"Unexpected response format for preset catalog: {response}", file=current_file, function=current_function)
             return []
 
         # The actual item listings start after the first 3 parts
@@ -444,13 +499,13 @@ def query_device_presets(inst):
                 if item_type.upper() == "STA" and name.upper().endswith(".STA"):
                     preset_files.append(name)
             else:
-                print(f"Warning: Incomplete item entry found at index {i} in preset catalog response.")
+                debug_print(f"Warning: Incomplete item entry found at index {i} in preset catalog response.", file=current_file, function=current_function)
                 break
 
         if preset_files:
-            print(f"✅ Found {len(preset_files)} '.STA' preset files.")
+            debug_print(f"Found {len(preset_files)} '.STA' preset files.", file=current_file, function=current_function)
         else:
-            print("🚫 No '.STA' preset files found in C:\\PRESETS\\.")
+            debug_print("No '.STA' preset files found in C:\\PRESETS\\.", file=current_file, function=current_function)
         return sorted(preset_files) # Return sorted list
     except pyvisa.errors.VisaIOError as e:
         print(f"🛑 VISA Error querying device presets: {e}")
@@ -483,8 +538,11 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
     Outputs:
         bool: True if the preset is loaded successfully; False otherwise.
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     if not inst:
-        print("Not connected to instrument, cannot load preset.")
+        debug_print("Not connected to instrument, cannot load preset.", file=current_file, function=current_function)
         return False
 
     preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
@@ -506,9 +564,9 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
             print("--------------------------------------------------")
             return True
         else:
-            print(f"❌ Failed to load preset '{selected_preset_name}'.")
+            debug_print(f"Failed to load preset '{selected_preset_name}'.", file=current_file, function=current_function)
             return False
     except Exception as e:
-        print(f"❌ An unexpected error occurred while loading preset: {e}")
-        messagebox.showerror("Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
+        debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
+        messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
         return False

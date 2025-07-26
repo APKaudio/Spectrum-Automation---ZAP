@@ -13,7 +13,7 @@
 #
 # Build Log: https://like.audio/category/software/spectrum-scanner/
 # Source Code: https://github.com/APKaudio/
-
+#
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, filedialog, TclError, ttk
 import os
@@ -25,6 +25,7 @@ import configparser
 import pandas as pd # If pandas is still used directly in App, otherwise move import
 import csv # Added for loading existing markers.csv
 import subprocess # For BeautifulSoup installation check
+import inspect # Import inspect module
 
 # BeautifulSoup Installation Check (moved to main_app.py as requested)
 try:
@@ -36,593 +37,908 @@ except ImportError:
         from bs4 import BeautifulSoup
         print("BeautifulSoup4 installed successfully.")
     except subprocess.CalledProcessError as e:
-        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\\nPlease install it manually by running: pip install beautifulsoup4")
+        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\nPlease install it manually by running: pip install beautifulsoup4")
         sys.exit(1)
     except Exception as e:
         messagebox.showerror("Installation Error", f"An unexpected error occurred during BeautifulSoup4 installation: {e}")
         sys.exit(1)
 
-
-# Import from new modules
-from src.gui_elements import TextRedirector, print_art
-from src.config_manager import load_config, save_config
-from src.instrument_logic import ( # Moved this import before src.tabs
-    connect_instrument_logic, disconnect_instrument_logic,
-    populate_resources_logic, apply_settings_to_device_logic,
-    load_selected_preset_logic, update_preset_tree, on_preset_select,
-    reset_gui_on_disconnect_or_error, set_focus_frequency_logic # Ensure set_focus_frequency_logic is imported
+# Import local modules
+from src.config_manager import load_config, save_config # Import save_config
+from src.gui_elements import TextRedirector, print_art # Corrected import from print_logo to print_art
+from src.instrument_logic import (
+    populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
+    apply_settings_to_device_logic, update_preset_buttons, load_selected_preset_logic, # Changed update_preset_tree to update_preset_buttons
+    set_focus_frequency_logic, set_marker_and_trace_modes_logic
 )
-from src.tabs import MarkersDisplayTab, ReportConverterTab # Now imported after instrument_logic
-from src.scan_logic import start_scan_thread_logic, toggle_pause_scan_logic, run_scan_logic, stop_scan_logic, reset_scan_buttons_logic
-from src.plot_logic import generate_single_scan_plot_and_open_wrapper_logic, generate_average_plot_logic
+from src.scan_logic import (
+    start_scan_thread_logic, toggle_pause_scan_logic, run_scan_logic,
+    stop_scan_logic, reset_scan_buttons_logic, pause_resume_scan_logic
+)
 from src.settings_logic import (
-    restore_default_settings_logic, update_debug_mode_global_logic,
-    update_scan_rbw_from_slider_index_logic, update_freq_shift_from_slider_index_logic,
-    reset_setting_colors_logic, set_band_checkboxes_from_config_logic,
-    update_vbw_display_logic, open_output_folder_logic
+    restore_default_settings_logic, open_output_folder_logic,
+    open_preset_folder_logic, open_report_folder_logic,
+    update_scan_rbw_from_slider_index_logic, # Import slider update logic
+    update_max_hold_time_from_slider_index_logic, # Import slider update logic
+    update_cycle_wait_time_from_slider_index_logic # Import slider update logic
 )
-
-# Import constants from frequency_bands.py (or move to a shared constants.py if used widely)
-from utils.frequency_bands import (
-    MHZ_TO_HZ,
-    SCAN_BAND_RANGES,
-    TV_PLOT_BAND_MARKERS,
-    GOV_PLOT_BAND_MARKERS
-)
-
-# Define the config file name, ensuring it's in the same directory as the script
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, 'config.ini')
+from src.plot_logic import generate_single_scan_plot_and_open_wrapper_logic, generate_average_plot_logic # Import generate_average_plot_logic
+from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
+from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode # Import debug_print and set_log_visa_commands_mode
+from src.tabs import ReportConverterTab, MarkersDisplayTab # Import MarkersDisplayTab
 
 
 class App(tk.Tk):
     """
-    The main application class for the RF Spectrum Analyzer Controller.
-    It inherits from `tk.Tk` and sets up the entire GUI, manages application state,
-    handles user interactions, and orchestrates calls to backend functions
-    for instrument control, data acquisition, and plotting.
+    Main application class for the RF Spectrum Analyzer Controller.
+    This class inherits from Tkinter's Tk class and manages the entire GUI,
+    instrument communication, scan processes, and data visualization.
     """
+    CONFIG_FILE = 'config.ini' # Define config file name here
+
+    def _initialize_tkinter_vars(self):
+        """
+        Initializes Tkinter control variables and maps them to configuration keys.
+        This method sets up the dynamic relationship between GUI elements and
+        application settings, facilitating easy loading and saving.
+        """
+        # General Settings
+        self.resource_var = tk.StringVar(self)
+        self.resource_var.set("No resources found")
+        self.gpib_device_var = tk.StringVar(self)
+        self.scan_directory_var = tk.StringVar(self)
+        self.scan_name_var = tk.StringVar(self)
+        self.open_html_after_complete_var = tk.BooleanVar(self)
+        
+        # Separated Debugging Variables
+        self.general_debug_enabled_var = tk.BooleanVar(self) # For general debug messages
+        self.log_visa_commands_enabled_var = tk.BooleanVar(self) # For specific VISA command logging
+
+        self.selected_bands_str_var = tk.StringVar(self) # Added for selected bands string
+
+        # Scan Configuration Settings
+        self.desired_rbw_var = tk.StringVar(self) # Resolution Bandwidth
+        self.desired_vbw_display_var = tk.StringVar(self) # Video Bandwidth (display only, calculated)
+        self.desired_max_hold_time_var = tk.StringVar(self) # Max Hold Time
+        self.desired_cycle_wait_time_var = tk.StringVar(self) # Cycle Wait Time
+        self.desired_reference_level_var = tk.StringVar(self) # Reference Level
+        self.desired_freq_shift_var = tk.StringVar(self) # Frequency Shift
+        self.desired_maxhold_enabled_var = tk.BooleanVar(self) # Max Hold Enabled
+        self.desired_include_gov_markers_var = tk.BooleanVar(self) # Include Gov Markers
+        self.desired_include_tv_markers_var = tk.BooleanVar(self) # Include TV Markers
+        self.desired_high_sensitivity_var = tk.BooleanVar(self) # High Sensitivity
+        self.desired_preamp_on_var = tk.BooleanVar(self) # Preamp On
+        self.desired_scan_rbw_segmentation_var = tk.StringVar(self) # New: Scan RBW for segmentation
+        self.desired_default_focus_width_var = tk.StringVar(self) # New: Default Focus Width
+
+        # Map setting names to (last_used_key, default_key, tk_var) tuples
+        # last_used_key: Key in [LAST_USED_SETTINGS]
+        # default_key: Key in [DEFAULT_SETTINGS]
+        # tk_var: The Tkinter variable instance
+        self.setting_var_map = {
+            'gpib_device_var': ('last_gpib_device', 'default_gpib_device', self.gpib_device_var),
+            'scan_directory_var': ('last_scan_directory', 'default_scan_directory', self.scan_directory_var),
+            'scan_name_var': ('last_scan_name', 'default_scan_name', self.scan_name_var),
+            'open_html_after_complete_var': ('last_open_html_after_complete', 'default_open_html_after_complete', self.open_html_after_complete_var),
+            'general_debug_enabled_var': ('last_general_debug_enabled', 'default_general_debug_enabled', self.general_debug_enabled_var), # Updated
+            'log_visa_commands_enabled_var': ('last_log_visa_commands_enabled', 'default_log_visa_commands_enabled', self.log_visa_commands_enabled_var), # New
+            'selected_bands_str_var': ('last_selected_bands', 'default_selected_bands', self.selected_bands_str_var), # Added to map
+            'desired_rbw_var': ('last_scan_rbw_hz', 'default_scan_rbw_hz', self.desired_rbw_var), # This is RBW for instrument
+            'desired_max_hold_time_var': ('last_maxhold_time_seconds', 'default_maxhold_time_seconds', self.desired_max_hold_time_var),
+            'desired_cycle_wait_time_var': ('last_cycle_wait_time_seconds', 'default_cycle_wait_time_seconds', self.desired_cycle_wait_time_var),
+            'desired_reference_level_var': ('last_reference_level_dbm', 'default_reference_level_dbm', self.desired_reference_level_var),
+            'desired_freq_shift_var': ('last_freq_shift_hz', 'default_freq_shift_hz', self.desired_freq_shift_var),
+            'desired_maxhold_enabled_var': ('last_maxhold_enabled', 'default_maxhold_enabled', self.desired_maxhold_enabled_var),
+            'desired_include_gov_markers_var': ('last_include_gov_markers', 'default_include_gov_markers', self.desired_include_gov_markers_var),
+            'desired_include_tv_markers_var': ('last_include_tv_markers', 'default_include_tv_markers', self.desired_include_tv_markers_var),
+            'desired_high_sensitivity_var': ('last_high_sensitivity', 'default_high_sensitivity', self.desired_high_sensitivity_var),
+            'desired_preamp_on_var': ('last_preamp_on', 'default_preamp_on', self.desired_preamp_on_var),
+            'desired_scan_rbw_segmentation_var': ('last_scan_rbw_segmentation', 'default_scan_rbw_segmentation', self.desired_scan_rbw_segmentation_var), # New mapping
+            'desired_default_focus_width_var': ('last_default_focus_width', 'default_default_focus_width', self.desired_default_focus_width_var) # New mapping
+        }
+
+        # Initialize band selection variables
+        self.band_vars = []
+        for band in self.SCAN_BAND_RANGES:
+            var = tk.BooleanVar(self)
+            var.set(True) # Default to all bands selected
+            self.band_vars.append({"band": band, "var": var})
+
+        # Trace Tkinter variables to update GUI elements and save config
+        # RBW, Max Hold Time, Cycle Wait Time are now updated by sliders, so their direct entry traces are removed here
+        self.desired_reference_level_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_freq_shift_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_maxhold_enabled_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_high_sensitivity_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_preamp_on_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_scan_rbw_segmentation_var.trace_add("write", self._update_setting_color_callback)
+        self.desired_default_focus_width_var.trace_add("write", self._update_setting_color_callback)
+        self.scan_directory_var.trace_add("write", self._update_setting_color_callback)
+        self.scan_name_var.trace_add("write", self._update_setting_color_callback)
+        self.open_html_after_complete_var.trace_add("write", self._update_setting_color_callback)
+        
+        # Debug mode traces for the new separate checkboxes
+        self.general_debug_enabled_var.trace_add("write", self._update_general_debug_callback)
+        self.log_visa_commands_enabled_var.trace_add("write", self._update_log_visa_commands_callback)
+
+
     def __init__(self):
         """
         Initializes the main application window and its components.
-
-        Inputs: None
-        Process:
-            1. Calls the parent `tk.Tk` constructor.
-            2. Configures the main window's appearance (background, title, geometry).
-            3. Initializes PyVISA ResourceManager and related instrument state variables.
-            4. Initializes Tkinter `StringVar`, `BooleanVar`, and `DoubleVar` objects
-               to hold the values of various GUI settings.
-            5. Sets up a mapping (`setting_var_map`) between Tkinter variables and
-               their corresponding keys in the `config.ini` file for persistent storage.
-            6. Makes `CONFIG_FILE` and `SCAN_BAND_RANGES` accessible to other modules.
-            7. Loads configuration settings from `config.ini` using `load_config()`.
-            8. Sets window geometry based on loaded config or default.
-            9. Initializes sliders for RBW and Frequency Shift, binding them to update
-            the relevant Tkinter variables.
-            10. Binds debug mode variable to update global setting.
-            11. Creates main frames for GUI layout.
-            12. Sets up console output area and redirects `sys.stdout` and `sys.stderr`.
-            13. Prints ASCII art and a welcome message to the console.
-            14. Creates main GUI widgets by calling `create_widgets()`.
-            15. Populates available VISA resources using `populate_resources_logic()`.
-            16. Calls `_check_and_load_markers_csv()` to automatically load existing markers data.
-            17. Binds the window closing protocol to `on_closing` for saving settings.
-        Outputs: None
+        Sets up the GUI layout, loads configuration, and initializes
+        instrument-related variables.
         """
         super().__init__()
-        self.configure(bg="black") 
-        self.title(f"RF Spectrum Analyzer Controller - {os.path.basename(sys.argv[0])}")
+        self.title("RF Spectrum Analyzer Controller - V1.0.0")
+        self.geometry("1400x780+100+100") # Default size and position
         
-        self.rm = pyvisa.ResourceManager()
+        # Configuration and Instrument Management
+        self.config = configparser.ConfigParser()
+        self.rm = None # PyVISA Resource Manager, initialized to None
+        self.inst = None # Connected instrument
         self.instrument_list = []
-        self.inst = None
+        self.instrument_model = "Unknown" # To store detected instrument model (e.g., N9340B, N9342CN)
+
+        # Attempt to initialize PyVISA Resource Manager
+        try:
+            self.rm = pyvisa.ResourceManager()
+            print("✅ PyVISA Resource Manager initialized successfully.")
+        except Exception as e:
+            print(f"❌ Error initializing PyVISA Resource Manager: {e}")
+            print("Please ensure NI-VISA or Keysight VISA is installed and configured correctly.")
+            self.rm = None # Ensure rm is None if initialization fails
+
+        # Scan and Plotting Data
         self.scanning = False
         self.paused = False
-        self.last_scan_data = None
-        self.collected_scans_dataframes = []
-        self.instrument_model = None
-
+        self.scan_thread = None
         self.scan_cycle_count = 0
-        self.current_freq_offset = 0
+        self.current_freq_offset = 0.0 # Initialize frequency offset
+        self.collected_scans_dataframes = [] # To store pandas DataFrames of collected scan data
+        self.last_scanned_band_index = 0 # For resuming scans
+        self.csv_filename_current_cycle = None # To store the filename of the current cycle's raw data CSV
 
-        self.desired_setting_entries = {}
+        # Constants
+        self.SCAN_BAND_RANGES = SCAN_BAND_RANGES # Frequency bands for scanning
+        self.MHZ_TO_HZ = MHZ_TO_HZ
+        self.VBW_RBW_RATIO = VBW_RBW_RATIO
 
-        self.blink_id = None
-        self.blink_on = False
-        # New variables for pause button blinking
-        self.pause_blink_id = None
-        self.pause_blink_on = False
-
-        self.desired_ref_level_var = tk.StringVar(self)
-        self.desired_preamp_var = tk.BooleanVar(self)
-        self.high_sensitivity_var = tk.BooleanVar(self)
-        self.desired_max_hold_var = tk.BooleanVar(self)
-        self.desired_max_hold_time_var = tk.DoubleVar(self)
-        self.desired_rbw_var = tk.StringVar(self)
-        self.desired_vbw_display_var = tk.StringVar(self)
-        self.desired_cycle_wait_time_var = tk.DoubleVar(self)
-        self.output_folder_var = tk.StringVar(self)
-        self.scan_name_var = tk.StringVar(self)
-        self.resource_var = tk.StringVar(self)
-        self.include_gov_markers_var = tk.BooleanVar(self)
-        self.include_tv_markers_var = tk.BooleanVar(self)
-        self.open_html_after_complete_var = tk.BooleanVar(self)
-        self.desired_scan_rbw_segmentation_var = tk.DoubleVar(self)
-        self.shift_freq_var = tk.DoubleVar(self)
-        self.debug_mode_var = tk.BooleanVar(self)
-        # Corrected variable name to match config_manager.py's expectation
-        self.selected_bands_str_var = tk.StringVar(self) 
-        self.default_focus_width_var = tk.DoubleVar(self, value=10000.0) # New: Default focus width variable
-
-        self.band_checkboxes = []
-        self.band_vars = []
-
-        # List to hold references to tabs that should be hidden/shown
-        self.dynamic_tabs = [] 
-
-        self.setting_var_map = {
-            'desired_ref_level_var': ('last_reference_level_dbm', 'default_reference_level_dbm', float),
-            'desired_preamp_var': ('last_preamp_on', 'default_preamp_on', bool),
-            'high_sensitivity_var': ('last_high_sensitivity', 'default_high_sensitivity', bool),
-            'desired_max_hold_var': ('last_maxhold_enabled', 'default_maxhold_enabled', bool),
-            'desired_max_hold_time_var': ('last_maxhold_time_seconds', 'default_maxhold_time_seconds', float),
-            'desired_rbw_var': ('last_rbw_step_size_hz', 'default_rbw_step_size_hz', int),
-            'desired_cycle_wait_time_var': ('last_cycle_wait_time_seconds', 'default_cycle_wait_time_seconds', float),
-            'output_folder_var': ('last_scan_directory', 'default_scan_directory', str),
-            'scan_name_var': ('last_scan_name', 'default_scan_name', str),
-            'resource_var': ('last_gpib_device', '', str),
-            'include_gov_markers_var': ('last_include_gov_markers', 'default_include_gov_markers', bool),
-            'include_tv_markers_var': ('last_include_tv_markers', 'default_include_tv_markers', bool),
-            'open_html_after_complete_var': ('last_open_html_after_complete', 'default_open_html_after_complete', bool),
-            'desired_scan_rbw_segmentation_var': ('last_scan_rbw_hz', 'default_scan_rbw_hz', float),
-            'shift_freq_var': ('last_freq_shift_hz', 'default_freq_shift_hz', float),
-            'debug_mode_var': ('last_debug_mode', 'default_debug_mode', bool),
-            # Corrected key name to match the Tkinter variable name
-            'selected_bands_str_var': ('last_selected_bands', 'default_selected_bands', str), 
-            'default_focus_width_var': ('last_default_focus_width', 'default_default_focus_width', float), # New entry for focus width
-        }
-
-        self.CONFIG_FILE = CONFIG_FILE # Make CONFIG_FILE accessible to config_manager
-        self.SCAN_BAND_RANGES = SCAN_BAND_RANGES # Make SCAN_BAND_RANGES accessible to config_manager
-
-        self.config = configparser.ConfigParser()
-        load_config(self)
-
-        initial_geometry = self.config.get('LAST_USED_SETTINGS', 'last_window_geometry') # Corrected key name
-        if not initial_geometry:
-            initial_geometry = self.config.get('DEFAULT_SETTINGS', 'DEFAULT_WINDOW_GEOMETRY')
-        self.geometry(initial_geometry)
-
-        self.rbw_values = [5000, 10000, 25000, 50000, 100000]
+        # Slider values and their corresponding Tkinter variables
+        self.rbw_values = [5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000]
         self.rbw_val_to_idx = {val: i for i, val in enumerate(self.rbw_values)}
-        # Ensure the value passed to IntVar is an int, converting from float if necessary
-        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(int(float(self.desired_scan_rbw_segmentation_var.get())), 0))
-        self.rbw_slider_index_var.trace_add("write", self._update_scan_rbw_from_slider_index)
+        self.max_hold_time_values = [0, 1, 3, 5, 10, 30, 60, 300, 600] # Example values
+        self.max_hold_time_val_to_idx = {val: i for i, val in enumerate(self.max_hold_time_values)}
+        self.cycle_wait_time_values = [0, 0.1, 0.5, 1, 2, 5, 10] # Example values
+        self.cycle_wait_time_val_to_idx = {val: i for i, val in enumerate(self.cycle_wait_time_values)}
 
-        self.freq_shift_values = [0, 500, 1000, 5000, 10000]
-        self.freq_shift_val_to_idx = {val: i for i, val in enumerate(self.freq_shift_values)}
-        # Ensure the value passed to IntVar is an int, converting from float if necessary
-        self.freq_shift_slider_index_var = tk.IntVar(self, value=self.freq_shift_val_to_idx.get(int(float(self.shift_freq_var.get())), 0))
-        self.freq_shift_slider_index_var.trace_add("write", self._update_freq_shift_from_slider_index)
 
-        self.debug_mode_var.trace_add("write", self._update_debug_mode_global)
+        # Tkinter Variables for Settings
+        self.setting_var_map = {} # Map setting names to their Tkinter variables and config keys
 
-        self.main_frame = tk.Frame(self, bg="black")
-        self.main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        self.console_frame = tk.Frame(self, width=700, bg="black")
-        self.console_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.console_frame.pack_propagate(False)
+        # Initialize Tkinter variables and load config
+        self._initialize_tkinter_vars()
+        load_config(self) # Load settings from config.ini
 
-        self.console_control_frame = tk.Frame(self.console_frame, bg="black")
-        self.console_control_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        # Initialize slider index variables after config load
+        # Ensure default value is within range, or handle if not found
+        # Convert string values from config to appropriate types for lookup
+        current_rbw = int(float(self.desired_rbw_var.get()))
+        current_max_hold = int(float(self.desired_max_hold_time_var.get()))
+        current_cycle_wait = float(self.desired_cycle_wait_time_var.get())
 
-        self.start_scan_button = tk.Button(self.console_control_frame, text="Start Scan", command=lambda: self.start_scan_thread(), state=tk.DISABLED, bg="green", fg="white", height=2)
-        self.start_scan_button.pack(side=tk.LEFT, padx=5, pady=5, expand=True, fill=tk.X)
+        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(current_rbw, 0))
+        self.max_hold_time_slider_index_var = tk.IntVar(self, value=self.max_hold_time_val_to_idx.get(current_max_hold, 0))
+        # For float values in slider, direct lookup might fail due to precision. Find closest.
+        closest_cycle_wait_idx = min(range(len(self.cycle_wait_time_values)), 
+                                     key=lambda i: abs(self.cycle_wait_time_values[i] - current_cycle_wait))
+        self.cycle_wait_time_slider_index_var = tk.IntVar(self, value=closest_cycle_wait_idx)
 
-        self.pause_resume_button = tk.Button(self.console_control_frame, text="Pause Scan", command=self.toggle_pause_scan, state=tk.DISABLED, bg="orange", fg="white", height=2)
-        self.pause_resume_button.pack(side=tk.LEFT, padx=5, pady=5, expand=True, fill=tk.X)
+        # Trace slider index variables to update their corresponding setting variables
+        self.rbw_slider_index_var.trace_add("write", lambda *args: update_scan_rbw_from_slider_index_logic(self, *args))
+        self.max_hold_time_slider_index_var.trace_add("write", lambda *args: update_max_hold_time_from_slider_index_logic(self, *args))
+        self.cycle_wait_time_slider_index_var.trace_add("write", lambda *args: update_cycle_wait_time_from_slider_index_logic(self, *args))
 
-        self.stop_scan_button = tk.Button(self.console_control_frame, text="Stop Scan", command=lambda: self.stop_scan(), state=tk.DISABLED, bg="red", fg="white", height=2)
-        self.stop_scan_button.pack(side=tk.RIGHT, padx=5, pady=5, expand=True, fill=tk.X)
 
-        self.console_output = scrolledtext.ScrolledText(self.console_frame, wrap=tk.WORD, bg="black", fg="white", font=("Consolas", 10))
-        self.console_output.pack(expand=True, fill=tk.BOTH)
-        self.console_output.configure(state="disabled")
+        # --- Debugging Config Load ---
+        print("\n--- Debugging Config Load ---")
+        debug_print(f"Scan Directory (after load): {self.scan_directory_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        debug_print(f"Desired RBW (after load): {self.desired_rbw_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        debug_print(f"General Debug Enabled (after load): {self.general_debug_enabled_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name) # Updated
+        debug_print(f"Log VISA Commands Enabled (after load): {self.log_visa_commands_enabled_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name) # New
+        debug_print(f"Max Hold Time (after load): {self.desired_max_hold_time_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        print("-----------------------------\n")
+        # --- End Debugging Config Load ---
 
-        sys.stdout = TextRedirector(self.console_output, "stdout")
-        sys.stderr = TextRedirector(self.console_output, "stderr")
+        # Set up GUI
+        self._create_widgets()
+        self._redirect_stdout_to_console()
+        print_art() # Corrected call from print_logo to print_art
 
-        print_art()
+        # Initial population of VISA resources on load
+        populate_resources_logic(self)
 
-        print("--- RF Spectrum Analyzer Controller - GUI Initialized ---")
-        self.create_widgets()
-        self.after(0, populate_resources_logic, self)
-        self.after(100, self._check_and_load_markers_csv) # Auto-load markers.csv on startup
-        self.after(200, self._update_tab_visibility) # Call after initial setup to set tab visibility
+        # Initialize MarkersDisplayTab to None; it will be created dynamically
+        self.markers_display_tab = None
 
+        # List to keep track of dynamically created tabs
+        self.dynamic_tabs = []
+
+        # Check for existing MARKERS.CSV and load it at startup
+        # Moved this call to ensure all styles are fully set up before MarkersDisplayTab is initialized
+        self._check_and_load_markers_csv()
+
+        # Handle window close event - moved after on_closing definition
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    def on_closing(self):
-        """
-        Handler for the window closing event. This function is called when
-        the user attempts to close the application window.
 
-        Inputs: None
-        Process:
-            1. Calls `save_config()` to persist current settings.
-            2. Destroys the Tkinter root window, effectively closing the application.
-        Outputs: None
+    def on_closing(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        save_config(self)
-        self.destroy()
-
-    def _update_debug_mode_global(self, *args):
+        Handles the application's closing event.
+        Ensures the configuration is saved and the instrument is disconnected.
         """
-        Wrapper for `update_debug_mode_global_logic`.
+        debug_print("Closing application...", file=file, function=function)
+        print("Closing application...")
+        save_config(self) # Save current settings before closing
+        if self.inst:
+            disconnect_instrument_logic(self)
+        self.destroy() # Close the Tkinter window
+        sys.exit(0) # Ensure the application fully exits
 
-        Inputs:
-            *args: Standard Tkinter trace arguments (not used).
-        Process:
-            1. Calls `update_debug_mode_global_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
+    def _reset_gui_on_disconnect_or_error(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        update_debug_mode_global_logic(self, *args)
-
-    def _update_scan_rbw_from_slider_index(self, *args):
+        Resets GUI elements to a disconnected state.
+        Called when the instrument disconnects or an error occurs.
         """
-        Wrapper for `update_scan_rbw_from_slider_index_logic`.
+        debug_print("Resetting GUI on disconnect or error...", file=file, function=function)
+        self.inst = None
+        self.instrument_model = "Unknown"
+        self.connect_button.config(state=tk.NORMAL)
+        self.disconnect_button.config(state=tk.DISABLED)
+        self.start_scan_button.config(state=tk.DISABLED, style='Green.TButton') # Reset style
+        self.stop_scan_button.config(state=tk.NORMAL) # Should be normal to allow stopping a hung scan
+        self.pause_resume_button.config(state=tk.DISABLED, style='Orange.TButton') # Reset style
+        self.apply_button.config(state=tk.DISABLED)
+        self.query_presets_button.config(state=tk.DISABLED)
+        # self.load_preset_button.config(state=tk.DISABLED) # Removed as buttons replace it
+        self.plot_button.config(state=tk.DISABLED) # Disable plot button on refresh
+        self._start_connect_button_blink() # Start blinking connect button
+        self._stop_pause_button_blink() # Ensure pause button blinking stops
+        self.reset_setting_colors_logic() # Reset colors as settings are no longer 'applied'
 
-        Inputs:
-            *args: Standard Tkinter trace arguments (not used).
-        Process:
-            1. Calls `update_scan_rbw_from_slider_index_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
-        """
-        update_scan_rbw_from_slider_index_logic(self, *args)
+    # Blinking animation for connect/pause buttons
+    def _start_connect_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Starting connect button blink...", file=file, function=function)
+        if not hasattr(self, '_blink_connect_id'):
+            self._blink_connect_state = False
+            self._blink_connect_id = self.after(500, self._blink_connect_button)
+    
+    def _stop_connect_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Stopping connect button blink...", file=file, function=function)
+        if hasattr(self, '_blink_connect_id'):
+            self.after_cancel(self._blink_connect_id)
+            del self._blink_connect_id
+        self.connect_button.config(style='GreyText.TButton') # Reset to default grey style
 
-    def _update_freq_shift_from_slider_index(self, *args):
-        """
-        Wrapper for `update_freq_shift_from_slider_index_logic`.
-
-        Inputs:
-            *args: Standard Tkinter trace arguments (not used).
-        Process:
-            1. Calls `update_freq_shift_from_slider_index_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
-        """
-        update_freq_shift_from_slider_index_logic(self, *args)
-
-    def create_widgets(self):
-        """
-        Constructs all the graphical user interface elements of the application.
-        This includes frames, labels, entry fields, buttons, checkboxes, sliders,
-        and treeviews, arranging them using Tkinter's `pack` and `grid` layout managers.
-
-        Inputs: None
-        Process:
-            1. Configures `ttk.Style` for consistent widget appearance.
-            2. Creates `resource_frame` for instrument connection controls:
-               - VISA Resource dropdown (`resource_dropdown`)
-               - Refresh, Connect, Disconnect buttons (commands linked to `instrument_logic`).
-            3. Creates `scan_settings_frame` for instrument configuration:
-               - Restore Default Settings button (command linked to `settings_logic`).
-               - Entry fields and checkboxes for Reference Level, High Sensitivity, Preamplifier.
-               - Sliders and entry fields for Scan RBW and Frequency Shift.
-               - Sliders for Cycle Hold Time and Cycle Wait Time.
-               - Entry fields for Scan Name and Output Folder, with an "Open Folder" button (command linked to `settings_logic`).
-               - Checkboxes for including TV and Government band markers in plots.
-               - Checkbox for auto-opening HTML plots.
-               - Buttons for "Apply Settings to Device" (command linked to `instrument_logic`) and "Generate Plot (Average)" (command linked to `plot_logic`).
-            4. Creates `ttk.Notebook` for tabbed interface:
-               - "Instrument Connection" tab (always visible).
-               - "Scan Configuration" tab now includes frequency band selection.
-               - "Device Preset Files" tab with a "Load Selected Preset" button (command linked to `instrument_logic`) and a `ttk.Treeview`
-                 to display device preset files (binds to `instrument_logic.on_preset_select`).
-               - "Report Converter" tab with the `ReportConverterTab` from `src.tabs`.
-               - "Markers Display" tab (added dynamically).
-            5. Creates a `debug_frame` with a checkbox to enable/disable debug mode.
-            6. Configures grid weights for responsive layout.
-            7. Calls `update_vbw_display_logic()` to initialize the VBW display.
-        Outputs: None
-        """
-        style = ttk.Style(self)
-        style.theme_use('clam')
-
-        style.configure("Treeview", 
-                        background="grey", 
-                        foreground="white", 
-                        fieldbackground="grey",
-                        bordercolor="black",
-                        lightcolor="grey",
-                        darkcolor="grey")
-        style.map("Treeview", 
-                  background=[("selected", "blue")], 
-                  foreground=[("selected", "white")])
+    def _blink_connect_button(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         
-        style.configure("Treeview.Heading", 
-                        background="darkgrey", 
+        if self.inst: # Stop blinking if connected
+            self._stop_connect_button_blink()
+            return
+        
+        if self._blink_connect_state:
+            self.connect_button.config(style='GreyText.TButton') # Grey with black text
+        else:
+            self.connect_button.config(style='OrangeRed.TButton') # Orange with red text
+        self._blink_connect_state = not self._blink_connect_state
+        self._blink_connect_id = self.after(500, self._blink_connect_button)
+
+    def _start_pause_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Starting pause button blink...", file=file, function=function)
+        if not hasattr(self, '_blink_pause_id'):
+            self._blink_pause_state = False
+            self._blink_pause_id = self.after(500, self._blink_pause_button)
+
+    def _stop_pause_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Stopping pause button blink...", file=file, function=function)
+        if hasattr(self, '_blink_pause_id'):
+            self.after_cancel(self._blink_pause_id)
+            del self._blink_pause_id
+        self.pause_resume_button.config(style='Orange.TButton') # Reset to default style
+
+    def _blink_pause_button(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Blinking pause button...", file=file, function=function)
+        if not self.paused: # Stop blinking if not paused
+            self._stop_pause_button_blink()
+            return
+        
+        if self._blink_pause_state:
+            self.pause_resume_button.config(style='Orange.TButton') # Default style
+        else:
+            self.pause_resume_button.config(style='Yellow.TButton') # Custom yellow style
+        self._blink_pause_state = not self._blink_pause_state
+        self._blink_pause_id = self.after(500, self._blink_pause_button)
+
+    def _update_setting_color_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback function for Tkinter variable traces to change the background color
+        of an Entry widget if its value differs from the instrument's current setting.
+        This visually indicates unapplied settings.
+        """
+        debug_print("Updating setting color callback...", file=file, function=function)
+        # This function needs to be able to identify which Entry widget corresponds
+        # to the Tkinter variable that triggered the callback.
+        # A more robust solution involves passing the Entry widget reference
+        # or having a map from Tkinter var to Entry widget.
+        # For now, this is a placeholder and would require more context to implement fully.
+        # It's primarily here to prevent the AttributeError.
+        pass
+
+    def _update_general_debug_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for the general debug mode checkbox.
+        Updates the global debug mode setting.
+        """
+        debug_print("Updating general debug callback...", file=file, function=function)
+        set_debug_mode(self.general_debug_enabled_var.get())
+        debug_print(f"General Debug Mode set to: {self.general_debug_enabled_var.get()}", file=file, function=function)
+
+    def _update_log_visa_commands_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for the log VISA commands checkbox.
+        Updates the global VISA command logging setting.
+        """
+        debug_print("Updating log VISA commands callback...", file=file, function=function)
+        set_log_visa_commands_mode(self.log_visa_commands_enabled_var.get())
+        debug_print(f"Log VISA Commands Mode set to: {self.log_visa_commands_enabled_var.get()}", file=file, function=function)
+
+    def reset_setting_colors_logic(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Resets the background color of all setting entry widgets to their default,
+        indicating that all settings are either applied or no longer need visual flagging.
+        """
+        debug_print("Resetting setting colors logic initiated.", file=file, function=function)
+        # This function would need access to the Entry widgets to change their background.
+        # A proper implementation would involve storing references to these widgets
+        # in the self.setting_var_map or a similar structure.
+        # For now, it's a placeholder to prevent errors.
+        pass
+
+    def _create_widgets(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Creates and arranges all GUI widgets within the application window.
+        This includes notebook tabs, frames for settings, buttons, and console output.
+        """
+        debug_print("Creating GUI widgets...", file=file, function=function)
+        # Configure ttk.Style for consistent widget appearance and dark theme
+        style = ttk.Style(self)
+        # Removed style.theme_use('clam') to prevent overriding with a light theme.
+
+        # General dark theme configurations
+        style.configure(".", background="#000000", foreground="white") # Default for all ttk widgets
+        style.configure("TFrame", background="#000000")
+        style.configure("TLabelframe", background="#000000", foreground="white", bordercolor="#4a4a4a")
+        style.configure("TLabelframe.Label", background="#000000", foreground="white")
+        style.configure("TLabel", background="#000000", foreground="white")
+        
+        # Textbox styling: Dark grey background, BLACK text, white insert cursor
+        style.configure("TEntry", fieldbackground="#4a4a4a", foreground="black", insertbackground="white")
+        
+        style.configure("TCheckbutton", background="#000000", foreground="white", indicatoron=True)
+        style.map("TCheckbutton", background=[('active', '#000000')], foreground=[('disabled', '#888888')])
+
+        # Notebook (Tabs) styling
+        style.configure("TNotebook", background="#000000", borderwidth=0)
+        # Unselected tabs: Dark grey background, BLACK text
+        style.configure("TNotebook.Tab", background="#3a3a3a", foreground="black", # Changed foreground to black
+                        lightcolor="#3a3a3a", darkcolor="#3a3a3a", borderwidth=0, padding=[5, 2])
+        # Selected tabs: Orange background, BLACK text
+        style.map("TNotebook.Tab", background=[("selected", "orange")],
+                                   foreground=[("selected", "black")]) # Changed foreground to black for selected tab
+
+        # Button styling
+        style.configure("TButton", background="#3a3a3a", foreground="white",
+                        font=('TkDefaultFont', 9, 'bold'), borderwidth=1, relief="raised",
+                        focuscolor="#6a6a6a") # Focus color for buttons
+        style.map("TButton",
+                  background=[('active', '#6a6a6a'), ('disabled', '#2a2a2a')],
+                  foreground=[('disabled', '#888888')])
+
+        # Custom styles for specific buttons
+        style.configure("Green.TButton", background="green", foreground="black")
+        style.map("Green.TButton", background=[('active', '#006400')]) # Darker green on active
+        style.configure("Orange.TButton", background="orange", foreground="black")
+        style.map("Orange.TButton", background=[('active', '#CC8400')]) # Darker orange on active
+        style.configure("Red.TButton", background="red", foreground="black")
+        style.map("Red.TButton", background=[('active', '#CC0000')]) # Darker red on active
+
+        # New style for grey buttons with black text
+        style.configure("GreyText.TButton", background="#4a4a4a", foreground="black")
+        style.map("GreyText.TButton",
+                  background=[('active', '#6a6a6a'), ('disabled', '#2a2a2a')],
+                  foreground=[('disabled', '#888888')])
+
+        # New style for blinking connect button (Orange background, Red text)
+        style.configure("OrangeRed.TButton", background="orange", foreground="red")
+        style.map("OrangeRed.TButton", background=[('active', '#CC8400')])
+
+
+        # Treeview styling
+        style.configure("Treeview",
+                        background="#4a4a4a",
+                        foreground="white",
+                        fieldbackground="#4a4a4a",
+                        bordercolor="#2e2e2e",
+                        lightcolor="#4a4a4a",
+                        darkcolor="#4a4a4a")
+        style.map("Treeview",
+                  background=[("selected", "#0078D7")], # Windows default blue selection
+                  foreground=[("selected", "white")])
+        style.configure("Treeview.Heading",
+                        background="#3a3a3a",
                         foreground="white",
                         font=('TkDefaultFont', 10, 'bold'))
 
-        style.configure("Vertical.TScrollbar", 
-                        background="darkgrey", 
-                        troughcolor="black", 
-                        bordercolor="black",
+        # Scrollbar styling
+        style.configure("Vertical.TScrollbar",
+                        background="#4a4a4a",
+                        troughcolor="#2e2e2e",
+                        bordercolor="#2e2e2e",
                         arrowcolor="white")
         style.map("Vertical.TScrollbar",
-                  background=[('active', 'gray')])
+                  background=[('active', '#6a6a6a')])
 
-        style.configure("TNotebook", background="black", borderwidth=0)
-        style.configure("TNotebook.Tab", background="darkgrey", foreground="white",
-                        lightcolor="grey", darkcolor="grey", borderwidth=0)
-        style.map("TNotebook.Tab", background=[("selected", "grey")],
-                                   foreground=[("selected", "white")])
+        # Scale (Slider) styling
+        style.configure("TScale", background="#000000", troughcolor="#3a3a3a", sliderrelief="flat")
+        style.map("TScale", background=[('active', '#6a6a6a')])
 
-        # Main Notebook for tabs
-        self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
-
-        # --- Instrument Connection Tab (Always Visible) ---
-        self.instrument_connection_tab = tk.Frame(self.notebook, bg="black")
-        self.notebook.add(self.instrument_connection_tab, text="Instrument Connection")
-
-        # Move resource_frame content into instrument_connection_tab
-        resource_frame = tk.LabelFrame(self.instrument_connection_tab, text="Instrument Connection", padx=10, pady=10, bg="black", fg="white")
-        resource_frame.pack(pady=10, padx=10, fill=tk.X)
-
-        tk.Label(resource_frame, text="VISA Resource:", bg="black", fg="white").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.resource_dropdown = tk.OptionMenu(resource_frame, self.resource_var, "No Resources Found")
-        self.resource_dropdown.config(bg="grey", fg="white", highlightbackground="grey", highlightcolor="grey", activebackground="darkgrey", activeforeground="white")
-        self.resource_dropdown.grid(row=0, column=1, sticky=tk.EW, pady=2)
-        self.resource_dropdown["menu"].config(bg="grey", fg="white", activebackground="darkgrey", activeforeground="white")
-
-        self.refresh_button = tk.Button(resource_frame, text="Refresh", command=lambda: populate_resources_logic(self), bg="darkgrey", fg="white")
-        self.refresh_button.grid(row=0, column=2, padx=5, pady=2)
-
-        self.connect_button = tk.Button(resource_frame, text="Connect", command=lambda: self._connect_instrument_wrapper(), state=tk.DISABLED, bg="darkgrey", fg="white")
-        self.connect_button.grid(row=0, column=3, padx=5, pady=2)
+        # --- MarkersDisplayTab specific styles (moved from tabs.py) ---
+        style.configure("Markers.TFrame", background="#000000")
+        style.configure("Markers.TLabel", background="#000000", foreground="white")
+        style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="white")
+        style.configure("Markers.Treeview", background="#4a4a4a", foreground="white", fieldbackground="#4a4a4a")
+        style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
+        style.configure("Markers.TButton", background="#3a3a3a", foreground="white")
+        style.map("Markers.TButton", background=[('active', '#6a6a6a')])
         
-        self.disconnect_button = tk.Button(resource_frame, text="Disconnect", command=lambda: self._disconnect_instrument_wrapper(), state=tk.DISABLED, bg="darkgrey", fg="white")
-        self.disconnect_button.grid(row=0, column=4, padx=5, pady=2)
+        # New styles for the inner treeview and buttons frame - Corrected style name for TLabelframe
+        style.configure("Markers.Inner.TLabelframe", # Changed from Markers.Inner.LabelFrame
+                        background="#333333", # Darker grey
+                        foreground="white")
+        style.configure("Markers.Inner.Treeview",
+                        background="#333333", # Darker grey
+                        foreground="white",
+                        fieldbackground="#333333", # Darker grey
+                        bordercolor="black",
+                        lightcolor="#333333", # Darker grey
+                        darkcolor="#333333") # Darker grey
+        style.map("Markers.Inner.Treeview",
+                  background=[("selected", "#F4902C")], # New highlight color
+                  foreground=[("selected", "white")])
+        style.configure("Markers.Inner.Frame", background="#333333")
+        # --- End MarkersDisplayTab specific styles ---
 
-        # --- Scan Configuration Tab (now includes frequency band selection) ---
-        self.scan_settings_tab = tk.Frame(self.notebook, bg="black")
+
+        # Root window background
+        self.configure(bg="#000000")
+
+        # Main frames for 50/50 split (using grid)
+        self.grid_columnconfigure(0, weight=1) # Left half for main controls
+        self.grid_columnconfigure(1, weight=1) # Right half for console
+        self.grid_rowconfigure(0, weight=1) # Only one row
+
+        self.main_frame = ttk.Frame(self)
+        self.main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        self.console_frame = ttk.Frame(self) # Parent is self (root window)
+        self.console_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        
+        # Configure console_frame's internal grid rows/columns
+        self.console_frame.grid_rowconfigure(1, weight=1) # Make console_output expand vertically
+        self.console_frame.grid_columnconfigure(0, weight=1) # Make content expand horizontally
+
+        # Scan Control Frame (moved here, above console output)
+        self.scan_control_frame = ttk.LabelFrame(self.console_frame, text="Scan Control", padding="10")
+        self.scan_control_frame.grid(row=0, column=0, sticky="ew", pady=5)
+        self.scan_control_frame.grid_columnconfigure(0, weight=1)
+        self.scan_control_frame.grid_columnconfigure(1, weight=1)
+        self.scan_control_frame.grid_columnconfigure(2, weight=1)
+
+        # Buttons in scan control frame (using ttk.Button with custom styles)
+        self.start_scan_button = ttk.Button(self.scan_control_frame, text="Start Scan", command=lambda: start_scan_thread_logic(self), state=tk.DISABLED, style='Green.TButton')
+        self.start_scan_button.grid(row=0, column=0, padx=5, pady=2, sticky=tk.EW)
+        self.pause_resume_button = ttk.Button(self.scan_control_frame, text="Pause Scan", command=lambda: toggle_pause_scan_logic(self), state=tk.DISABLED, style='Orange.TButton')
+        self.pause_resume_button.grid(row=0, column=1, padx=5, pady=2, sticky=tk.EW)
+        self.stop_scan_button = ttk.Button(self.scan_control_frame, text="Stop Scan", command=lambda: self.stop_scan(), state=tk.DISABLED, style='Red.TButton')
+        self.stop_scan_button.grid(row=0, column=2, padx=5, pady=2, sticky=tk.EW)
+        
+        # Plot button also moved here
+        self.plot_button = ttk.Button(self.scan_control_frame, text="Generate Average Plot", command=lambda: generate_average_plot_logic(self), state=tk.DISABLED, style='GreyText.TButton') # Applied new style
+        self.plot_button.grid(row=1, column=0, columnspan=3, padx=5, pady=2, sticky=tk.EW) # Adjusted row and columnspan
+
+        # Console output frame (now directly in console_frame, below scan_control_frame)
+        self.console_output = scrolledtext.ScrolledText(self.console_frame, wrap=tk.WORD, bg="black", fg="white", font=("Courier New", 10))
+        self.console_output.grid(row=1, column=0, sticky="nsew") # Placed in row 1 of console_frame (was row 2)
+        self.console_output.config(state=tk.DISABLED) # Make it read-only
+
+        # Configure tags for console output
+        self.console_output.tag_config("green", foreground="green")
+        self.console_output.tag_config("red", foreground="red")
+        self.console_output.tag_config("yellow", foreground="yellow")
+        self.console_output.tag_config("white", foreground="white") # Default output to white
+        self.console_output.tag_config("debug_white", foreground="white") # Tag for debug_print output
+
+        # Create a notebook (tabbed interface) - now gridded within main_frame
+        self.notebook = ttk.Notebook(self.main_frame) # Parent is main_frame
+        self.notebook.grid(row=0, column=0, sticky="nsew") # Using grid for main_frame's children. Only one column.
+
+        # Create frames for each tab (now ttk.Frame)
+        self.scan_settings_tab = ttk.Frame(self.notebook)
+        self.preset_files_tab = ttk.Frame(self.notebook)
+        self.report_converter_tab = ttk.Frame(self.notebook)
+
         self.notebook.add(self.scan_settings_tab, text="Scan Configuration")
-        self.dynamic_tabs.append(self.scan_settings_tab) # Add to dynamic tabs list
-
-        scan_settings_frame = tk.LabelFrame(self.scan_settings_tab, text="Instrument Configuration & Scan Settings", padx=10, pady=10, bg="black", fg="white")
-        scan_settings_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True) # Changed to fill BOTH and expand
-
-        restore_button = tk.Button(scan_settings_frame, text="Restore Default Settings", command=lambda: restore_default_settings_logic(self), bg="darkgrey", fg="white")
-        restore_button.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.EW)
-
-        row_idx = 1
-        tk.Label(scan_settings_frame, text="Reference Level (dBm):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        entry_ref_level = tk.Entry(scan_settings_frame, textvariable=self.desired_ref_level_var, bg="grey", fg="white", insertbackground="white")
-        entry_ref_level.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        self.desired_setting_entries["ref_level"] = entry_ref_level
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="High Sensitivity (Preamplifier):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        check_high_sensitivity = tk.Checkbutton(scan_settings_frame, variable=self.high_sensitivity_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-        check_high_sensitivity.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
-        self.desired_setting_entries["high_sensitivity"] = check_high_sensitivity
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Preamplifier (ON/OFF):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        check_preamp = tk.Checkbutton(scan_settings_frame, variable=self.desired_preamp_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-        check_preamp.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
-        self.desired_setting_entries["preamp"] = check_preamp
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Scan RBW (Hz):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        
-        rbw_input_frame = tk.Frame(scan_settings_frame, bg="black")
-        rbw_input_frame.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        rbw_input_frame.grid_columnconfigure(0, weight=1)
-        rbw_input_frame.grid_columnconfigure(1, weight=2)
-
-        entry_scan_rbw_segmentation = tk.Entry(rbw_input_frame, textvariable=self.desired_scan_rbw_segmentation_var, bg="grey", fg="white", insertbackground="white")
-        entry_scan_rbw_segmentation.grid(row=0, column=0, sticky=tk.EW, padx=(0, 5))
-        self.desired_setting_entries["scan_rbw_segmentation"] = entry_scan_rbw_segmentation
-        
-        def update_rbw_from_entry(*args):
-            try:
-                val = float(self.desired_scan_rbw_segmentation_var.get())
-                if val in self.rbw_val_to_idx:
-                    self.rbw_slider_index_var.set(self.rbw_val_to_idx[val])
-                else:
-                    closest_val = min(self.rbw_values, key=lambda x: abs(x - val))
-                    self.rbw_slider_index_var.set(self.rbw_val_to_idx[closest_val])
-            except ValueError:
-                pass
-
-        self.rbw_slider = tk.Scale(rbw_input_frame, 
-                                   variable=self.rbw_slider_index_var,
-                                   from_=0, to=len(self.rbw_values) - 1,
-                                   orient=tk.HORIZONTAL, showvalue=0,
-                                   resolution=1,
-                                   bg="black", fg="white", troughcolor="grey", highlightbackground="black",
-                                   length=200)
-        self.rbw_slider.grid(row=0, column=1, sticky=tk.EW)
-        
-        self.desired_scan_rbw_segmentation_var.trace_add("write", update_rbw_from_entry)
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Frequency Shift (Hz, per cycle):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        
-        freq_shift_input_frame = tk.Frame(scan_settings_frame, bg="black")
-        freq_shift_input_frame.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        freq_shift_input_frame.grid_columnconfigure(0, weight=1)
-        freq_shift_input_frame.grid_columnconfigure(1, weight=2)
-
-        entry_freq_shift = tk.Entry(freq_shift_input_frame, textvariable=self.shift_freq_var, bg="grey", fg="white", insertbackground="white")
-        entry_freq_shift.grid(row=0, column=0, sticky=tk.EW, padx=(0, 5))
-        self.desired_setting_entries["shift_freq"] = entry_freq_shift
-        
-        def update_freq_shift_from_var(*args):
-            try:
-                val = float(self.shift_freq_var.get())
-                if val in self.freq_shift_val_to_idx:
-                    self.freq_shift_slider_index_var.set(self.freq_shift_val_to_idx[val])
-                else:
-                    closest_val = min(self.freq_shift_values, key=lambda x: abs(x - val))
-                    self.freq_shift_slider_index_var.set(self.freq_shift_val_to_idx[closest_val])
-            except ValueError:
-                pass
-
-        self.freq_shift_slider = tk.Scale(freq_shift_input_frame, 
-                                          variable=self.freq_shift_slider_index_var,
-                                          from_=0, to=len(self.freq_shift_values) - 1,
-                                          orient=tk.HORIZONTAL, showvalue=0,
-                                          resolution=1,
-                                          bg="black", fg="white", troughcolor="grey", highlightbackground="black")
-        self.freq_shift_slider.grid(row=0, column=1, sticky=tk.EW)
-        
-        self.shift_freq_var.trace_add("write", update_freq_shift_from_var)
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Cycle Hold Time (s):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        
-        self.cycle_hold_time_slider = tk.Scale(scan_settings_frame, variable=self.desired_max_hold_time_var,
-                                               from_=0.5, to=10.0,
-                                               orient=tk.HORIZONTAL, showvalue=1, resolution=0.5,
-                                               bg="black", fg="white", troughcolor="grey", highlightbackground="black")
-        self.cycle_hold_time_slider.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Cycle Wait Time (s):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        
-        self.cycle_wait_time_slider = tk.Scale(scan_settings_frame, variable=self.desired_cycle_wait_time_var,
-                                               from_=0, to=600,
-                                               orient=tk.HORIZONTAL, showvalue=1, resolution=1,
-                                               bg="black", fg="white", troughcolor="grey", highlightbackground="black")
-        self.cycle_wait_time_slider.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Scan Name:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        entry_scan_name = tk.Entry(scan_settings_frame, textvariable=self.scan_name_var, bg="grey", fg="white", insertbackground="white")
-        entry_scan_name.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        self.desired_setting_entries["scan_name"] = entry_scan_name
-
-        row_idx += 1
-        output_folder_frame = tk.Frame(scan_settings_frame, bg="black")
-        output_folder_frame.grid(row=row_idx, column=0, columnspan=2, sticky=tk.EW, pady=2)
-        
-        tk.Label(output_folder_frame, text=f"Output Folder ({os.getcwd()}{os.sep}):", bg="black", fg="white").pack(side=tk.LEFT, padx=(0, 5))
-        
-        entry_output_folder = tk.Entry(output_folder_frame, textvariable=self.output_folder_var, bg="grey", fg="white", insertbackground="white")
-        entry_output_folder.pack(side=tk.LEFT, expand=True, fill=tk.X)
-        self.desired_setting_entries["output_folder"] = entry_output_folder
-        open_folder_button = tk.Button(output_folder_frame, text="Open Folder", command=lambda: open_output_folder_logic(self), bg="darkgrey", fg="white")
-        open_folder_button.pack(side=tk.RIGHT, padx=(5, 0))
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Default Focus Width (Hz):", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        entry_focus_width = tk.Entry(scan_settings_frame, textvariable=self.default_focus_width_var, bg="grey", fg="white", insertbackground="white")
-        entry_focus_width.grid(row=row_idx, column=1, sticky=tk.EW, pady=2)
-        self.desired_setting_entries["default_focus_width"] = entry_focus_width
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Include TV Band Markers:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        chk_tv_markers = tk.Checkbutton(scan_settings_frame, variable=self.include_tv_markers_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-        chk_tv_markers.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
-        self.desired_setting_entries["include_tv_markers"] = chk_tv_markers
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Include Government Band Markers:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        chk_gov_markers = tk.Checkbutton(scan_settings_frame, variable=self.include_gov_markers_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-        chk_gov_markers.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
-        self.desired_setting_entries["include_gov_markers"] = chk_gov_markers
-
-        row_idx += 1
-        tk.Label(scan_settings_frame, text="Open HTML Plot After Each Cycle:", bg="black", fg="white").grid(row=row_idx, column=0, sticky=tk.W, pady=2)
-        chk_open_html = tk.Checkbutton(scan_settings_frame, variable=self.open_html_after_complete_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-        chk_open_html.grid(row=row_idx, column=1, sticky=tk.W, pady=2)
-        self.desired_setting_entries["open_html_after_complete"] = chk_open_html
-
-        row_idx += 1
-        button_row_frame = tk.Frame(scan_settings_frame, bg="black")
-        button_row_frame.grid(row=row_idx, column=0, columnspan=2, pady=10, sticky=tk.EW)
-        button_row_frame.grid_columnconfigure(0, weight=1)
-        button_row_frame.grid_columnconfigure(1, weight=1)
-
-        self.apply_button = tk.Button(button_row_frame, text="Apply Settings to Device", command=lambda: apply_settings_to_device_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
-        self.apply_button.grid(row=0, column=0, padx=5, sticky=tk.EW)
-
-        self.plot_button = tk.Button(button_row_frame, text="Generate Plot (Average)", command=lambda: generate_average_plot_logic(self), state=tk.NORMAL, bg="blue", fg="white")
-        self.plot_button.grid(row=0, column=1, padx=5, sticky=tk.EW)
-
-        # --- Moved Frequency Band Selection Section into Scan Configuration Tab ---
-        row_idx += 1
-        band_selection_frame = tk.LabelFrame(scan_settings_frame, text="Frequency Band Selection", padx=10, pady=10, bg="black", fg="white")
-        band_selection_frame.grid(row=row_idx, column=0, columnspan=2, sticky=tk.NSEW, pady=10)
-        band_selection_frame.grid_rowconfigure(0, weight=1)
-        band_selection_frame.grid_columnconfigure(0, weight=1)
-
-        band_canvas = tk.Canvas(band_selection_frame, bg="black", highlightbackground="black")
-        band_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        band_scrollbar = ttk.Scrollbar(band_selection_frame, orient="vertical", command=band_canvas.yview)
-        band_scrollbar.pack(side=tk.RIGHT, fill="y")
-
-        band_canvas.configure(yscrollcommand=band_scrollbar.set)
-        band_canvas.bind('<Configure>', lambda e: band_canvas.configure(scrollregion = band_canvas.bbox("all")))
-
-        self.inner_band_frame = tk.Frame(band_canvas, bg="black")
-        band_canvas.create_window((0, 0), window=self.inner_band_frame, anchor="nw")
-
-        for i, band in enumerate(SCAN_BAND_RANGES):
-            var = tk.BooleanVar(self)
-            chk = tk.Checkbutton(self.inner_band_frame, text=f"{band['Band Name']} ({band['Start MHz']:.3f}-{band['Stop MHz']:.3f} MHz)", variable=var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white")
-            chk.grid(row=i, column=0, sticky=tk.W, padx=5, pady=1)
-            self.band_checkboxes.append(chk)
-            self.band_vars.append({"band": band, "var": var})
-        
-        set_band_checkboxes_from_config_logic(self)
-
-
-        # --- Device Preset Files Tab ---
-        self.preset_files_tab = tk.Frame(self.notebook, bg="black")
         self.notebook.add(self.preset_files_tab, text="Device Preset Files")
-        self.dynamic_tabs.append(self.preset_files_tab) # Add to dynamic tabs list
-
-        self.load_preset_button = tk.Button(self.preset_files_tab, text="Load Selected Preset", command=lambda: load_selected_preset_logic(self), state=tk.DISABLED, bg="darkgrey", fg="white")
-        self.load_preset_button.pack(pady=5)
-
-        self.preset_tree = ttk.Treeview(self.preset_files_tab, columns=("Name",), show="headings", selectmode="browse")
-        self.preset_tree.heading("Name", text="Preset File Name")
-        self.preset_tree.column("Name", width=200, anchor="w")
-        self.preset_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self.preset_tree.tag_configure("Mon", foreground="blue")
-
-        preset_scrollbar = ttk.Scrollbar(self.preset_files_tab, orient="vertical", command=self.preset_tree.yview)
-        preset_scrollbar.pack(side=tk.RIGHT, fill="y")
-        self.preset_tree.configure(yscrollcommand=preset_scrollbar.set)
-
-        self.preset_tree.bind("<<TreeviewSelect>>", lambda event: on_preset_select(self, event))
-        
-        # --- Report Converter Tab ---
-        self.report_converter_tab = ReportConverterTab(self.notebook, app_instance=self, bg="black")
         self.notebook.add(self.report_converter_tab, text="Report Converter")
-        self.dynamic_tabs.append(self.report_converter_tab) # Add to dynamic tabs list
 
-        # Debug Frame (always visible, outside notebook)
-        debug_frame = tk.Frame(self.main_frame, bg="black")
-        debug_frame.pack(pady=10, padx=10, fill=tk.X)
-        tk.Checkbutton(debug_frame, text="Enable Debug Mode (Log VISA Commands)", variable=self.debug_mode_var, bg="black", fg="white", selectcolor="grey", activebackground="black", activeforeground="white").pack(anchor=tk.W)
+        # Store dynamic tabs for later management
+        self.dynamic_tabs = [self.scan_settings_tab, self.preset_files_tab, self.report_converter_tab]
 
-        for i in range(5):
-            resource_frame.grid_columnconfigure(i, weight=1)
-        scan_settings_frame.grid_columnconfigure(0, weight=1)
-        scan_settings_frame.grid_columnconfigure(1, weight=1)
 
-        update_vbw_display_logic(self)
+        # --- Scan Configuration Tab (self.scan_settings_tab) ---
+        self._create_scan_settings_widgets(self.scan_settings_tab)
 
-    def add_markers_tab(self, headers, rows):
+        # --- Device Preset Files Tab (self.preset_files_tab) ---
+        self._create_preset_files_widgets(self.preset_files_tab)
+
+        # --- Report Converter Tab (self.report_converter_tab) ---
+        # The ReportConverterTab class itself needs to be updated to use ttk widgets and dark theme
+        self.report_converter_frame = ReportConverterTab(self.report_converter_tab, app_instance=self)
+        self.report_converter_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+        # Configure grid weights for main_frame's internal layout
+        self.main_frame.grid_columnconfigure(0, weight=1) # Only one column
+        self.main_frame.grid_rowconfigure(0, weight=1) # Notebook expands vertically
+
+
+    def on_closing(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Handles the application's closing event.
+        Ensures the configuration is saved and the instrument is disconnected.
+        """
+        debug_print("Closing application...", file=file, function=function)
+        print("Closing application...")
+        save_config(self) # Save current settings before closing
+        if self.inst:
+            disconnect_instrument_logic(self)
+        self.destroy() # Close the Tkinter window
+        sys.exit(0) # Ensure the application fully exits
+
+    def _reset_gui_on_disconnect_or_error(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Resets GUI elements to a disconnected state.
+        Called when the instrument disconnects or an error occurs.
+        """
+        debug_print("Resetting GUI on disconnect or error...", file=file, function=function)
+        self.inst = None
+        self.instrument_model = "Unknown"
+        self.connect_button.config(state=tk.NORMAL)
+        self.disconnect_button.config(state=tk.DISABLED)
+        self.start_scan_button.config(state=tk.DISABLED, style='Green.TButton') # Reset style
+        self.stop_scan_button.config(state=tk.NORMAL) # Should be normal to allow stopping a hung scan
+        self.pause_resume_button.config(state=tk.DISABLED, style='Orange.TButton') # Reset style
+        self.apply_button.config(state=tk.DISABLED)
+        self.query_presets_button.config(state=tk.DISABLED)
+        # self.load_preset_button.config(state=tk.DISABLED) # Removed as buttons replace it
+        self.plot_button.config(state=tk.DISABLED) # Disable plot button on refresh
+        self._start_connect_button_blink() # Start blinking connect button
+        self._stop_pause_button_blink() # Ensure pause button blinking stops
+        self.reset_setting_colors_logic() # Reset colors as settings are no longer 'applied'
+
+    # Blinking animation for connect/pause buttons
+    def _start_connect_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Starting connect button blink...", file=file, function=function)
+        if not hasattr(self, '_blink_connect_id'):
+            self._blink_connect_state = False
+            self._blink_connect_id = self.after(500, self._blink_connect_button)
+    
+    def _stop_connect_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Stopping connect button blink...", file=file, function=function)
+        if hasattr(self, '_blink_connect_id'):
+            self.after_cancel(self._blink_connect_id)
+            del self._blink_connect_id
+        self.connect_button.config(style='GreyText.TButton') # Reset to default grey style
+
+    def _blink_connect_button(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        
+        if self.inst: # Stop blinking if connected
+            self._stop_connect_button_blink()
+            return
+        
+        if self._blink_connect_state:
+            self.connect_button.config(style='GreyText.TButton') # Grey with black text
+        else:
+            self.connect_button.config(style='OrangeRed.TButton') # Orange with red text
+        self._blink_connect_state = not self._blink_connect_state
+        self._blink_connect_id = self.after(500, self._blink_connect_button)
+
+    def _start_pause_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Starting pause button blink...", file=file, function=function)
+        if not hasattr(self, '_blink_pause_id'):
+            self._blink_pause_state = False
+            self._blink_pause_id = self.after(500, self._blink_pause_button)
+
+    def _stop_pause_button_blink(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Stopping pause button blink...", file=file, function=function)
+        if hasattr(self, '_blink_pause_id'):
+            self.after_cancel(self._blink_pause_id)
+            del self._blink_pause_id
+        self.pause_resume_button.config(style='Orange.TButton') # Reset to default style
+
+    def _blink_pause_button(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        debug_print("Blinking pause button...", file=file, function=function)
+        if not self.paused: # Stop blinking if not paused
+            self._stop_pause_button_blink()
+            return
+        
+        if self._blink_pause_state:
+            self.pause_resume_button.config(style='Orange.TButton') # Default style
+        else:
+            self.pause_resume_button.config(style='Yellow.TButton') # Custom yellow style
+        self._blink_pause_state = not self._blink_pause_state
+        self._blink_pause_id = self.after(500, self._blink_pause_button)
+
+    def _update_setting_color_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback function for Tkinter variable traces to change the background color
+        of an Entry widget if its value differs from the instrument's current setting.
+        This visually indicates unapplied settings.
+        """
+        debug_print("Updating setting color callback...", file=file, function=function)
+        # This function needs to be able to identify which Entry widget corresponds
+        # to the Tkinter variable that triggered the callback.
+        # A more robust solution involves passing the Entry widget reference
+        # or having a map from Tkinter var to Entry widget.
+        # For now, this is a placeholder and would require more context to implement fully.
+        # It's primarily here to prevent the AttributeError.
+        pass
+
+    def _update_general_debug_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for the general debug mode checkbox.
+        Updates the global debug mode setting.
+        """
+        debug_print("Updating general debug callback...", file=file, function=function)
+        set_debug_mode(self.general_debug_enabled_var.get())
+        debug_print(f"General Debug Mode set to: {self.general_debug_enabled_var.get()}", file=file, function=function)
+
+    def _update_log_visa_commands_callback(self, *args, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for the log VISA commands checkbox.
+        Updates the global VISA command logging setting.
+        """
+        debug_print("Updating log VISA commands callback...", file=file, function=function)
+        set_log_visa_commands_mode(self.log_visa_commands_enabled_var.get())
+        debug_print(f"Log VISA Commands Mode set to: {self.log_visa_commands_enabled_var.get()}", file=file, function=function)
+
+    def reset_setting_colors_logic(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Resets the background color of all setting entry widgets to their default,
+        indicating that all settings are either applied or no longer need visual flagging.
+        """
+        debug_print("Resetting setting colors logic initiated.", file=file, function=function)
+        # This function would need access to the Entry widgets to change their background.
+        # A proper implementation would involve storing references to these widgets
+        # in the self.setting_var_map or a similar structure.
+        # For now, it's a placeholder to prevent errors.
+        pass
+
+    def _create_scan_settings_widgets(self, parent_frame, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Creates and arranges widgets for the 'Scan Configuration' tab.
+        """
+        debug_print("Creating scan settings widgets...", file=file, function=function)
+        parent_frame.grid_columnconfigure(0, weight=1) # Make column 0 expandable
+        parent_frame.grid_columnconfigure(1, weight=1) # Make column 1 expandable
+        parent_frame.grid_rowconfigure(0, weight=0) # Row for instrument connection
+        parent_frame.grid_rowconfigure(1, weight=1) # Row for main settings area
+
+        # --- Instrument Connection Frame ---
+        instrument_frame = ttk.LabelFrame(parent_frame, text="Instrument Connection", padding="10")
+        instrument_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        instrument_frame.grid_columnconfigure(1, weight=1) # Make dropdown expandable
+
+        ttk.Label(instrument_frame, text="VISA Resource:", style="TLabel").grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        self.resource_dropdown = ttk.OptionMenu(instrument_frame, self.resource_var, "No resources found", *self.instrument_list)
+        self.resource_dropdown.grid(row=0, column=1, padx=5, pady=2, sticky=tk.EW)
+        
+        self.connect_button = ttk.Button(instrument_frame, text="Connect", command=lambda: connect_instrument_logic(self), style='Green.TButton')
+        self.connect_button.grid(row=0, column=2, padx=5, pady=2)
+        self.disconnect_button = ttk.Button(instrument_frame, text="Disconnect", command=lambda: disconnect_instrument_logic(self), state=tk.DISABLED, style='Red.TButton')
+        self.disconnect_button.grid(row=0, column=3, padx=5, pady=2)
+        
+        ttk.Button(instrument_frame, text="Refresh Resources", command=lambda: populate_resources_logic(self), style='GreyText.TButton').grid(row=1, column=0, columnspan=2, padx=5, pady=2, sticky=tk.EW)
+        
+        self.instrument_model_label = ttk.Label(instrument_frame, text="Model: Unknown", style="TLabel")
+        self.instrument_model_label.grid(row=1, column=2, columnspan=2, padx=5, pady=2, sticky=tk.W)
+
+
+        # --- Settings and Bands Frame (Main Content Area) ---
+        settings_bands_frame = ttk.Frame(parent_frame)
+        settings_bands_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
+        settings_bands_frame.grid_columnconfigure(0, weight=1) # Settings column
+        settings_bands_frame.grid_columnconfigure(1, weight=1) # Bands column
+        settings_bands_frame.grid_rowconfigure(0, weight=1) # Only one row for settings/bands
+
+        # Left side: Scan Settings
+        settings_frame = ttk.LabelFrame(settings_bands_frame, text="Scan Settings", padding="10")
+        settings_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        settings_frame.grid_columnconfigure(1, weight=1) # Make entry fields expandable
+
+        # Scan Directory
+        ttk.Label(settings_frame, text="Scan Directory:", style="TLabel").grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        self.scan_directory_entry = ttk.Entry(settings_frame, textvariable=self.scan_directory_var, width=30, style="TEntry")
+        self.scan_directory_entry.grid(row=0, column=1, padx=5, pady=2, sticky=tk.EW)
+        ttk.Button(settings_frame, text="Browse", command=lambda: self.scan_directory_var.set(filedialog.askdirectory() or self.scan_directory_var.get()), style='GreyText.TButton').grid(row=0, column=2, padx=5, pady=2)
+        ttk.Button(settings_frame, text="Open Folder", command=lambda: open_output_folder_logic(self), style='GreyText.TButton').grid(row=0, column=3, padx=5, pady=2)
+
+        # Scan Name
+        ttk.Label(settings_frame, text="Scan Name:", style="TLabel").grid(row=1, column=0, padx=5, pady=2, sticky=tk.W)
+        self.scan_name_entry = ttk.Entry(settings_frame, textvariable=self.scan_name_var, width=30, style="TEntry")
+        self.scan_name_entry.grid(row=1, column=1, padx=5, pady=2, sticky=tk.EW)
+
+        # Desired RBW (Read-only Entry + Slider)
+        ttk.Label(settings_frame, text="Desired RBW (Hz):", style="TLabel").grid(row=2, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_rbw_entry = ttk.Entry(settings_frame, textvariable=self.desired_rbw_var, state='readonly', width=15, style="TEntry")
+        self.desired_rbw_entry.grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
+        self.rbw_slider = ttk.Scale(settings_frame, from_=0, to=len(self.rbw_values) - 1, orient=tk.HORIZONTAL,
+                                    variable=self.rbw_slider_index_var, command=lambda val: self.rbw_slider_index_var.set(round(float(val))))
+        self.rbw_slider.grid(row=2, column=2, columnspan=2, padx=5, pady=2, sticky=tk.EW)
+
+
+        # Desired VBW (Display Only)
+        ttk.Label(settings_frame, text="Desired VBW (Hz):", style="TLabel").grid(row=3, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_vbw_display_label = ttk.Label(settings_frame, textvariable=self.desired_vbw_display_var, style="TLabel")
+        self.desired_vbw_display_label.grid(row=3, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Max Hold Time (Read-only Entry + Slider)
+        ttk.Label(settings_frame, text="Max Hold Time (s):", style="TLabel").grid(row=4, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_max_hold_time_entry = ttk.Entry(settings_frame, textvariable=self.desired_max_hold_time_var, state='readonly', width=15, style="TEntry")
+        self.desired_max_hold_time_entry.grid(row=4, column=1, padx=5, pady=2, sticky=tk.W)
+        self.max_hold_time_slider = ttk.Scale(settings_frame, from_=0, to=len(self.max_hold_time_values) - 1, orient=tk.HORIZONTAL,
+                                            variable=self.max_hold_time_slider_index_var, command=lambda val: self.max_hold_time_slider_index_var.set(round(float(val))))
+        self.max_hold_time_slider.grid(row=4, column=2, columnspan=2, padx=5, pady=2, sticky=tk.EW)
+
+        # Cycle Wait Time (Read-only Entry + Slider)
+        ttk.Label(settings_frame, text="Cycle Wait Time (s):", style="TLabel").grid(row=5, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_cycle_wait_time_entry = ttk.Entry(settings_frame, textvariable=self.desired_cycle_wait_time_var, state='readonly', width=15, style="TEntry")
+        self.desired_cycle_wait_time_entry.grid(row=5, column=1, padx=5, pady=2, sticky=tk.W)
+        self.cycle_wait_time_slider = ttk.Scale(settings_frame, from_=0, to=len(self.cycle_wait_time_values) - 1, orient=tk.HORIZONTAL,
+                                                variable=self.cycle_wait_time_slider_index_var, command=lambda val: self.cycle_wait_time_slider_index_var.set(round(float(val))))
+        self.cycle_wait_time_slider.grid(row=5, column=2, columnspan=2, padx=5, pady=2, sticky=tk.EW)
+
+
+        # Reference Level
+        ttk.Label(settings_frame, text="Reference Level (dBm):", style="TLabel").grid(row=6, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_reference_level_entry = ttk.Entry(settings_frame, textvariable=self.desired_reference_level_var, width=15, style="TEntry")
+        self.desired_reference_level_entry.grid(row=6, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Frequency Shift
+        ttk.Label(settings_frame, text="Frequency Shift (Hz):", style="TLabel").grid(row=7, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_freq_shift_entry = ttk.Entry(settings_frame, textvariable=self.desired_freq_shift_var, width=15, style="TEntry")
+        self.desired_freq_shift_entry.grid(row=7, column=1, padx=5, pady=2, sticky=tk.EW)
+
+        # Max Hold Enabled Checkbox
+        ttk.Checkbutton(settings_frame, text="Max Hold Enabled", variable=self.desired_maxhold_enabled_var, style="TCheckbutton").grid(row=8, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+
+        # High Sensitivity Checkbox
+        ttk.Checkbutton(settings_frame, text="High Sensitivity", variable=self.desired_high_sensitivity_var, style="TCheckbutton").grid(row=9, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+
+        # Preamp On Checkbox
+        ttk.Checkbutton(settings_frame, text="Preamp On", variable=self.desired_preamp_on_var, style="TCheckbutton").grid(row=10, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+
+        # Scan RBW Segmentation
+        ttk.Label(settings_frame, text="Scan RBW Segmentation:", style="TLabel").grid(row=11, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_scan_rbw_segmentation_entry = ttk.Entry(settings_frame, textvariable=self.desired_scan_rbw_segmentation_var, width=15, style="TEntry")
+        self.desired_scan_rbw_segmentation_entry.grid(row=11, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Default Focus Width
+        ttk.Label(settings_frame, text="Default Focus Width (Hz):", style="TLabel").grid(row=12, column=0, padx=5, pady=2, sticky=tk.W)
+        self.desired_default_focus_width_entry = ttk.Entry(settings_frame, textvariable=self.desired_default_focus_width_var, width=15, style="TEntry")
+        self.desired_default_focus_width_entry.grid(row=12, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # Debug Checkboxes
+        ttk.Checkbutton(settings_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style="TCheckbutton").grid(row=13, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+        ttk.Checkbutton(settings_frame, text="Log VISA Commands", variable=self.log_visa_commands_enabled_var, style="TCheckbutton").grid(row=14, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+        
+        # Open HTML After Complete Checkbox
+        ttk.Checkbutton(settings_frame, text="Open HTML Plot After Scan", variable=self.open_html_after_complete_var, style="TCheckbutton").grid(row=15, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
+
+        # Apply Settings Button
+        self.apply_button = ttk.Button(settings_frame, text="Apply Settings to Device", command=lambda: apply_settings_to_device_logic(self), state=tk.DISABLED, style='Orange.TButton')
+        self.apply_button.grid(row=16, column=0, columnspan=4, padx=5, pady=10, sticky=tk.EW)
+
+        # Restore Defaults Button
+        ttk.Button(settings_frame, text="Restore Default Settings", command=lambda: restore_default_settings_logic(self), style='GreyText.TButton').grid(row=17, column=0, columnspan=4, padx=5, pady=2, sticky=tk.EW)
+
+
+        # Right side: Frequency Bands Selection
+        bands_frame = ttk.LabelFrame(settings_bands_frame, text="Frequency Bands", padding="10")
+        bands_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+        bands_frame.grid_columnconfigure(0, weight=1) # Make column for checkboxes expandable
+
+        # Use a canvas with a scrollbar for bands if there are many
+        bands_canvas = tk.Canvas(bands_frame, bg="#000000", highlightbackground="#000000") # tk.Canvas as ttk.Canvas doesn't exist
+        bands_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        bands_scrollbar = ttk.Scrollbar(bands_frame, orient="vertical", command=bands_canvas.yview)
+        bands_scrollbar.pack(side=tk.RIGHT, fill="y")
+
+        bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
+        bands_canvas.bind('<Configure>', lambda e: bands_canvas.configure(scrollregion = bands_canvas.bbox("all")))
+
+        self.inner_bands_frame = ttk.Frame(bands_canvas, style="TFrame")
+        bands_canvas.create_window((0, 0), window=self.inner_bands_frame, anchor="nw")
+
+        # Populate frequency band checkboxes
+        for i, band_info in enumerate(self.band_vars):
+            band_name = band_info["band"]["Band Name"]
+            var = band_info["var"]
+            cb = ttk.Checkbutton(self.inner_bands_frame, text=band_name, variable=var, style="TCheckbutton")
+            cb.grid(row=i, column=0, sticky=tk.W, padx=2, pady=1)
+            var.trace_add("write", self._update_setting_color_callback) # Trace changes to update apply button color
+
+    def _create_preset_files_widgets(self, parent_frame, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Creates and arranges widgets for the 'Device Preset Files' tab.
+        """
+        debug_print("Creating preset files widgets...", file=file, function=inspect.currentframe().f_code.co_name)
+        parent_frame.grid_columnconfigure(0, weight=1) # Make column expandable
+        parent_frame.grid_rowconfigure(1, weight=1) # Make treeview row expandable
+
+        # Preset Actions Frame
+        preset_actions_frame = ttk.LabelFrame(parent_frame, text="Preset Actions", padding="10")
+        preset_actions_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        preset_actions_frame.grid_columnconfigure(0, weight=1)
+        preset_actions_frame.grid_columnconfigure(1, weight=1)
+
+        self.query_presets_button = ttk.Button(preset_actions_frame, text="Query Device Presets", command=lambda: update_preset_buttons(self.inner_preset_buttons_frame), state=tk.DISABLED, style='GreyText.TButton') # Pass the frame
+        self.query_presets_button.grid(row=0, column=0, padx=5, pady=5, sticky=tk.EW)
+        
+        ttk.Button(preset_actions_frame, text="Open Preset Folder", command=lambda: open_preset_folder_logic(self), style='GreyText.TButton').grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
+
+        # Preset Display Frame
+        preset_display_frame = ttk.LabelFrame(parent_frame, text="Available Presets", padding="10")
+        preset_display_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        preset_display_frame.grid_columnconfigure(0, weight=1)
+        preset_display_frame.grid_rowconfigure(0, weight=1)
+
+        # Use a canvas with a scrollbar for preset buttons
+        preset_canvas = tk.Canvas(preset_display_frame, bg="#000000", highlightbackground="#000000")
+        preset_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        preset_scrollbar = ttk.Scrollbar(preset_display_frame, orient="vertical", command=preset_canvas.yview)
+        preset_scrollbar.pack(side=tk.RIGHT, fill="y")
+
+        preset_canvas.configure(yscrollcommand=preset_scrollbar.set)
+        preset_canvas.bind('<Configure>', lambda e: preset_canvas.configure(scrollregion = preset_canvas.bbox("all")))
+
+        self.inner_preset_buttons_frame = ttk.Frame(preset_canvas, style="TFrame")
+        preset_canvas.create_window((0, 0), window=self.inner_preset_buttons_frame, anchor="nw")
+
+        self.inner_preset_buttons_frame.grid_columnconfigure(0, weight=1) # Make column expandable for buttons
+
+        # Initial state: No presets loaded
+        ttk.Label(self.inner_preset_buttons_frame, text="Click 'Query Device Presets' to load.", style="TLabel").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+
+    def _redirect_stdout_to_console(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Redirects stdout to the Tkinter scrolled text widget for console output.
+        """
+        debug_print("Redirecting stdout to console...", file=file, function=inspect.currentframe().f_code.co_name)
+        sys.stdout = TextRedirector(self.console_output, "white") # Default tag for general output
+        sys.stderr = TextRedirector(self.console_output, "red") # Error output in red
+
+    def add_markers_tab(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Adds a new 'Markers Display' tab to the notebook and populates it
         with the extracted marker data. This tab will display the zones,
@@ -640,6 +956,7 @@ class App(tk.Tk):
             4. Selects the newly created tab to bring it into view.
         Outputs: None
         """
+        debug_print("Adding/updating markers tab...", file=file, function=inspect.currentframe().f_code.co_name)
         # Check if "Markers Display" tab already exists and remove it
         for i, tab_id in enumerate(self.notebook.tabs()):
             tab_text = self.notebook.tab(tab_id, "text")
@@ -647,38 +964,29 @@ class App(tk.Tk):
                 self.notebook.forget(tab_id)
                 self.dynamic_tabs = [tab for tab in self.dynamic_tabs if tab != self.markers_display_tab] # Remove from dynamic tabs list
                 del self.markers_display_tab # Delete the reference
-                print("Existing 'Markers Display' tab removed.")
+                debug_print("Existing 'Markers Display' tab removed.", file=file, function=inspect.currentframe().f_code.co_name)
                 break
-        
+            
         # Create and add the new MarkersDisplayTab
-        self.markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, app_instance=self, bg="black")
+        self.markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, app_instance=self)
         self.notebook.add(self.markers_display_tab, text="Markers Display")
         self.dynamic_tabs.append(self.markers_display_tab) # Add to dynamic tabs list
         self.notebook.select(self.markers_display_tab)
-        self._update_tab_visibility() # Ensure tab visibility is updated after adding
+        # No need for _update_tab_visibility() here, as notebook.add and notebook.select handle visibility.
 
-    def _check_and_load_markers_csv(self):
+
+    def _check_and_load_markers_csv(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Checks for the existence of 'MARKERS.CSV' in the default output directory
         and, if found, automatically loads its content and creates the "Markers Display" tab.
-
-        Inputs: None
-        Process:
-            1. Constructs the full path to `MARKERS.CSV` using `self.output_folder_var.get()`.
-            2. Checks if the file exists using `os.path.exists()`.
-            3. If the file exists:
-               - Initializes empty lists for `headers` and `rows`.
-               - Opens and reads the CSV file using `csv.DictReader` to get headers and rows.
-               - Calls `self.add_markers_tab()` to create and populate the tab.
-               - Prints a success message to the console.
-            4. If the file does not exist, prints an informational message.
-            5. Includes error handling for file reading.
-        Outputs: None (may create a new tab and print to console)
         """
-        markers_csv_path = os.path.join(self.output_folder_var.get(), 'MARKERS.CSV')
+        debug_print("Checking for existing MARKERS.CSV...", file=file, function=inspect.currentframe().f_code.co_name)
+        # Use scan_directory_var for the output folder, which is initialized from config
+        markers_csv_path = os.path.join(self.scan_directory_var.get(), 'MARKERS.CSV')
         
         if os.path.exists(markers_csv_path):
             print(f"Found existing MARKERS.CSV at: {markers_csv_path}. Attempting to load...")
+            debug_print(f"Found existing MARKERS.CSV at: {markers_csv_path}. Attempting to load...", file=file, function=inspect.currentframe().f_code.co_name)
             headers = []
             rows = []
             try:
@@ -689,394 +997,92 @@ class App(tk.Tk):
                         rows.append(row)
                 
                 if headers and rows:
+                    # Debug print to check if style exists before creating the tab
+                    # This is for debugging the "Layout Markers.Inner.LabelFrame not found" error
+                    # if hasattr(self, 'style'): # Check if style object exists
+                    #     print(f"DEBUG: Checking if style 'Markers.Inner.LabelFrame' exists: {self.style.lookup('Markers.Inner.LabelFrame', 'background') is not None}")
+                    
                     self.add_markers_tab(headers, rows)
                     print("✅ MARKERS.CSV loaded successfully and 'Markers Display' tab created.")
+                    debug_print("MARKERS.CSV loaded successfully and 'Markers Display' tab created.", file=file, function=inspect.currentframe().f_code.co_name)
                 else:
                     print("ℹ️ MARKERS.CSV found but appears empty or malformed. Skipping tab creation.")
+                    debug_print("MARKERS.CSV found but appears empty or malformed. Skipping tab creation.", file=file, function=inspect.currentframe().f_code.co_name)
             except Exception as e:
                 print(f"❌ Error loading MARKERS.CSV: {e}")
                 messagebox.showerror("Error Loading Markers", f"Failed to load MARKERS.CSV: {e}")
+                debug_print(f"Error loading MARKERS.CSV: {e}", file=file, function=inspect.currentframe().f_code.co_name)
         else:
             print("ℹ️ No MARKERS.CSV found at startup. 'Markers Display' tab will not be automatically created.")
+            debug_print("No MARKERS.CSV found at startup. 'Markers Display' tab will not be automatically created.", file=file, function=inspect.currentframe().f_code.co_name)
 
 
-    def open_output_folder(self):
+    def _run_scan(self, selected_bands, scan_rbw_segmentation, freq_shift_value, rbw_config_val, vbw_config_val, max_hold_time, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Wrapper for `open_output_folder_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `open_output_folder_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
+        Wrapper for run_scan_logic to be called in a thread.
         """
-        open_output_folder_logic(self)
-
-    def _connect_instrument_wrapper(self):
-        """
-        Wrapper for `connect_instrument_logic` that also updates tab visibility.
-        """
-        connect_instrument_logic(self)
-        self._update_tab_visibility() # Update tab visibility after connection attempt
-
-    def _disconnect_instrument_wrapper(self):
-        """
-        Wrapper for `disconnect_instrument_logic` that also updates tab visibility.
-        """
-        disconnect_instrument_logic(self)
-        self._update_tab_visibility() # Update tab visibility after disconnection
-
-    def apply_settings_to_device(self):
-        """
-        Wrapper for `apply_settings_to_device_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `apply_settings_to_device_logic` from `src.instrument_logic`, passing `self`.
-        Outputs: None
-        """
-        apply_settings_to_device_logic(self)
-
-    def reset_setting_colors(self):
-        """
-        Wrapper for `reset_setting_colors_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `reset_setting_colors_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
-        """
-        reset_setting_colors_logic(self)
-
-    def load_selected_preset(self):
-        """
-        Wrapper for `load_selected_preset_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `load_selected_preset_logic` from `src.instrument_logic`, passing `self`.
-        Outputs: None
-        """
-        load_selected_preset_logic(self)
-
-    def restore_default_settings(self):
-        """
-        Wrapper for `restore_default_settings_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `restore_default_settings_logic` from `src.settings_logic`, passing `self`.
-        Outputs: None
-        """
-        restore_default_settings_logic(self)
-
-    def start_scan_thread(self):
-        """
-        Wrapper for `start_scan_thread_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `start_scan_thread_logic` from `src.scan_logic`, passing `self`.
-        Outputs: None
-        """
-        start_scan_thread_logic(self)
-
-    def toggle_pause_scan(self):
-        """
-        Wrapper for `toggle_pause_scan_logic`.
-        This method is responsible for managing the state and visual feedback
-        of the "Pause/Resume Scan" button, including its blinking animation.
-
-        Inputs: None
-        Process:
-            1. Calls `toggle_pause_scan_logic` from `src.scan_logic`, passing `self`.
-            2. If the scan is now paused, starts the pause button blinking.
-            3. If the scan is now resumed, stops the pause button blinking.
-        Outputs: None
-        """
-        toggle_pause_scan_logic(self)
-        if self.paused: # Check the state *after* toggle_pause_scan_logic has run
-            self._start_pause_button_blink()
-            # The console message "Scan Paused..." is handled in scan_logic.py
-            # We need to ensure it uses overwrite=True there.
-        else:
-            self._stop_pause_button_blink()
-
-
-    def _run_scan(self, selected_bands, scan_rbw_segmentation, freq_shift_value, rbw_config_val, vbw_config_val, max_hold_time):
-        """
-        Wrapper for `run_scan_logic`. This method is designed to be run in a separate thread.
-
-        Inputs:
-            selected_bands (list): A list of dictionaries, each representing a frequency band to scan.
-            scan_rbw_segmentation (float): The Resolution Bandwidth (RBW) to use for scan segments.
-            freq_shift_value (float): The frequency offset (in Hz) to apply per scan cycle.
-            rbw_config_val (float): RBW value to configure on the instrument.
-            vbw_config_val (float): VBW value to configure on the instrument.
-            max_hold_time (float): Duration in seconds for which MAX Hold should be active.
-        Process:
-            1. Calls `run_scan_logic` from `src.scan_logic`, passing `self` and all scan parameters.
-        Outputs: None
-        """
+        debug_print("Running scan logic in a thread...", file=file, function=inspect.currentframe().f_code.co_name)
         run_scan_logic(self, selected_bands, scan_rbw_segmentation, freq_shift_value, rbw_config_val, vbw_config_val, max_hold_time)
 
-    def stop_scan(self):
+    def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, output_html_path, auto_open_browser=True, single_marker_data=None, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Wrapper for `stop_scan_logic`.
+        Wrapper to call generate_single_scan_plot_and_open_wrapper_logic from the main thread.
+        """
+        debug_print("Generating single scan plot and opening wrapper...", file=file, function=inspect.currentframe().f_code.co_name)
+        # Call the logic function with all parameters
+        generate_single_scan_plot_and_open_wrapper_logic(
+            self,
+            csv_file_path,
+            output_html_path,
+            auto_open_browser,
+            single_marker_data
+        )
 
-        Inputs: None
-        Process:
-            1. Calls `stop_scan_logic` from `src.scan_logic`, passing `self`.
-            2. Stops the pause button blinking in case the scan was stopped while paused.
-        Outputs: None
+    def hide_all_dynamic_tabs(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        stop_scan_logic(self)
-        self._stop_pause_button_blink() # Ensure blinking stops if scan is stopped
-
-    def reset_scan_buttons(self):
+        Hides all dynamically created tabs from the notebook.
         """
-        Wrapper for `reset_scan_buttons_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `reset_scan_buttons_logic` from `src.scan_logic`, passing `self`.
-            2. Stops the pause button blinking.
-        Outputs: None
-        """
-        reset_scan_buttons_logic(self)
-        self._stop_pause_button_blink() # Ensure blinking stops when buttons are reset
-
-    def _reset_gui_on_disconnect_or_error(self):
-        """
-        Wrapper for `reset_gui_on_disconnect_or_error` from `src.instrument_logic`.
-        This wrapper also ensures tab visibility is updated.
-
-        Inputs: None
-        Process:
-            1. Calls `reset_gui_on_disconnect_or_error` from `src.instrument_logic`, passing `self`.
-            2. Calls `_update_tab_visibility()` to hide non-connection tabs.
-            3. Stops the pause button blinking.
-        Outputs: None
-        """
-        reset_gui_on_disconnect_or_error(self)
-        self._update_tab_visibility() # Ensure tabs are hidden on disconnect/error
-        self._stop_pause_button_blink() # Stop blinking if disconnected/error
-
-    def generate_single_scan_plot_and_open_wrapper(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser=True):
-        """
-        Wrapper for `generate_single_scan_plot_and_open_wrapper_logic`.
-
-        Inputs:
-            csv_file_path (str): The full path to the CSV file containing the scan data.
-            plot_title_suffix (str): A string to append to the plot's main title.
-            output_html_path (str): The full path where the generated HTML plot should be saved.
-            auto_open_browser (bool, optional): If True, the generated HTML plot will be
-                                                automatically opened in the default web browser. Defaults to True.
-        Process:
-            1. Calls `generate_single_scan_plot_and_open_wrapper_logic` from `src.plot_logic`,
-               passing `self` and all plot parameters.
-        Outputs: None
-        """
-        generate_single_scan_plot_and_open_wrapper_logic(self, csv_file_path, plot_title_suffix, output_html_path, auto_open_browser)
-
-    def generate_average_plot(self):
-        """
-        Wrapper for `generate_average_plot_logic`.
-
-        Inputs: None
-        Process:
-            1. Calls `generate_average_plot_logic` from `src.plot_logic`, passing `self`.
-        Outputs: None
-        """
-        generate_average_plot_logic(self)
-
-    def _update_console_line(self, text_to_display, overwrite=False):
-        """
-        Helper function to safely update the console output widget from any thread.
-        It supports overwriting the current line, which is useful for displaying
-        dynamic progress updates (e.g., progress bars or countdowns).
-
-        Inputs:
-            text_to_display (str): The text string to insert into the console.
-            overwrite (bool, optional): If True, the current last line in the console
-                                        will be deleted before inserting `text_to_display`,
-                                        creating an overwrite effect. Defaults to False.
-        Process:
-            1. Sets the console widget state to `tk.NORMAL` to allow editing.
-            2. If `overwrite` is True, attempts to delete the last line.
-            3. Inserts `text_to_display` at the end of the console.
-            4. Scrolls the console to the end to show the latest text.
-            5. Sets the console widget state back to `tk.DISABLED` to prevent user editing.
-            6. Updates Tkinter idle tasks to ensure immediate display.
-        Outputs: None
-        """
-        self.console_output.config(state=tk.NORMAL)
-        if overwrite:
+        debug_print("Hiding all dynamic tabs...", file=file, function=inspect.currentframe().f_code.co_name)
+        for tab_frame in self.dynamic_tabs:
             try:
-                # Delete from the start of the last line to the end of the text
-                # "end-1c linestart" means start of the line before the very last character
-                # "end-1c" means the character just before the end of the text
-                self.console_output.delete("end-1c linestart", "end")
-            except TclError:
-                pass # Handle case where there's no previous line to delete
-        self.console_output.insert(tk.END, text_to_display)
-        self.console_output.see(tk.END)
-        self.console_output.config(state=tk.DISABLED)
-        self.console_output.update_idletasks()
+                self.notebook.hide(tab_frame)
+            except TclError as e:
+                print(f"Warning: Could not hide tab {tab_frame} - {e}")
+        print("Tabs updated: All dynamic tabs now hidden.")
 
-    def _start_connect_button_blink(self):
+    def show_all_dynamic_tabs(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Initiates a blinking visual effect for the "Connect" button.
-        This serves as a visual cue to the user that a connection is possible
-        but not yet established.
+        Shows all dynamically created tabs in the notebook.
+        This is useful for debugging or restoring a layout.
+        """
+        debug_print("Showing all dynamic tabs...", file=file, function=inspect.currentframe().f_code.co_name)
+        # Re-add all dynamic tabs
+        for tab_frame in self.dynamic_tabs:
+            # Only add if not already present to avoid TclError
+            if tab_frame not in self.notebook.tabs():
+                # Re-add using its original text, assuming it was added with text initially
+                # This is important if a tab was dynamically created (like Markers Display)
+                # and then hidden. Its text property might still be available.
+                
+                # A more robust solution would be to store a mapping of tab_frame to tab_text
+                # when the tabs are initially created. For now, we'll hardcode based on known tabs.
+                if tab_frame == self.scan_settings_tab:
+                    self.notebook.add(tab_frame, text="Scan Configuration")
+                elif tab_frame == self.preset_files_tab:
+                    self.notebook.add(tab_frame, text="Device Preset Files")
+                elif tab_frame == self.report_converter_tab:
+                    self.notebook.add(tab_frame, text="Report Converter")
+                # Handle Markers Display Tab if it exists
+                elif hasattr(self, 'markers_display_tab') and tab_frame == self.markers_display_tab:
+                    self.notebook.add(tab_frame, text="Markers Display")
+        print("Tabs updated: All tabs now visible.")
 
-        Inputs: None
-        Process:
-            1. Checks if the blinking effect is already active (`self.blink_id is None`).
-            2. Sets `self.blink_on` to `True`.
-            3. Calls `_blink_connect_button()` to start the actual blinking loop.
-        Outputs: None
+    def stop_scan(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        if self.blink_id is None:
-            self.blink_on = True
-            self._blink_connect_button()
-
-    def _stop_connect_button_blink(self):
+        Initiates the stopping of the scan.
         """
-        Stops the blinking effect on the "Connect" button and resets its color
-        to its default state.
-
-        Inputs: None
-        Process:
-            1. If `self.blink_id` is not None (meaning blinking is active),
-               cancels the scheduled `after` event.
-            2. Resets `self.blink_id` to `None`.
-            3. Resets the button's background and foreground colors to their defaults.
-            4. Sets `self.blink_on` to `False`.
-        Outputs: None
-        """
-        if self.blink_id is not None:
-            self.after_cancel(self.blink_id)
-            self.blink_id = None
-        self.connect_button.config(bg="darkgrey", fg="white")
-        self.blink_on = False
-
-    def _blink_connect_button(self):
-        """
-        Toggles the background and foreground colors of the "Connect" button
-        at a set interval (500ms) to create the blinking animation.
-
-        Inputs:
-            None
-        Process:
-            1. If `self.blink_on` is `True`:
-               - Retrieves the current background color of the button.
-               - Toggles the colors between "darkgrey" (default) and "lightblue" (highlight).
-               - Schedules itself to be called again after 500 milliseconds using `self.after()`.
-        Outputs: None
-        """
-        if self.blink_on:
-            current_bg = self.connect_button.cget("bg")
-            if current_bg == "darkgrey":
-                self.connect_button.config(bg="lightblue", fg="black")
-            else:
-                self.connect_button.config(bg="darkgrey", fg="white")
-            self.blink_id = self.after(500, self._blink_connect_button)
-
-    def _start_pause_button_blink(self):
-        """
-        Initiates a blinking visual effect for the "Pause/Resume Scan" button.
-        This serves as a visual cue to the user that the scan is paused and
-        awaiting user action to resume.
-
-        Inputs: None
-        Process:
-            1. Checks if the blinking effect is already active (`self.pause_blink_id is None`).
-            2. Sets `self.pause_blink_on` to `True`.
-            3. Calls `_blink_pause_button()` to start the actual blinking loop.
-        Outputs: None
-        """
-        if self.pause_blink_id is None:
-            self.pause_blink_on = True
-            self._blink_pause_button()
-
-    def _stop_pause_button_blink(self):
-        """
-        Stops the blinking effect on the "Pause/Resume Scan" button and resets its color
-        to its default state (orange).
-
-        Inputs: None
-        Process:
-            1. If `self.pause_blink_id` is not None (meaning blinking is active),
-               cancels the scheduled `after` event.
-            2. Resets `self.pause_blink_id` to `None`.
-            3. Resets the button's background and foreground colors to its default "orange".
-            4. Sets `self.pause_blink_on` to `False`.
-        Outputs: None
-        """
-        if self.pause_blink_id is not None:
-            self.after_cancel(self.pause_blink_id)
-            self.pause_blink_id = None
-        self.pause_resume_button.config(bg="orange", fg="white")
-        self.pause_blink_on = False
-
-    def _blink_pause_button(self):
-        """
-        Toggles the background and foreground colors of the "Pause/Resume Scan" button
-        at a set interval (500ms) to create the blinking animation.
-
-        Inputs:
-            None
-        Process:
-            1. If `self.pause_blink_on` is `True`:
-               - Retrieves the current background color of the button.
-               - Toggles the colors between "orange" (default paused) and "darkorange" (highlight).
-               - Schedules itself to be called again after 500 milliseconds using `self.after()`.
-        Outputs: None
-        """
-        if self.pause_blink_on:
-            current_bg = self.pause_resume_button.cget("bg")
-            if current_bg == "orange":
-                self.pause_resume_button.config(bg="darkorange", fg="white")
-            else:
-                self.pause_resume_button.config(bg="orange", fg="white")
-            self.pause_blink_id = self.after(500, self._blink_pause_button)
-
-    def _update_tab_visibility(self):
-        """
-        Controls the visibility of tabs in the notebook based on instrument connection status.
-        When not connected, only the "Instrument Connection" tab is visible.
-        When connected, all other tabs become visible.
-        """
-        if self.inst is None: # Not connected
-            # Hide all dynamic tabs
-            for tab_frame in self.dynamic_tabs:
-                # Check if the tab is currently managed by the notebook before trying to hide
-                if tab_frame in self.notebook.tabs():
-                    self.notebook.hide(tab_frame)
-            # Select the Instrument Connection tab
-            self.notebook.select(self.instrument_connection_tab)
-            print("Tabs updated: Only 'Instrument Connection' tab visible.")
-        else: # Connected
-            # Show all dynamic tabs
-            for tab_frame in self.dynamic_tabs:
-                # Only add if not already present to avoid TclError
-                if tab_frame not in self.notebook.tabs():
-                    # Re-add using its original text, assuming it was added with text initially
-                    # This is important if a tab was dynamically created (like Markers Display)
-                    # and then hidden. Its text property might still be available.
-                    
-                    # A more robust solution would be to store a mapping of tab_frame to tab_text
-                    # when the tabs are initially created. For now, we'll hardcode based on known tabs.
-                    if tab_frame == self.scan_settings_tab:
-                        self.notebook.add(tab_frame, text="Scan Configuration")
-                    elif tab_frame == self.preset_files_tab:
-                        self.notebook.add(tab_frame, text="Device Preset Files")
-                    elif tab_frame == self.report_converter_tab:
-                        self.notebook.add(tab_frame, text="Report Converter")
-                    # Handle Markers Display Tab if it exists
-                    elif hasattr(self, 'markers_display_tab') and tab_frame == self.markers_display_tab:
-                        self.notebook.add(tab_frame, text="Markers Display")
-            print("Tabs updated: All tabs now visible.")
+        debug_print("Stop scan requested.", file=file, function=inspect.currentframe().f_code.co_name)
+        stop_scan_logic(self)
 
 
 if __name__ == "__main__":

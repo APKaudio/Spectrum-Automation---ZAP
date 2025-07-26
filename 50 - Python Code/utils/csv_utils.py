@@ -15,6 +15,8 @@
 #
 import csv
 import os
+from utils.instrument_control import debug_print # Import debug_print
+import inspect # Import inspect module
 
 def write_scan_data_to_csv(file_path, header, data, append_mode=False):
     """
@@ -25,28 +27,31 @@ def write_scan_data_to_csv(file_path, header, data, append_mode=False):
 
     Inputs:
         file_path (str): The full path to the CSV file where the data will be written.
-        header (list): A list of strings representing the CSV header row.
-                       This header will be written if the file is new or not in append mode.
+        header (list or None): A list of strings representing the CSV header row.
+                               If None, no header will be written.
         data (list): A list of lists or tuples, where each inner list/tuple represents a row of data.
-                     Expected format for each data point: (frequency_mhz, level_dbm).
-        append_mode (bool, optional): If True, data will be appended to an existing file.
-                                      If False, a new file will be created (overwriting if exists).
+                     Expected format for each data point: (frequency_mhz, power_dbm).
+        append_mode (bool, optional): If True, data will be appended to the file if it exists.
+                                      If False, the file will be overwritten (or created).
                                       Defaults to False.
     Process:
-        - **Directory Check**: Ensures the output directory exists, creating it if necessary.
-        - **File Open Mode**: Determines whether to open in 'w' (write/overwrite) or 'a' (append) mode.
-        - **Header Writing**: If the file is opened in 'w' mode (new file or overwrite),
-                              the provided `header` is written as the first row.
-        - **Data Writing**: Iterates through the `data` and writes each row to the CSV file.
-        - **Float Formatting**: Frequencies and amplitudes are formatted to three decimal places
-          (`:.3f`) to ensure consistent precision in the CSV output.
+        1. Ensures the output directory for the `file_path` exists, creating it if necessary.
+        2. Determines the file opening mode ('w' for write/overwrite, 'a' for append).
+        3. Opens the CSV file.
+        4. If `header` is provided (not None) and the file is being written (not appended to an existing file),
+           writes the header row.
+        5. Writes each data row to the CSV file.
+        6. Handles `IOError` during file operations.
+    Outputs: None
     """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
     try:
-        # Ensure the directory exists before attempting to open the file
         output_dir = os.path.dirname(file_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            print(f"Created directory: {output_dir}")
+            debug_print(f"Created directory: {output_dir}", file=current_file, function=current_function)
 
         # Determine if the file exists before deciding the mode and if header needs to be written
         file_exists = os.path.exists(file_path)
@@ -56,21 +61,23 @@ def write_scan_data_to_csv(file_path, header, data, append_mode=False):
         mode = 'a' if append_mode and file_exists else 'w'
         
         # Flag to indicate if header needs to be written
-        write_header = (mode == 'w') # Write header if we are creating a new file or overwriting
+        # Write header ONLY if header is not None AND we are creating a new file or overwriting
+        write_header = (header is not None) and (mode == 'w')
 
         with open(file_path, mode, newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
             
             if write_header:
                 csv_writer.writerow(header)
-                print(f"Wrote header to CSV file: {file_path}")
+                debug_print(f"Wrote header to CSV file: {file_path}", file=current_file, function=current_function)
             
             # Write data rows
             for freq_mhz, level_dbm in data:
-                csv_writer.writerow([f"{freq_mhz:.3f}", f"{level_dbm:.3f}"])
+                csv_writer.writerow([f"{freq_mhz:.3f}", f"{level_dbm:.3f}"]) # Removed the trailing backslash
     except IOError as e:
-        print(f"❌ I/O Error writing to CSV file {file_path}: {e}")
-        raise # Re-raise to allow calling function to handle
+        debug_print(f"❌ I/O Error writing to CSV file {file_path}: {e}", file=current_file, function=current_function)
+        raise # Re-raise to allow higher-level error handling
     except Exception as e:
-        print(f"❌ An unexpected error occurred while writing to CSV file {file_path}: {e}")
-        raise # Re-raise to allow calling function to handle
+        debug_print(f"❌ An unexpected error occurred while writing to CSV file {file_path}: {e}", file=current_file, function=current_function)
+        raise # Re-raise to allow higher-level error handling
+

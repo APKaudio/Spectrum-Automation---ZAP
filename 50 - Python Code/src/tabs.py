@@ -5,6 +5,7 @@ import os
 import csv
 import xml.etree.ElementTree as ET
 import sys
+import inspect # Import inspect module
 
 # Import the new report converter utility functions
 from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw
@@ -12,7 +13,7 @@ from utils.report_converter_utils import convert_html_report_to_csv, generate_cs
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic # Ensure both are imported
 from utils.instrument_control import debug_print, write_safe # Import debug_print and write_safe
 
-class MarkersDisplayTab(tk.Frame):
+class MarkersDisplayTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
     """
     A Tkinter Frame that displays extracted frequency markers in a hierarchical treeview
     and as clickable buttons.
@@ -30,66 +31,74 @@ class MarkersDisplayTab(tk.Frame):
                                 shared state like instrument connection and focus width.
             **kwargs: Arbitrary keyword arguments for Tkinter Frame.
         Process:
-            1. Calls the parent `tk.Frame` constructor.
-            2. Configures the background color.
-            3. Stores the `headers`, `rows` data, and `app_instance`.
+            1. Calls the parent `ttk.Frame` constructor.
+            2. Stores `headers`, `rows`, and `app_instance`.
+            3. Configures the frame's style and layout.
             4. Calls `create_widgets()` to build the GUI elements.
-        Outputs: None
+        Outputs: None (modifies GUI state)
         """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Initializing MarkersDisplayTab...", file=current_file, function=current_function)
+
         super().__init__(master, **kwargs)
-        self.configure(bg="black")
         self.headers = headers if headers is not None else []
         self.rows = rows if rows is not None else [] # Store full rows data
         self.app_instance = app_instance # Store reference to the main app instance
+
+        # REMOVED: self.pack(fill="both", expand=True, padx=10, pady=10)
+        # This line was causing the tab content to "explode" over the notebook tabs.
+        # The notebook itself handles the packing of its tabs.
+
+        # Configure style for this frame's widgets
+        style = ttk.Style()
+        style.configure("Markers.TFrame", background="#71BE32")
+        style.configure("Markers.TLabel", background="#73AF43", foreground="white")
+        style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="white")
+        style.configure("Markers.Treeview", background="#4a4a4a", foreground="white", fieldbackground="#4a4a4a")
+        style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
+        style.configure("Markers.TButton", background="#3a3a3a", foreground="white")
+        style.map("Markers.TButton", background=[('active', '#6a6a6a')])
+        
+        # New styles for the inner treeview and buttons frame
+        style.configure("Markers.Inner.Treeview",
+                        background="#333333", # Darker grey
+                        foreground="white",
+                        fieldbackground="#333333", # Darker grey
+                        bordercolor="black",
+                        lightcolor="#333333", # Darker grey
+                        darkcolor="#333333") # Darker grey
+        style.map("Markers.Inner.Treeview",
+                  background=[("selected", "#F4902C")], # New highlight color
+                  foreground=[("selected", "white")])
+        style.configure("Markers.Inner.LabelFrame", background="#333333", foreground="white")
+        style.configure("Markers.Inner.Frame", background="#333333")
+
+        self.config(style="Markers.TFrame") # Apply style to the main frame
+
         self.create_widgets()
 
-    def create_widgets(self):
+
+    def create_widgets(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Creates the widgets for the Markers Display tab, including the treeview
         for zones/groups and the frame for device buttons.
-
-        Inputs: None
-        Process:
-            1. Creates a main split frame for layout.
-            2. Configures grid weights for the main split frame.
-            3. Creates a `tk.LabelFrame` for "Zones & Groups" to hold the treeview.
-            4. Initializes `self.zone_group_tree` (ttk.Treeview) and its scrollbar.
-            5. Binds the `<<TreeviewSelect>>` event to `self._on_tree_select` to handle selections.
-            6. Calls `_populate_zone_group_tree()` to initially populate the treeview.
-            7. Creates a `tk.LabelFrame` for "Devices" to hold the device buttons.
-            8. Initializes a `tk.Canvas` and `ttk.Scrollbar` for the device buttons
-               to allow scrolling if many buttons are present.
-            9. Creates `self.inner_buttons_frame` inside the canvas to hold the actual buttons.
-            10. Calls `_populate_device_buttons([])` to ensure the device button area is initially empty.
-        Outputs: None
         """
+        debug_print("Creating MarkersDisplayTab widgets...", file=file, function=function)
         # Main frame for the split layout
-        main_split_frame = tk.Frame(self, bg="black")
-        main_split_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_split_frame = ttk.Frame(self, style="Markers.TFrame") # Use ttk.Frame
+        main_split_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0) # Removed outer padding as it's already on self
         main_split_frame.grid_columnconfigure(0, weight=1) # Left half
         main_split_frame.grid_columnconfigure(1, weight=1) # Right half
         main_split_frame.grid_rowconfigure(0, weight=1)
 
         # Left Half: Treeview for Zones and Groups
-        tree_frame = tk.LabelFrame(main_split_frame, text="Zones & Groups", bg="#333333", fg="white", padx=5, pady=5) # Darker grey
+        tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", style="Markers.Inner.LabelFrame", padding=(5,5,5,5)) # Use ttk.LabelFrame, apply padding
         tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-        # Configure a specific style for this Treeview to apply the darker grey
-        style = ttk.Style()
-        style.configure("Markers.Treeview", 
-                        background="#333333", # Darker grey
-                        foreground="white", 
-                        fieldbackground="#333333", # Darker grey
-                        bordercolor="black",
-                        lightcolor="#333333", # Darker grey
-                        darkcolor="#333333") # Darker grey
-        style.map("Markers.Treeview", 
-                  background=[("selected", "#F4902C")], # New highlight color
-                  foreground=[("selected", "white")])
-
-        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree", style="Markers.Treeview") # Apply the new style
+        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree", style="Markers.Inner.Treeview") # Apply the new style
         self.zone_group_tree.pack(fill=tk.BOTH, expand=True)
 
         tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.zone_group_tree.yview)
@@ -102,11 +111,11 @@ class MarkersDisplayTab(tk.Frame):
         self._populate_zone_group_tree()
 
         # Right Half: Buttons for Devices
-        buttons_frame = tk.LabelFrame(main_split_frame, text="Devices", bg="#333333", fg="white", padx=5, pady=5) # Darker grey
+        buttons_frame = ttk.LabelFrame(main_split_frame, text="Devices", style="Markers.Inner.LabelFrame", padding=(5,5,5,5)) # Use ttk.LabelFrame, apply padding
         buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
         
         # Use a canvas with a scrollbar for buttons if there are many
-        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#333333", highlightbackground="#333333") # Darker grey
+        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#333333", highlightbackground="#333333") # tk.Canvas as ttk.Canvas doesn't exist
         self.buttons_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         buttons_scrollbar = ttk.Scrollbar(buttons_frame, orient="vertical", command=self.buttons_canvas.yview)
@@ -115,7 +124,7 @@ class MarkersDisplayTab(tk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") # Darker grey
+        self.inner_buttons_frame = ttk.Frame(self.buttons_canvas, style="Markers.Inner.Frame") # Use ttk.Frame
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
@@ -123,274 +132,138 @@ class MarkersDisplayTab(tk.Frame):
         self.inner_buttons_frame.grid_columnconfigure(1, weight=1) # Allow for two columns
 
         # Initially populate with an empty list to clear any previous buttons
-        # This call is moved here to ensure self.inner_buttons_frame is already created.
         self._populate_device_buttons([])
 
-    def _populate_zone_group_tree(self):
+    def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Populates the `self.zone_group_tree` (Treeview) with zones and groups
-        extracted from the `self.rows` data. Handles cases where groups are blank.
+        Populates the Treeview with zones/groups and their associated devices.
+        Assumes 'Device' and 'Frequency_MHz' are available in self.rows.
+        """
+        debug_print("Populating zone/group tree...", file=file, function=function)
+        self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing data
 
-        Inputs: None
-        Process:
-            1. Clears all existing items and selections from the treeview.
-            2. Organizes the `self.rows` data into a nested dictionary `zones_data`
-               structured as `{zone_name: {group_name: [list_of_rows]}}`.
-               An empty string is used for `group_name` if the CSV 'GROUP' field is blank.
-            3. Iterates through sorted zone names:
-               - Inserts a parent node for each `zone_name`. The `values` for a zone node
-                 are `("zone", zone_name, None)`.
-               - Determines if the current zone has any *named* groups.
-               - If named groups exist, iterates through sorted group names:
-                 - Inserts a child node for each *non-empty* `group_name` under its zone.
-                   The `values` for a group node are `("group", zone_name, group_name)`.
-                   Blank groups are not given their own sub-node.
-            4. Calls `_populate_device_buttons([])` to ensure the device display is empty initially.
-        Outputs: None
-        """
-        self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing items
-        self.zone_group_tree.selection_set([]) # Clear selection on repopulate
-        
-        zones_data = {} # {zone_name: {group_name: [list_of_rows]}}
+        grouped_data = {}
+        # Group by 'Device' or 'Zone' - prioritizing 'Device' for now
+        # You might need to adjust this key based on your actual SHW/HTML structure
+        group_key = 'Device' # Or 'Zone', 'Band', etc.
 
         for row in self.rows:
-            zone_name = row.get("ZONE", "Unknown Zone").strip()
-            group_name = row.get("GROUP", "").strip() # Use empty string for no group
+            group_name = row.get(group_key, 'Uncategorized')
+            if group_name not in grouped_data:
+                grouped_data[group_name] = []
+            grouped_data[group_name].append(row)
 
-            if zone_name not in zones_data:
-                zones_data[zone_name] = {}
-            if group_name not in zones_data[zone_name]:
-                zones_data[zone_name][group_name] = []
-            zones_data[zone_name][group_name].append(row)
+        for group_name, group_rows in sorted(grouped_data.items()):
+            parent_id = self.zone_group_tree.insert("", "end", text=group_name, open=True) # No values for parent
+            for i, row in enumerate(group_rows):
+                # Assuming 'Name' or a similar identifier for individual devices/markers
+                device_name = row.get('Name', row.get('Marker', f"Item {i+1}"))
+                freq_mhz = row.get('Frequency_MHz', 'N/A')
+                power_dbm = row.get('Peak_Power_dBm', 'N/A') # Assuming this key exists
 
-        for zone_name in sorted(zones_data.keys()):
-            # Insert zone node. Value tuple: (node_type, zone_name, group_name_if_group)
-            # For a zone node, group_name_if_of_group is None
-            zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True, values=("zone", zone_name, None))
-            
-            # Determine if the current zone has any named groups.
-            # If so, insert them as children.
-            has_named_groups = any(g for g in zones_data[zone_name].keys() if g)
+                # Store the full row dictionary as the last value for easy retrieval on click
+                self.zone_group_tree.insert(parent_id, "end", text=f"{device_name} ({freq_mhz} MHz)",
+                                            values=(device_name, freq_mhz, power_dbm, row))
 
-            if has_named_groups:
-                for group_name in sorted(zones_data[zone_name].keys()):
-                    if group_name: # Only insert if group name is not empty
-                        group_id = self.zone_group_tree.insert(zone_id, "end", text=group_name, values=("group", zone_name, group_name))
-            # If no named groups, the devices with blank groups are implicitly under the zone node itself.
-            # No need to create a "blank group" child node as per user request.
+        # Clear device buttons when tree is repopulated
+        self._populate_device_buttons([])
 
-        # Initially clear device buttons
-        # This call is now handled by create_widgets after inner_buttons_frame is created.
-        # self._populate_device_buttons([])
-
-    def _on_tree_select(self, event):
+    def _on_tree_select(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Event handler for when an item in the `self.zone_group_tree` (Treeview) is selected.
-        This function filters the device data based on the selected zone or group
-        and updates the displayed device buttons accordingly.
-
-        Inputs:
-            event (tk.Event): The Tkinter event object (not directly used, but part of binding).
-        Process:
-            1. Retrieves the currently selected item(s) from the treeview.
-            2. If no item is selected, calls `_populate_device_buttons([])` to clear buttons.
-            3. If an item is selected:
-               - Extracts the `node_type` ("zone" or "group"), `selected_zone`, and `selected_group`
-                 from the selected item's `values` tuple.
-               - Initializes an empty list `filtered_devices`.
-               - If `node_type` is "zone":
-                 - Iterates through all `self.rows` and adds any row where `ZONE` matches `selected_zone`
-                   to `filtered_devices`. This displays all devices under the selected zone.
-               - If `node_type` is "group":
-                 - Iterates through all `self.rows` and adds any row where `ZONE` matches `selected_zone`
-                   AND `GROUP` matches `selected_group` to `filtered_devices`. This displays devices
-                   only for the specific selected group.
-               - Calls `self._populate_device_buttons(filtered_devices)` to update the display.
-        Outputs: None
+        Handles selection events in the zone/group treeview.
+        Populates the device buttons based on the selected group or individual device.
         """
+        debug_print("Tree item selected...", file=file, function=function)
         selected_items = self.zone_group_tree.selection()
         if not selected_items:
-            self._populate_device_buttons([]) # Clear buttons if nothing selected
-            return
-
-        selected_item_id = selected_items[0]
-        item_values = self.zone_group_tree.item(selected_item_id, 'values')
-        
-        if not item_values or len(item_values) < 2: # Ensure values tuple has at least type and zone
             self._populate_device_buttons([])
             return
 
-        node_type = item_values[0]
-        selected_zone = item_values[1]
-        selected_group = item_values[2] if len(item_values) > 2 else None # Will be None for zone nodes
-
-        filtered_devices = []
-
-        if node_type == "zone":
-            # If a zone node is selected, display all devices belonging to that zone,
-            # regardless of whether they have a named group or a blank group.
-            for row in self.rows:
-                if row.get("ZONE", "").strip() == selected_zone:
-                    filtered_devices.append(row)
-        elif node_type == "group":
-            # If a group node is selected, display only devices belonging to that specific zone AND group.
-            for row in self.rows:
-                if row.get("ZONE", "").strip() == selected_zone and row.get("GROUP", "").strip() == selected_group:
-                    filtered_devices.append(row)
+        selected_rows_data = []
+        for item_id in selected_items:
+            # Check if it's a parent (group) or a child (individual device)
+            if self.zone_group_tree.parent(item_id): # It's a child
+                # Retrieve the full row data stored in values (last element of values tuple)
+                full_row_data = self.zone_group_tree.item(item_id, 'values')[-1]
+                if isinstance(full_row_data, dict):
+                    selected_rows_data.append(full_row_data)
+            else: # It's a parent (group), get all its children's data
+                for child_id in self.zone_group_tree.get_children(item_id):
+                    full_row_data = self.zone_group_tree.item(child_id, 'values')[-1]
+                    if isinstance(full_row_data, dict):
+                        selected_rows_data.append(full_row_data)
         
-        self._populate_device_buttons(filtered_devices)
+        self._populate_device_buttons(selected_rows_data)
 
-    def _populate_device_buttons(self, devices_to_display):
+    def _populate_device_buttons(self, devices_to_display, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Populates the `self.inner_buttons_frame` with buttons for each device
-        in the `devices_to_display` list. Clears any existing buttons first.
-
-        Inputs:
-            devices_to_display (list): A list of dictionaries, where each dictionary
-                                       represents a device row to be displayed as a button.
-        Process:
-            1. Destroys all existing widgets (buttons) within `self.inner_buttons_frame`.
-            2. Configures `self.inner_buttons_frame` columns to expand.
-            3. Initializes `row_num` and `col_num` for grid placement.
-            4. If `devices_to_display` is empty, displays a message.
-            5. Iterates through each `row_data` in `devices_to_display`.
-            6. Extracts "DEVICE", "NAME", and "FREQ" from the `row_data`.
-            7. Constructs the button text (NAME, then DEVICE, then FREQUENCY).
-            8. Creates a `tk.Button` for each device, using `grid` to place it.
-            9. Increments `col_num` and `row_num` to move to the next grid cell.
-            10. Updates the scroll region of the `buttons_canvas` to ensure all buttons are scrollable.
-        Outputs: None
+        Populates the right-hand frame with clickable buttons for each device.
         """
+        debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=file, function=function)
         # Clear existing buttons
         for widget in self.inner_buttons_frame.winfo_children():
             widget.destroy()
 
-        # Configure columns for the grid layout within inner_buttons_frame
-        # Already done in create_widgets, but re-doing here for safety if called independently
-        self.inner_buttons_frame.grid_columnconfigure(0, weight=1)
-        self.inner_buttons_frame.grid_columnconfigure(1, weight=1) # Allow for two columns
-        
-        num_columns = 2 # Define the number of columns for the button grid
-        row_num = 0
-        col_num = 0
-
         if not devices_to_display:
-            # Display a message if no devices are to be shown
-            no_devices_label = tk.Label(self.inner_buttons_frame, text="Select a Zone or Group to view devices.",
-                                        bg="#333333", fg="grey", font=('Arial', 10, 'italic'), wraplength=250) # Darker grey
-            no_devices_label.grid(row=0, column=0, columnspan=num_columns, pady=20, sticky="nsew")
-            # Access the main App instance to call _update_console_line
-            # self.master is the notebook, self.master.master is the main_frame, self.master.master.master is the App instance
-            self.app_instance._update_console_line("No devices to display. Select a Zone or Group in the tree.", overwrite=True)
-        else:
-            for row_data in devices_to_display:
-                device = row_data.get("DEVICE", "N/A")
-                name = row_data.get("NAME", "N/A")
-                freq = row_data.get("FREQ", "N/A")
-
-                # Change button text order to NAME, then DEVICE, then FREQUENCY
-                button_text = f"{name}\n{device}\n{freq}"
-                
-                # Bind the button click to the new _on_device_button_click method
-                btn = tk.Button(self.inner_buttons_frame, text=button_text, 
-                                font=('Arial', 9), bg='#F4902C', fg='white', # New RGB color
-                                activebackground='#CC7B26', activeforeground='white', # Slightly darker for active
-                                relief=tk.RAISED, bd=2, padx=5, pady=3, wraplength=150,
-                                command=lambda f=freq, n=name: self._on_device_button_click(f, n))
-                
-                # Use grid to place buttons
-                btn.grid(row=row_num, column=col_num, padx=2, pady=2, sticky="nsew")
-                
-                col_num += 1
-                if col_num >= num_columns:
-                    col_num = 0
-                    row_num += 1
-        
-        # Update the scroll region after adding/removing buttons
-        self.inner_buttons_frame.update_idletasks()
-        # Corrected: Use self.buttons_canvas to update its scrollregion
-        self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
-
-    def _on_device_button_click(self, freq, name):
-        """
-        Handles the event when a device button is clicked. It pauses any ongoing scan
-        and then attempts to set the instrument's center frequency and span based on
-        the clicked device's frequency and the default focus width.
-        Additionally, it triggers a plot with the selected marker if scan data is available.
-
-        Inputs:
-            freq (str/float): The frequency of the clicked device (from CSV).
-            name (str): The name of the clicked device (from CSV).
-        Process:
-            1. Checks if an `app_instance` is available. If not, prints an error.
-            2. If a scan is currently running (`self.app_instance.scanning` is True):
-               - Sets `self.app_instance.paused = True` to ensure it's paused.
-               - Updates the "Pause/Resume Scan" button text and color.
-               - Starts the pause button blinking.
-               - Prints a message indicating the scan has been paused.
-            3. Retrieves the `default_focus_width` from `self.app_instance.default_focus_width_var`.
-            4. Converts the `freq` to a float (assuming kHz from CSV, convert to Hz).
-            5. Calls `set_focus_frequency_logic` from `src.instrument_logic` to send
-               commands to the connected instrument.
-            6. **Sets the RBW to auto.**
-            7. Prints success or failure messages to the console.
-        Outputs: None (modifies instrument state, updates GUI console)
-        """
-        if not self.app_instance:
-            print("Error: App instance not available in MarkersDisplayTab.")
+            ttk.Label(self.inner_buttons_frame, text="Select a group or device from the left.",
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+            self.inner_buttons_frame.update_idletasks()
+            self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
             return
 
-        if self.app_instance.inst:
-            # Pause any ongoing scan if it's running
-            if self.app_instance.scanning:
-                # Explicitly set paused to True and update button state
-                self.app_instance.paused = True
-                self.app_instance.pause_resume_button.config(text="Resume Scan", bg="blue")
-                self.app_instance._start_pause_button_blink() # Start blinking
-                print("Scan paused by device button click.")
+        row_idx = 0
+        col_idx = 0
+        for i, device_data in enumerate(devices_to_display):
+            freq_mhz = device_data.get('Frequency_MHz')
+            name = device_data.get('Name', device_data.get('Marker', 'Unknown Device')) # Use 'Marker' if 'Name' not found
             
-            try:
-                # Convert freq from kHz (as processed by report_converter_utils) to Hz for instrument
-                center_frequency_hz = float(freq) * 1000 # Convert kHz to Hz
-                span_hz = self.app_instance.default_focus_width_var.get()
+            if freq_mhz is not None:
+                try:
+                    frequency_hz = float(freq_mhz) * self.app_instance.MHZ_TO_HZ
+                    button_text = f"{name}: {float(freq_mhz):.3f} MHz"
+                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Markers.TButton",
+                                     command=lambda f=frequency_hz, n=name: self._on_device_button_click(f, n))
+                    btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="ew")
+                    
+                    col_idx += 1
+                    if col_idx >= 2: # Two columns per row
+                        col_idx = 0
+                        row_idx += 1
+                except ValueError:
+                    debug_print(f"Could not convert frequency '{freq_mhz}' to float for button. Skipping.", file=file, function=function)
+            else:
+                debug_print(f"Frequency not found for device '{name}'. Skipping button.", file=file, function=function)
 
-                print(f"Attempting to set instrument focus for '{name}' at {center_frequency_hz / 1_000_000:.3f} MHz with span {span_hz} Hz...")
-                
-                # The set_focus_frequency_logic expects center_frequency_hz, span_hz, and device_name
-                success = set_focus_frequency_logic(
-                    self.app_instance,
-                    center_frequency_hz,
-                    span_hz, # Pass span_hz as the second argument
-                    name     # Pass name as the third argument (device_name)
-                )
-                if success:
-                    print(f"✅ Instrument focused on '{name}' at {center_frequency_hz / 1_000_000:.3f} MHz with span {span_hz} Hz.")
-                    # Set RBW to auto
-                    if write_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution:AUTO ON"):
-                        print("✅ Instrument RBW set to AUTO.")
-                    else:
-                        print("❌ Failed to set instrument RBW to AUTO.")
+        self.inner_buttons_frame.update_idletasks() # Ensure layout is updated before calculating scrollregion
+        self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
 
-                    # Also set a marker on the instrument
-                    set_marker_and_trace_modes_logic(self.app_instance, center_frequency_hz, name)
-                else:
-                    print(f"❌ Failed to set instrument focus for '{name}'. See console for details.")
-
-            except ValueError:
-                messagebox.showerror("Input Error", f"Invalid frequency value for device '{name}': {freq}")
-                print(f"❌ Invalid frequency value for device '{name}': {freq}")
-            except Exception as e:
-                messagebox.showerror("Instrument Error", f"An error occurred while setting instrument focus: {e}")
-                print(f"❌ Error setting instrument focus: {e}")
+    def _on_device_button_click(self, freq, name, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for device buttons. Sets the instrument's focus frequency and a marker.
+        """
+        debug_print(f"Device button clicked: {name} at {freq} Hz", file=file, function=function)
+        if self.app_instance and self.app_instance.inst:
+            set_focus_frequency_logic(self.app_instance, freq)
+            set_marker_and_trace_modes_logic(self.app_instance, freq, name)
         else:
-            messagebox.showwarning("Not Connected", "Please connect to an instrument first to set focus frequency.")
-            print("🚫 Cannot set focus frequency: Instrument not connected.")
+            debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
+            messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+
+    def update_markers_data(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Updates the data displayed in the markers tab.
+        """
+        debug_print("Updating markers data...", file=file, function=function)
+        self.headers = headers
+        self.rows = rows
+        self._populate_zone_group_tree() # Repopulate the treeview with new data
+        self._populate_device_buttons([]) # Clear device buttons when new data loaded
 
 
-class ReportConverterTab(tk.Frame):
+class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
     """
-    A Tkinter Frame that encapsulates the functionality of the Report Converter.
-    This includes converting HTML and SHW files to CSV format.
+    A Tkinter Frame that provides functionality to convert spectrum analyzer
+    report files (HTML or SHW) into CSV format.
     """
     def __init__(self, master=None, app_instance=None, **kwargs):
         """
@@ -399,181 +272,121 @@ class ReportConverterTab(tk.Frame):
         Inputs:
             master (tk.Widget): The parent widget.
             app_instance (App): The main application instance, used for accessing
-                                shared state like the default focus width variable.
+                                shared state like output directory.
             **kwargs: Arbitrary keyword arguments for Tkinter Frame.
         Process:
-            1. Calls the parent `tk.Frame` constructor.
-            2. Configures the background color.
-            3. Stores the `app_instance`.
-            4. Calls `create_widgets()` to build the GUI elements.
-        Outputs: None
+            1. Calls the parent `ttk.Frame` constructor.
+            2. Stores `app_instance`.
+            3. Configures the frame's style and layout.
+            4. Creates widgets for file selection, conversion, and output.
+        Outputs: None (modifies GUI state)
         """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Initializing ReportConverterTab...", file=current_file, function=current_function)
+
         super().__init__(master, **kwargs)
-        self.configure(bg="black")
         self.app_instance = app_instance # Store reference to the main app instance
-        self.create_widgets()
+        
+        # REMOVED: self.pack(fill="both", expand=True, padx=10, pady=10)
+        # This line was causing the tab content to "explode" over the notebook tabs.
+        # The notebook itself handles the packing of its tabs.
 
-    def create_widgets(self):
-        """
-        Creates the widgets for the Report Converter tab, including the file selection
-        button and the new "Default width of the focus" slider.
+        # Configure style for this frame's widgets
+        style = ttk.Style()
+        style.configure("Converter.TFrame", background="#169721")
+        style.configure("Converter.TLabel", background="#000000", foreground="white")
+        style.configure("Converter.TEntry", fieldbackground="#4a4a4a", foreground="black", insertbackground="white")
+        style.configure("Converter.TButton", background="#3a3a3a", foreground="white")
+        style.map("Converter.TButton", background=[('active', '#6a6a6a')])
 
-        Inputs: None
-        Process:
-            1. Creates a label for instructions.
-            2. Creates a button to open the file dialog, linked to `self.select_file`.
-            3. Creates a new label and slider for "Default width of the focus":
-               - The slider's values are 5000, 10000, 25000, 50000, 100000 Hz.
-               - The slider's variable is linked to `self.app_instance.default_focus_width_var`.
-        Outputs: None
-        """
-        # Create a label for instructions
-        instruction_label = tk.Label(self, text="Click the button below to select a report file (.html or .shw)", 
-                                     wraplength=350, bg="black", fg="white")
-        instruction_label.pack(pady=10)
+        self.config(style="Converter.TFrame")
 
-        # Create a button to open the file dialog
-        select_button = tk.Button(self, text="Select Report File", command=self.select_file,
-                                  font=('Arial', 12, 'bold'), bg='#4CAF50', fg='white',
-                                  activebackground='#45a049', activeforeground='white',
-                                  relief=tk.RAISED, bd=3, padx=10, pady=5)
-        select_button.pack(pady=20)
+        # File selection frame
+        file_frame = ttk.LabelFrame(self, text="Select Report File", style="Converter.TFrame", padding="10")
+        file_frame.pack(fill="x", pady=5)
 
-        # New: Default width of the focus slider
-        if self.app_instance and hasattr(self.app_instance, 'default_focus_width_var'):
-            focus_width_frame = tk.LabelFrame(self, text="Focus Scan Width", padx=10, pady=5, bg="black", fg="white")
-            focus_width_frame.pack(pady=10, padx=10, fill=tk.X)
+        ttk.Label(file_frame, text="File Path:", style="Converter.TLabel").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.file_path_var = tk.StringVar()
+        self.file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50, style="Converter.TEntry")
+        self.file_path_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
+        ttk.Button(file_frame, text="Browse", command=self.browse_file, style="Converter.TButton").grid(row=0, column=2, padx=5, pady=5)
+        
+        file_frame.grid_columnconfigure(1, weight=1) # Make entry expand
 
-            tk.Label(focus_width_frame, text="Default Width (Hz):", bg="black", fg="white").pack(side=tk.LEFT, padx=5)
-            
-            # Define the values for the slider
-            focus_width_values = [5000, 10000, 25000, 50000, 100000]
-            # Create a mapping from value to index for the slider
-            focus_width_val_to_idx = {val: i for i, val in enumerate(focus_width_values)}
-            
-            # Create an IntVar for the slider's index
-            self.focus_width_slider_index_var = tk.IntVar(self, value=focus_width_val_to_idx.get(int(self.app_instance.default_focus_width_var.get()), 0))
+        # Conversion button
+        self.convert_button = ttk.Button(self, text="Convert to CSV", command=self.select_file, style="Converter.TButton")
+        self.convert_button.pack(pady=10)
 
-            def update_focus_width_from_slider(*args):
-                try:
-                    idx = self.focus_width_slider_index_var.get()
-                    if 0 <= idx < len(focus_width_values):
-                        self.app_instance.default_focus_width_var.set(float(focus_width_values[idx]))
-                except Exception as e:
-                    print(f"Error updating focus width from slider: {e}")
+        # Output console for conversion messages
+        output_frame = ttk.LabelFrame(self, text="Conversion Output", style="Converter.TFrame", padding="10")
+        output_frame.pack(fill="both", expand=True, pady=5)
 
-            def update_focus_width_slider_from_var(*args):
-                try:
-                    val = float(self.app_instance.default_focus_width_var.get())
-                    if val in focus_width_val_to_idx:
-                        self.focus_width_slider_index_var.set(focus_width_val_to_idx[val])
-                    else:
-                        closest_val = min(focus_width_values, key=lambda x: abs(x - val))
-                        self.focus_width_slider_index_var.set(focus_width_val_to_idx[closest_val])
-                except ValueError:
-                    pass
+        self.output_text = scrolledtext.ScrolledText(output_frame, wrap=tk.WORD, bg="pink", fg="white", font=("Courier New", 10))
+        self.output_text.pack(fill="both", expand=True)
+        self.output_text.config(state=tk.DISABLED) # Make it read-only
 
-            self.focus_width_slider_index_var.trace_add("write", update_focus_width_from_slider)
-            self.app_instance.default_focus_width_var.trace_add("write", update_focus_width_slider_from_var)
-
-            self.focus_width_slider = tk.Scale(focus_width_frame,
-                                               variable=self.focus_width_slider_index_var,
-                                               from_=0, to=len(focus_width_values) - 1,
-                                               orient=tk.HORIZONTAL, showvalue=0, # Don't show numeric value on slider
-                                               resolution=1,
-                                               bg="black", fg="white", troughcolor="grey", highlightbackground="black",
-                                               length=200)
-            self.focus_width_slider.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
-
-            # Display the current value next to the slider
-            self.focus_width_display_label = tk.Label(focus_width_frame, textvariable=self.app_instance.default_focus_width_var, bg="black", fg="white")
-            self.focus_width_display_label.pack(side=tk.LEFT, padx=5)
-
-            # Manually update the slider's initial position based on the variable's initial value
-            update_focus_width_slider_from_var()
-
-
-    def select_file(self):
-        """
-        Opens a file dialog for the user to select an HTML or SHW file,
-        then processes it accordingly.
-
-        Inputs: None
-        Process:
-            1. Opens a file dialog allowing selection of .html or .shw files.
-            2. If no file is selected, returns.
-            3. Extracts file name and extension.
-            4. Determines the output directory using the main App instance's `output_folder_var`.
-            5. Ensures the output directory exists.
-            6. Sets the `output_csv_file` path to "MARKERS.CSV" within the output directory.
-            7. Initializes `headers`, `rows`, `conversion_successful`, and `error_message` variables.
-            8. Attempts to convert the selected file:
-               - If .html, reads content and calls `convert_html_report_to_csv`.
-               - If .shw, calls `generate_csv_from_shw`.
-               - If invalid type, shows a warning and returns.
-            9. If conversion is successful and rows are extracted:
-               - Writes the extracted `headers` and `rows` to the `output_csv_file`.
-               - Shows a success messagebox.
-               - Calls `self.app_instance.add_markers_tab(headers, rows)` to add/update the Markers Display tab.
-            10. If no data is extracted, shows a warning.
-            11. Includes comprehensive error handling for `FileNotFoundError`, `ET.ParseError`, and general `Exception`.
-            12. If an error occurs, prints an error message to the console and shows an error messagebox.
-        Outputs: None (creates CSV file, updates GUI tabs, shows messageboxes)
-        """
+    def browse_file(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """Opens a file dialog to select an HTML or SHW report file."""
+        debug_print("Browsing for file...", file=file, function=function)
         file_path = filedialog.askopenfilename(
-            title="Select an IAS HTML Report or a SHURE Wireless Workbench Show File",
-            filetypes=[("Report Files", "*.html *.shw"), ("HTML files", "*.html"), ("SHW files", "*.shw")]
+            title="Select Report File",
+            filetypes=[("HTML files", "*.html"), ("SHW files", "*.shw"), ("All files", "*.*")]
         )
+        if file_path:
+            self.file_path_var.set(file_path)
+            debug_print(f"Selected file: {file_path}", file=file, function=function)
 
-        if not file_path:
-            return # User cancelled file selection
+    def select_file(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Converts the selected report file (HTML or SHW) to CSV format.
+        """
+        debug_print("Converting file to CSV...", file=file, function=function)
+        input_file = self.file_path_var.get()
+        if not input_file:
+            messagebox.showwarning("No File Selected", "Please select an HTML or SHW file to convert.")
+            debug_print("Conversion aborted: No file selected.", file=file, function=function)
+            return
 
-        file_name = os.path.basename(file_path)
-        base_name, extension = os.path.splitext(file_name)
-        
-        # Get the output directory from the main App instance's output_folder_var
-        output_dir = self.app_instance.output_folder_var.get()
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir) # Ensure the output directory exists
-        
-        # Always save to MARKERS.CSV in the specified output directory
-        output_csv_file = os.path.join(output_dir, "MARKERS.CSV")
-        print(f"DEBUG (tabs): Attempting to save MARKERS.CSV to: {output_csv_file}") # Debug print
+        self.output_text.config(state=tk.NORMAL)
+        self.output_text.delete(1.0, tk.END)
+        self.output_text.insert(tk.END, f"Attempting to convert: {os.path.basename(input_file)}\n", "cyan")
+        self.output_text.config(state=tk.DISABLED)
 
-        headers = []
-        rows = []
-        conversion_successful = False
-        error_message = ""
-
+        error_message = None
         try:
-            if extension.lower() == '.html':
-                # Read HTML content from file and pass to converter
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                headers, rows = convert_html_report_to_csv(html_content)
-                conversion_successful = True
+            file_name, file_extension = os.path.splitext(os.path.basename(input_file))
             
-            elif extension.lower() == '.shw':
-                headers, rows = generate_csv_from_shw(file_path)
-                conversion_successful = True
-            
-            else:
-                messagebox.showwarning("Invalid File Type", "Please select a .html or .shw file.")
-                return # Exit if file type is invalid
+            # Use app_instance.scan_directory_var for the output folder
+            output_dir = self.app_instance.scan_directory_var.get()
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                debug_print(f"Created output directory: {output_dir}", file=file, function=function)
 
-            if conversion_successful:
-                if rows: # Only write if there's data to write
-                    with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
-                        csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
-                        csv_writer.writeheader()
-                        csv_writer.writerows(rows)
-                    messagebox.showinfo("Success", f"Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
-                    
-                    # Call the method on the main App instance to add the new tab
-                    # This call is correct based on the App class structure.
-                    self.app_instance.add_markers_tab(headers, rows)
-                else:
-                    messagebox.showwarning("No Data Extracted", f"No relevant data could be extracted from '{file_name}'. CSV file was not created.")
+            if file_extension.lower() == '.html':
+                output_csv_file = os.path.join(output_dir, f"{file_name}.csv")
+                headers, rows = convert_html_report_to_csv(input_file, output_csv_file)
+            elif file_extension.lower() == '.shw':
+                output_csv_file = os.path.join(output_dir, f"{file_name}.csv")
+                # Corrected call: generate_csv_from_shw should only take input_file
+                headers, rows = generate_csv_from_shw(input_file) 
+            else:
+                messagebox.showerror("Unsupported File Type", "Only HTML (.html) and SHW (.shw) files are supported for conversion.")
+                debug_print(f"Unsupported file type: {file_extension}", file=file, function=function)
+                return
+
+            if rows: # Only write if there's data to write
+                with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+                    csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
+                    csv_writer.writeheader()
+                    csv_writer.writerows(rows)
+                messagebox.showinfo("Success", f"Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
+                
+                # Call the method on the main App instance to add the new tab
+                # This call is correct based on the App class structure.
+                self.app_instance.add_markers_tab(headers, rows)
+            else:
+                messagebox.showwarning("No Data Extracted", f"No relevant data could be extracted from '{file_name}'. CSV file was not created.")
 
         except FileNotFoundError as e:
             error_message = f"File not found: {e}"
@@ -587,3 +400,4 @@ class ReportConverterTab(tk.Frame):
         
         if error_message:
             print(f"❌ Conversion failed for {file_name}: {error_message}")
+            debug_print(f"Conversion failed for {file_name}: {error_message}", file=file, function=function)

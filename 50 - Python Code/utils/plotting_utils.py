@@ -63,16 +63,14 @@ def _open_plot_in_browser(plot_path):
         messagebox.showerror("Plot Open Error", f"Could not open plot in browser: {e}")
 
 
-def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True, include_gov_markers=True, output_html_path=None, auto_open_browser=True):
+def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_markers=True, output_html_path=None, auto_open_browser=True, single_marker_data=None):
     """
     Plots a single scan's frequency vs. amplitude data using Plotly.
+    It now reads data directly from a CSV file without headers.
     Also handles saving the plot to an HTML file and optionally opening it.
 
     Inputs:
-        scan_data (list): A list of tuples, where each tuple is a data point
-                          in the format `(frequency_hz, amplitude_dbm)`.
-        plot_title_suffix (str): A suffix string to add to the main plot title
-                                 (e.g., a timestamp or scan name).
+        csv_file_path (str): The full path to the CSV file containing the scan data.
         include_tv_markers (bool): If True, adds shaded regions and text labels
                                    for North American TV broadcast bands.
         include_gov_markers (bool): If True, adds shaded regions and text labels
@@ -83,10 +81,11 @@ def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True,
         auto_open_browser (bool): If True and `output_html_path` is provided,
                                   the generated HTML plot will be automatically
                                   opened in the default web browser.
-
+        single_marker_data (tuple, optional): A tuple (frequency_hz, name) for a single marker to highlight.
+                                              Defaults to None.
     Process:
-        1. **Data Preparation**: Converts the input `scan_data` list into a pandas DataFrame,
-           adding a 'Frequency_MHz' column derived from 'Frequency_Hz'.
+        1. **Data Loading**: Reads the input `csv_file_path` into a pandas DataFrame,
+           specifying `header=None` and then manually assigning 'Frequency_MHz' and 'Power_dBm' columns.
         2. **Plotly Figure Initialization**: Creates an empty `go.Figure` object.
         3. **Main Trace Addition**: Adds a `go.Scatter` trace for the main scan data
            (Frequency_MHz vs. Power_dBm) with specific line styling.
@@ -100,28 +99,38 @@ def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True,
              and a `go.Scatter` trace with `mode='text'` to add text labels for the band name and frequency range.
            - **Staggering Labels**: Uses `y_offset_levels` and modulo arithmetic to stagger the Y-position
              of the text labels, preventing overlap when multiple bands are close together.
-        7. **Layout Configuration**: Applies a "plotly_dark" theme and configures plot title,
+        7. **Single Marker Addition (Optional)**: If `single_marker_data` is provided, adds a marker.
+        8. **Layout Configuration**: Applies a "plotly_dark" theme and configures plot title,
            axis labels, grid lines, rangeslider visibility, and legend orientation for better aesthetics.
-        8. **HTML Export (Optional)**: If `output_html_path` is provided, it ensures the output directory exists
+        9. **HTML Export (Optional)**: If `output_html_path` is provided, it ensures the output directory exists
            and then saves the Plotly figure to an HTML file using `fig.write_html()`.
-        9. **Browser Opening (Optional)**: If `auto_open_browser` is True, calls `_open_plot_in_browser`
-           to open the saved HTML file.
+        10. **Browser Opening (Optional)**: If `auto_open_browser` is True, calls `_open_plot_in_browser`
+            to open the saved HTML file.
 
     Outputs:
         tuple: `(plotly.graph_objects.Figure, str)` - The generated Plotly figure object and the
                full path to the saved HTML file (or None if not saved). Returns `(None, None)`
-               if `scan_data` is empty.
+               if data loading fails.
     """
-    if not scan_data:
-        print("No data to plot for single scan.")
+    try:
+        # Read CSV without header and assign column names
+        df = pd.read_csv(csv_file_path, header=None)
+        df.columns = ['Frequency_MHz', 'Power_dBm']
+    except FileNotFoundError:
+        print(f"🚫 Plotting Error: CSV file not found at {csv_file_path}")
+        messagebox.showerror("Plotting Error", f"Scan data CSV file not found: {csv_file_path}")
+        return None, None
+    except Exception as e:
+        print(f"🚫 Plotting Error: Could not read CSV file {csv_file_path}: {e}")
+        messagebox.showerror("Plotting Error", f"Could not read CSV file {csv_file_path}: {e}")
         return None, None
 
-    # Convert data to DataFrame
-    df = pd.DataFrame(scan_data, columns=['Frequency_Hz', 'Power_dBm'])
-    df['Frequency_MHz'] = df['Frequency_Hz'] / MHZ_TO_HZ
+    if df.empty:
+        print("No data to plot for single scan after loading from CSV.")
+        return None, None
 
-    # Determine plot title
-    plot_title = f"Spectrum Scan - {plot_title_suffix}"
+    # Determine plot title from the CSV filename
+    plot_title = os.path.basename(csv_file_path).replace('.csv', '') # Remove .csv extension for title
 
     fig = go.Figure()
 
@@ -243,6 +252,33 @@ def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True,
                 hoverinfo='text',
                 name=f"Band Label: {band['Band Name']}"
             ))
+    
+    # Add single marker if provided
+    if single_marker_data:
+        freq_hz, name = single_marker_data
+        freq_mhz = freq_hz / MHZ_TO_HZ
+        
+        # Find the power level at or near the marker frequency
+        # This is a simple nearest-neighbor lookup; for more accuracy, interpolation could be used.
+        closest_point = df.iloc[(df['Frequency_MHz'] - freq_mhz).abs().argsort()[:1]]
+        if not closest_point.empty:
+            power_dbm = closest_point['Power_dBm'].iloc[0]
+        else:
+            power_dbm = -100 # Default if no data point is found (shouldn't happen with valid CSV)
+
+        fig.add_trace(go.Scatter(
+            x=[freq_mhz],
+            y=[power_dbm],
+            mode='markers+text',
+            marker=dict(color='white', size=12, symbol='star', line=dict(color='black', width=2)),
+            text=[f"{name}<br>{freq_mhz:.3f} MHz"],
+            textposition="top center",
+            textfont=dict(color='white', size=12),
+            name=f'Selected: {name}',
+            hovertemplate=f'<b>{{text}}</b><br>Frequency: %{{x:.3f}} MHz<br>Power: %{{y:.2f}} dBm<extra></extra>'
+        ))
+        print(f"Added single marker for '{name}' at {freq_mhz:.3f} MHz to plot.")
+
 
     # Apply Dark Mode Theme
     fig.update_layout(
@@ -275,8 +311,8 @@ def plot_single_scan_data(scan_data, plot_title_suffix, include_tv_markers=True,
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            # Explicitly set autorange to True for Y-axis interactivity
-            autorange=True
+            autorange=True,
+            range=[y_range_min, y_range_max]
         ),
         plot_bgcolor='black',
         paper_bgcolor='black',
@@ -324,10 +360,10 @@ def plot_multi_trace_data(
                                       'Median_dBm', 'Range_dBm', 'Std_Dev_dBm', 'Variance_dBm',
                                       and 'Average_PSD_dBm_Hz'.
         plot_title_full (str): The complete title string for the plot.
-        include_tv_markers_var (tk.BooleanVar): A Tkinter BooleanVar indicating whether to
-                                                include TV band markers on the plot.
-        include_gov_markers_var (tk.BooleanVar): A Tkinter BooleanVar indicating whether to
-                                                 include Government band markers on the plot.
+        include_tv_markers_var (bool): A boolean indicating whether to
+                                       include TV band markers on the plot.
+        include_gov_markers_var (bool): A boolean indicating whether to
+                                        include Government band markers on the plot.
         historical_dfs_with_names (list of dict, optional): A list of dictionaries, where each
                                                             dictionary represents a historical scan
                                                             to be overlaid. Each dict should have
@@ -341,6 +377,7 @@ def plot_multi_trace_data(
         2. **Historical Overlays (Optional)**:
            - If `historical_dfs_with_names` is provided, iterates through each historical scan.
            - Extracts the display name (often a timestamp) from the historical scan's name.
+           - Reads the historical CSV into a DataFrame without headers and assigns columns.
            - Adds each historical scan as a `go.Scatter` trace with a light, semi-transparent color
              and a dotted line style, making them visually distinct as background layers.
            - These overlays are shown in the legend.
@@ -350,8 +387,6 @@ def plot_multi_trace_data(
              - 'Median Power (dBm)' (yellow, solid line)
              - 'Range (Max-Min) (dB)' (magenta, solid line)
              - 'Standard Deviation (dB)' (lime, solid line)
-             - 'Variance (dB^2)' (orange, solid line)
-             - 'Average PSD (dBm/Hz)' (white, solid line)
         4. **Axis Range Determination**: Calculates the overall min/max for both Y-axis (amplitude)
            and X-axis (frequency) by considering all data (aggregated and historical overlays)
            to ensure the plot encompasses all relevant information.
@@ -414,25 +449,6 @@ def plot_multi_trace_data(
                 line=dict(color='lime', width=1.5, dash='solid') # Greenish color
             ))
 
-        # Removed Variance and Average PSD as per user request
-        # if 'Variance_dBm' in aggregated_df.columns:
-        #     fig.add_trace(go.Scatter(
-        #         x=aggregated_df['Frequency_MHz'],
-        #         y=aggregated_df['Variance_dBm'],
-        #         mode='lines',
-        #         name='Variance (dB^2)',
-        #         line=dict(color='orange', width=1.5, dash='solid') # Orange color
-        #     ))
-
-        # if 'Average_PSD_dBm_Hz' in aggregated_df.columns:
-        #     fig.add_trace(go.Scatter(
-        #         x=aggregated_df['Frequency_MHz'],
-        #         y=aggregated_df['Average_PSD_dBm_Hz'],
-        #         mode='lines',
-        #         name='Average PSD (dBm/Hz)',
-        #         line=dict(color='white', width=1.5, dash='solid') # White color for PSD
-        #     ))
-
     # Add historical overlays after aggregated traces, with more opaque orange
     if historical_dfs_with_names:
         for i, hist_item in enumerate(historical_dfs_with_names):
@@ -440,10 +456,6 @@ def plot_multi_trace_data(
             full_name = hist_item['name']
             
             # Extract only the date and time part from the filename for display
-            # Example: MyScan_RBW100K_HOLD0_Offset0_20250723_104243
-            # This regex captures YYYYMMDD_HHMMSS or YYYYMMDD_HHMM.
-            # It now specifically looks for the part in parentheses if present,
-            # or the last YYYYMMDD_HHMMSS if not.
             match_paren = re.search(r'\((\d{8}_\d{6})\)', full_name)
             match_end = re.search(r'(\d{8}_\d{6})$', full_name)
 
@@ -478,11 +490,6 @@ def plot_multi_trace_data(
             all_y_data_for_range_calc.extend(aggregated_df['Range_dBm'].tolist())
         if 'Std_Dev_dBm' in aggregated_df.columns:
             all_y_data_for_range_calc.extend(aggregated_df['Std_Dev_dBm'].tolist())
-        # Removed Variance and Average PSD from range calculation
-        # if 'Variance_dBm' in aggregated_df.columns:
-        #     all_y_data_for_range_calc.extend(aggregated_df['Variance_dBm'].tolist())
-        # if 'Average_PSD_dBm_Hz' in aggregated_df.columns:
-        #     all_y_data_for_range_calc.extend(aggregated_df['Average_PSD_dBm_Hz'].tolist())
     
     if historical_dfs_with_names:
         for hist_item in historical_dfs_with_names:
