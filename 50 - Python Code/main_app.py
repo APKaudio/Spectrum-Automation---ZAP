@@ -65,7 +65,8 @@ from src.settings_logic import (
 from src.plot_logic import generate_single_scan_plot_and_open_wrapper_logic, generate_average_plot_logic # Import generate_average_plot_logic
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
 from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode # Import debug_print and set_log_visa_commands_mode
-from src.tabs import ReportConverterTab, MarkersDisplayTab # Import MarkersDisplayTab
+from src.tabs import ReportConverterTab
+from src.marker_logic import MarkersDisplayTab # Corrected import for MarkersDisplayTab
 
 
 class App(tk.Tk):
@@ -174,6 +175,7 @@ class App(tk.Tk):
 
         # Initialize MarkersDisplayTab to None; it will be created dynamically
         self.markers_display_tab = None
+        self.markers_display_frame = None # Also initialize the content frame to None
 
         # List to keep track of dynamically created tabs
         self.dynamic_tabs = []
@@ -413,12 +415,14 @@ class App(tk.Tk):
         self.scan_settings_tab = ttk.Frame(self.notebook)
         self.preset_files_tab = ttk.Frame(self.notebook)
         self.report_converter_tab = ttk.Frame(self.notebook)
+        # self.markers_display_tab will be created dynamically in add_markers_tab
 
         self.notebook.add(self.scan_settings_tab, text="Scan Configuration")
         self.notebook.add(self.preset_files_tab, text="Device Preset Files")
         self.notebook.add(self.report_converter_tab, text="Report Converter")
+        # The Markers Display tab is NOT added here initially. It's added by add_markers_tab.
 
-        # Store dynamic tabs for later management
+        # Store dynamic tabs for later management (initially without markers tab)
         self.dynamic_tabs = [self.scan_settings_tab, self.preset_files_tab, self.report_converter_tab]
 
 
@@ -432,6 +436,11 @@ class App(tk.Tk):
         # The ReportConverterTab class itself needs to be updated to use ttk widgets and dark theme
         self.report_converter_frame = ReportConverterTab(self.report_converter_tab, app_instance=self)
         self.report_converter_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+        # --- Markers Display Tab (self.markers_display_tab) ---
+        # This is now handled by add_markers_tab and _check_and_load_markers_csv
+        # Removed the static creation here.
+
 
         # Configure grid weights for main_frame's internal layout
         self.main_frame.grid_columnconfigure(0, weight=1) # Only one column
@@ -833,7 +842,7 @@ class App(tk.Tk):
         self.connect_button.config(style='GreyText.TButton') # Reset to default grey style
 
     def _blink_connect_button(self, file=__file__, function=inspect.currentframe().f_code.co_name):
-        debug_print("Blinking connect button...", file=file, function=function)
+        # Removed redundant debug_print inside the loop
         if self.inst: # Stop blinking if connected
             self._stop_connect_button_blink()
             return
@@ -873,39 +882,36 @@ class App(tk.Tk):
 
     def add_markers_tab(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Adds a new 'Markers Display' tab to the notebook and populates it
-        with the extracted marker data. This tab will display the zones,
-        groups, and devices in a structured way.
-
-        Inputs:
-            headers (list): A list of column headers for the marker data.
-            rows (list): A list of dictionaries, where each dictionary represents
-                         a row of marker data with keys matching the headers.
-        Process:
-            1. Checks if a "Markers Display" tab already exists and removes it to ensure a fresh display.
-            2. Creates a new `MarkersDisplayTab` instance, passing the extracted
-               `headers` and `rows`.
-            3. Adds this new tab to the `self.notebook` with the text "Markers Display".
-            4. Selects the newly created tab to bring it into view.
-        Outputs: None
+        Adds or updates the 'Markers Display' tab in the notebook.
+        If the tab doesn't exist, it creates it. If it exists, it updates its content.
         """
         debug_print("Adding/updating markers tab...", file=file, function=function)
-        # Check if "Markers Display" tab already exists and remove it
-        for i, tab_id in enumerate(self.notebook.tabs()):
-            tab_text = self.notebook.tab(tab_id, "text")
-            if tab_text == "Markers Display":
-                self.notebook.forget(tab_id)
-                self.dynamic_tabs = [tab for tab in self.dynamic_tabs if tab != self.markers_display_tab] # Remove from dynamic tabs list
-                del self.markers_display_tab # Delete the reference
-                debug_print("Existing 'Markers Display' tab removed.", file=file, function=function)
-                break
+
+        # Check if the tab pane already exists
+        if self.markers_display_tab is None:
+            # Create the tab pane (ttk.Frame)
+            self.markers_display_tab = ttk.Frame(self.notebook)
+            self.notebook.add(self.markers_display_tab, text="Markers Display")
+            self.dynamic_tabs.append(self.markers_display_tab) # Add to dynamic tabs list
+            debug_print("New 'Markers Display' tab pane created.", file=file, function=function)
             
-        # Create and add the new MarkersDisplayTab
-        self.markers_display_tab = MarkersDisplayTab(self.notebook, headers=headers, rows=rows, app_instance=self)
-        self.notebook.add(self.markers_display_tab, text="Markers Display")
-        self.dynamic_tabs.append(self.markers_display_tab) # Add to dynamic tabs list
+            # Create the content frame (MarkersDisplayTab instance) inside the tab pane
+            self.markers_display_frame = MarkersDisplayTab(self.markers_display_tab, headers=headers, rows=rows, app_instance=self)
+            self.markers_display_frame.pack(expand=True, fill="both", padx=10, pady=10)
+            debug_print("New MarkersDisplayTab content created and packed.", file=file, function=function)
+        else:
+            # If the tab pane already exists, just update its content
+            self.markers_display_frame.update_markers_data(headers, rows)
+            debug_print("Existing 'Markers Display' tab content updated.", file=file, function=function)
+            
+            # Ensure the tab is visible if it was previously hidden
+            if self.markers_display_tab not in self.notebook.tabs():
+                self.notebook.add(self.markers_display_tab, text="Markers Display")
+                debug_print("Markers Display tab re-added to notebook (was hidden).", file=file, function=function)
+
+        # Select the Markers Display tab to bring it into view
         self.notebook.select(self.markers_display_tab)
-        # No need for _update_tab_visibility() here, as notebook.add and notebook.select handle visibility.
+        debug_print("Markers Display tab selected.", file=file, function=function)
 
 
     def _check_and_load_markers_csv(self, file=__file__, function=inspect.currentframe().f_code.co_name):
@@ -914,7 +920,6 @@ class App(tk.Tk):
         and, if found, automatically loads its content and creates the "Markers Display" tab.
         """
         debug_print("Checking for existing MARKERS.CSV...", file=file, function=function)
-        # Use scan_directory_var for the output folder, which is initialized from config
         markers_csv_path = os.path.join(self.scan_directory_var.get(), 'MARKERS.CSV')
         
         if os.path.exists(markers_csv_path):
@@ -972,7 +977,9 @@ class App(tk.Tk):
         debug_print("Hiding all dynamic tabs...", file=file, function=function)
         for tab_frame in self.dynamic_tabs:
             try:
-                self.notebook.hide(tab_frame)
+                # Check if the tab is actually managed by the notebook before trying to hide it
+                if tab_frame in self.notebook.tabs():
+                    self.notebook.hide(tab_frame)
             except TclError as e:
                 print(f"Warning: Could not hide tab {tab_frame} - {e}")
         print("Tabs updated: All dynamic tabs now hidden.")
@@ -998,10 +1005,9 @@ class App(tk.Tk):
                 elif tab_frame == self.preset_files_tab:
                     self.notebook.add(tab_frame, text="Device Preset Files")
                 elif tab_frame == self.report_converter_tab:
-                    self.notebook.add(tab_frame, text="Report Converter")
-                # Handle Markers Display Tab if it exists
-                elif hasattr(self, 'markers_display_tab') and tab_frame == self.markers_display_tab:
-                    self.notebook.add(tab_frame, text="Markers Display")
+                    self.notebook.add(tab_frame, text="Report Converter")  
+                elif tab_frame == self.markers_display_tab: # Corrected from self.MarkersDisplayTab
+                    self.notebook.add(tab_frame, text="Markers Display") # Corrected text
         print("Tabs updated: All tabs now visible.")
 
     def stop_scan(self, file=__file__, function=inspect.currentframe().f_code.co_name):
