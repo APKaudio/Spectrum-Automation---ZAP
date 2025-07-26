@@ -20,7 +20,7 @@ except ImportError:
         print("BeautifulSoup4 installed successfully.")
     except subprocess.CalledProcessError as e:
         from tkinter import messagebox
-        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\\nPlease install it manually by running: pip install beautifulsoup4")
+        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\nPlease install it manually by running: pip install beautifulsoup4")
         sys.exit(1)
     except Exception as e:
         from tkinter import messagebox
@@ -130,9 +130,9 @@ def convert_html_report_to_csv(html_content):
                                     else: # Assume kHz if no unit or 'khz'
                                         freq_khz = value
                                 else:
-                                    # Fallback if regex doesn't match, try direct float conversion (assuming kHz)
-                                    freq_khz = float(channel_frequency_str) # Assume it's already in kHz if no unit
-                                    print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming kHz.")
+                                    # Fallback if regex doesn't match, assume MHz and convert to kHz
+                                    freq_khz = float(channel_frequency_str) * 1000 # Assume MHz, convert to kHz
+                                    print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz and converting to kHz.")
                             except ValueError:
                                 print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float.")
                                 freq_khz = "Invalid Frequency"
@@ -172,8 +172,9 @@ def convert_html_report_to_csv(html_content):
                                 else: 
                                     freq_khz = value
                             else:
-                                freq_khz = float(channel_frequency_str) # Assume it's already in kHz if no unit
-                                print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming kHz.")
+                                # Fallback if regex doesn't match, assume MHz and convert to kHz
+                                freq_khz = float(channel_frequency_str) * 1000 # Assume MHz, convert to kHz
+                                print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz and converting to kHz.")
                         except ValueError:
                             print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float.")
                             freq_khz = "Invalid Frequency"
@@ -267,4 +268,4 @@ def generate_csv_from_shw(xml_file_path):
         raise ET.ParseError(f"Error parsing XML (SHW) file '{xml_file_path}': {e}")
     except Exception as e:
         print(f"Error during SHW conversion data extraction: {e}")
-        raise 
+        raise

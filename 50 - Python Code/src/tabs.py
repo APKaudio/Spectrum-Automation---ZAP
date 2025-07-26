@@ -6,6 +6,7 @@ import csv
 import xml.etree.ElementTree as ET
 import sys
 import inspect # Import inspect module
+import threading # Added: Import the threading module
 
 # Import the new report converter utility functions
 from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw
