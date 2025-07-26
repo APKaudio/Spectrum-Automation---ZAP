@@ -43,47 +43,8 @@ class MarkersDisplayTab(ttk.Frame):
         self.rows = rows if rows is not None else [] # Store full rows data
         self.app_instance = app_instance # Store reference to the main app instance
 
-        # Configure style for this frame's widgets
-        style = ttk.Style()
-        style.configure("Markers.TFrame", background="#000000") # Dark background for the main frame
-        style.configure("Markers.TLabel", background="#000000", foreground="white")
-        style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="white")
-        style.configure("Markers.Treeview", background="#4a4a4a", foreground="white", fieldbackground="#4a4a4a")
-        style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
-        
-        # Updated button style for orange background and black text, and larger size
-        style.configure("Markers.TButton", 
-                        background="#F4902C", # Orange background
-                        foreground="black",   # Black text
-                        font=("Helvetica", 14, "bold"), # Larger font (increased from 12 to 14)
-                        padding=[15, 15, 15, 15]) # More padding for "pushable" feel (increased from 10 to 15)
-        style.map("Markers.TButton", 
-                  background=[('active', '#FFB050')]) # Lighter orange on active
-
-        # New styles for the inner treeview and buttons frame
-        style.configure("Markers.Inner.Treeview",
-                        background="#333333", # Darker grey
-                        foreground="white",
-                        fieldbackground="#333333", # Darker grey
-                        bordercolor="black",
-                        lightcolor="#333333", # Darker grey
-                        darkcolor="#333333") # Darker grey
-        style.map("Markers.Inner.Treeview",
-                  background=[("selected", "#0078D7")], # Reverted to blue highlight for treeview
-                  foreground=[("selected", "white")])
-        
-        # Configure the base TLabelFrame style and its label part
-        style.configure("TLabelFrame", background="#333333", foreground="white")
-        style.configure("TLabelFrame.Label", background="#333333", foreground="white")
-        
-        # Define a style for the inner_buttons_frame (ttk.Frame)
-        style.configure("Markers.Inner.Frame", background="#333333") 
-        style.layout("Markers.Inner.Frame",
-                     [('TFrame.border', {'sticky': 'nswe', 'border': '1', 'children':
-                       [('TFrame.padding', {'sticky': 'nswe', 'children':
-                         [('TFrame.contents', {'sticky': 'nswe'})]})]})]) 
-
-        self.config(style="Markers.TFrame") # Apply style to the main frame
+        # Apply style to the main frame (this style is now defined globally in main_app.py)
+        self.config(style="Markers.TFrame") 
 
         self.create_widgets()
 
@@ -131,7 +92,9 @@ class MarkersDisplayTab(ttk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        self.inner_buttons_frame = ttk.Frame(self.buttons_canvas, style="Markers.Inner.Frame") # Use ttk.Frame
+        # --- FIX: Changed to tk.Frame and removed style attribute ---
+        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") 
+        # --- END FIX ---
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
@@ -231,7 +194,7 @@ class MarkersDisplayTab(ttk.Frame):
             widget.destroy()
 
         if not devices_to_display:
-            ttk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
+            tk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
                       background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
             self.inner_buttons_frame.update_idletasks()
             self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
@@ -302,4 +265,3 @@ class MarkersDisplayTab(ttk.Frame):
         self.rows = rows
         self._populate_zone_group_tree() # Repopulate the treeview with new data
         self._populate_device_buttons([]) # Clear device buttons when new data loaded
-

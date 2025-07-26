@@ -456,6 +456,7 @@ def query_device_presets(inst):
     internal "C:\\PRESETS\\" directory. This allows the GUI to display available
     presets for loading.
 
+
     Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
     Process:
