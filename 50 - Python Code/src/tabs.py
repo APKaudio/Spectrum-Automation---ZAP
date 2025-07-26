@@ -7,14 +7,14 @@ import xml.etree.ElementTree as ET
 import sys
 import inspect # Import inspect module
 import threading # Added: Import the threading module
+import io # Import io for StringIO or similar
 
 # Import the new report converter utility functions
 from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw, convert_pdf_report_to_csv # Added PDF converter
 # Import instrument_logic for setting focus frequency
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic # Ensure both are imported
-from utils.instrument_control import debug_print, write_safe # Import debug_print and write_safe
-
-# REMOVED MarkersDisplayTab from here. It is now solely in src/marker_logic.py
+from utils.instrument_control import debug_print # Import debug_print
+from src.gui_elements import TextRedirector # Import TextRedirector
 
 class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
     """
@@ -110,7 +110,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             self.file_path_var.set(file_path)
             self.conversion_console.config(state=tk.NORMAL)
             self.conversion_console.delete(1.0, tk.END)
-            self.conversion_console.insert(tk.END, f"Selected file: {os.path.basename(file_path)}\n", "cyan")
+            # Initial message will now be handled by debug_print when conversion starts
             self.conversion_console.config(state=tk.DISABLED)
             debug_print(f"File selected: {file_path}", file=file, function=function)
 
@@ -119,7 +119,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         Handles the conversion button click event.
         Determines file type and calls the appropriate conversion logic.
         """
-        debug_print("Convert button clicked...", file=file, function=function)
+        debug_print("Convert button clicked...", file=file, function=function) # This is the first debug message
         file_path = self.file_path_var.get()
         if not file_path:
             messagebox.showwarning("No File Selected", "Please select an HTML, SHW, or PDF file to convert.")
@@ -130,7 +130,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             file_type = "HTML"
         elif file_extension == ".shw":
             file_type = "SHW"
-        elif file_extension == ".pdf": # New PDF file type detection
+        elif file_extension == ".pdf":
             file_type = "PDF"
         else:
             messagebox.showerror("Unsupported File Type", "Selected file is not a supported HTML, SHW, or PDF format.")
@@ -138,7 +138,6 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
 
         self.conversion_console.config(state=tk.NORMAL)
         self.conversion_console.delete(1.0, tk.END)
-        self.conversion_console.insert(tk.END, f"Attempting to convert {file_type} file: {os.path.basename(file_path)}\n", "cyan")
         self.conversion_console.config(state=tk.DISABLED)
 
         # Run conversion in a separate thread to keep GUI responsive
@@ -146,12 +145,14 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         conversion_thread.start()
 
     def _convert_and_display(self, file_path, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
-        """
-        Performs the file conversion and updates the console and markers tab.
-        This runs in a separate thread.
-        """
         debug_print(f"Starting conversion for {file_path} (type: {file_type})...", file=file, function=function)
         error_message = None
+        output_csv_file = "" # Initialize here for finally block
+
+        # Temporarily redirect stdout to the conversion console
+        old_stdout = sys.stdout
+        sys.stdout = TextRedirector(self.conversion_console, "stdout")
+
         try:
             file_name = os.path.basename(file_path)
             headers = []
@@ -163,21 +164,31 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
                 headers, rows = convert_html_report_to_csv(html_content)
             elif file_type == "SHW":
                 headers, rows = generate_csv_from_shw(file_path)
-            elif file_type == "PDF": # New PDF conversion call
+            elif file_type == "PDF":
                 headers, rows = convert_pdf_report_to_csv(file_path)
             
             if headers and rows:
-                # Define the output file path as MARKERS.CSV in the scan data directory
                 output_csv_file = os.path.join(self.app_instance.scan_directory_var.get(), 'MARKERS.CSV')
                 
                 with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
                     csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
                     csv_writer.writeheader()
                     csv_writer.writerows(rows)
-                messagebox.showinfo("Success", f"Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
                 
+                # Removed messagebox.showinfo
+                print(f"\n✅ Successfully converted '{file_name}' to '{os.path.basename(output_csv_file)}'")
+                
+                # Display MARKERS.CSV file contents
+                print(f"\n--- Contents of {os.path.basename(output_csv_file)} ---")
+                try:
+                    with open(output_csv_file, 'r', encoding='utf-8') as f:
+                        csv_content = f.read()
+                        print(csv_content)
+                    print(f"--- End of {os.path.basename(output_csv_file)} ---")
+                except Exception as e:
+                    print(f"❌ Error reading {os.path.basename(output_csv_file)}: {e}")
+
                 # Call the method on the main App instance to add the new tab
-                # This call is correct based on the App class structure.
                 self.app_instance.add_markers_tab(headers, rows)
             else:
                 messagebox.showwarning("No Data Extracted", f"No relevant data could be extracted from '{file_name}'. CSV file was not created.")
@@ -192,7 +203,10 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             error_message = f"An unexpected error occurred during conversion: {e}"
             messagebox.showerror("Conversion Error", error_message)
         
-        if error_message:
-            print(f"❌ Conversion failed for {file_name}: {error_message}")
-            debug_print(f"Conversion failed for {file_name}: {error_message}", file=file, function=function)
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+            if error_message:
+                print(f"❌ Conversion failed for {file_name}: {error_message}")
+                debug_print(f"Conversion failed for {file_name}: {error_message}", file=file, function=function)
 

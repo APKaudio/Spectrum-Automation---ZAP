@@ -260,7 +260,7 @@ def generate_csv_from_shw(xml_file_path):
             name_element = freq_entry.find('source_name')
             name = name_element.text if name_element is not None else "N/A"
 
-            # Extract FREQ from value and convert to MHz (assuming value is in Hz)
+            # Extract FREQ from value. User states SHW files contain markers in KHZ.
             freq_element = freq_entry.find('value')
             freq_mhz = "N/A"
             if freq_element is not None and freq_element.text is not None:
@@ -269,7 +269,8 @@ def generate_csv_from_shw(xml_file_path):
                 print(f"DEBUG (SHW): Processing freq_str: '{freq_str}' for device '{name}'")
 
                 try:
-                    freq_mhz = float(freq_str) / 1_000_000.0 # Convert Hz to MHz
+                    # Convert kHz to MHz as per user's clarification
+                    freq_mhz = float(freq_str) / 1000.0 
                 except ValueError:
                     print(f"WARNING (SHW): Could not convert SHW frequency value '{freq_str}' to float.")
                     freq_mhz = "Invalid Frequency"
@@ -370,7 +371,7 @@ def convert_pdf_report_to_csv(pdf_file_path):
 
                         freq_mhz_csv = "N/A"
                         try:
-                            # Assume frequency_pdf_str is already in MHz or can be directly converted
+                            # The frequency is already in MHz, so no conversion needed
                             freq_mhz_csv = float(frequency_pdf_str)
                         except ValueError:
                             print(f"WARNING (PDF): Could not convert PDF frequency value '{frequency_pdf_str}' to float (MHz).")
