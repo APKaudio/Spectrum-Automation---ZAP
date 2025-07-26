@@ -587,4 +587,3 @@ class ReportConverterTab(tk.Frame):
         
         if error_message:
             print(f"❌ Conversion failed for {file_name}: {error_message}")
-
