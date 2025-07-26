@@ -159,12 +159,52 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
     print("💾 Assuming ASCII data format for trace data.")
 
+    # Explicitly convert numerical parameters to their expected types
+    try:
+        scan_rbw_segmentation_float = float(scan_rbw_segmentation)
+    except ValueError:
+        print(f"ERROR: scan_rbw_segmentation '{scan_rbw_segmentation}' cannot be converted to float. Using a default of 10000.0 Hz.")
+        scan_rbw_segmentation_float = 10000.0 # Fallback to a safe default
+    
+    try:
+        vbw_config_val_float = float(vbw_config_val)
+    except ValueError:
+        print(f"ERROR: vbw_config_val '{vbw_config_val}' cannot be converted to float. Using a default of 10000.0 Hz.")
+        vbw_config_val_float = 10000.0 # Fallback to a safe default
+
+    try:
+        rbw_config_val_int = int(float(rbw_config_val)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: rbw_config_val '{rbw_config_val}' cannot be converted to int. Using a default of 1000000 Hz.")
+        rbw_config_val_int = 1000000 # Fallback to a safe default
+
+    try:
+        max_hold_time_int = int(float(max_hold_time)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: max_hold_time '{max_hold_time}' cannot be converted to int. Using a default of 3 seconds.")
+        max_hold_time_int = 3 # Fallback to a safe default
+
+    try:
+        current_freq_offset_int = int(float(current_freq_offset)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: current_freq_offset '{current_freq_offset}' cannot be converted to int. Using a default of 0 Hz.")
+        current_freq_offset_int = 0 # Fallback to a safe default
+
+
+    # Debugging print to confirm types at this point
+    print(f"DEBUG: Type of scan_rbw_segmentation_float: {type(scan_rbw_segmentation_float)}, Value: {scan_rbw_segmentation_float}")
+    print(f"DEBUG: Type of vbw_config_val_float: {type(vbw_config_val_float)}, Value: {vbw_config_val_float}")
+    print(f"DEBUG: Type of rbw_config_val_int: {type(rbw_config_val_int)}, Value: {rbw_config_val_int}")
+    print(f"DEBUG: Type of max_hold_time_int: {type(max_hold_time_int)}, Value: {max_hold_time_int}")
+    print(f"DEBUG: Type of current_freq_offset_int: {type(current_freq_offset_int)}, Value: {current_freq_offset_int}")
+
+
     # Apply RBW and VBW settings here once at the start of the scan
-    # Use scan_rbw_segmentation for the instrument's RBW during the scan
-    write_safe(inst, f":SENSE:BAND:RES {scan_rbw_segmentation}")
-    print(f"📏 Set RBW to {scan_rbw_segmentation/1000:.0f} kHz for scan (from Scan RBW setting).")
-    write_safe(inst, f":SENSE:BAND:VID {vbw_config_val}")
-    print(f"📺 Set VBW to {vbw_config_val} Hz for scan.")
+    # Use scan_rbw_segmentation_float for the instrument's RBW during the scan
+    write_safe(inst, f":SENSE:BAND:RES {scan_rbw_segmentation_float}")
+    print(f"📏 Set RBW to {scan_rbw_segmentation_float/1000:.0f} kHz for scan (from Scan RBW setting).")
+    write_safe(inst, f":SENSE:BAND:VID {vbw_config_val_float}") # Use the float version
+    print(f"📺 Set VBW to {vbw_config_val_float} Hz for scan.") # Use the float version
 
     # Determine the CSV filename for this scan session (continuous raw data)
     # This file is now explicitly for the raw data of the current scan cycle.
@@ -173,15 +213,16 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") # YYYYMMDD_HHMM (no seconds)
     
     # Define the CSV filename for the *current scan cycle's raw data*
-    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val/1000)}K_HOLD{int(max_hold_time)}_Offset{int(current_freq_offset)}_{timestamp_hm}.csv")
+    # Use the _int versions of variables here
+    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val_int/1000)}K_HOLD{max_hold_time_int}_Offset{current_freq_offset_int}_{timestamp_hm}.csv")
 
 
     # Ensure output directory exists before starting to write
     os.makedirs(output_folder, exist_ok=True)
 
     # Calculate overall start and stop frequencies for the entire selected_bands list
-    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset
-    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset
+    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
 
 
     # *** Use selected_bands for scanning the instrument ***
@@ -190,8 +231,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         band = selected_bands[i]
         band_name = band["Band Name"]
         # Apply the frequency offset here
-        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset
-        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset
+        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
 
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M") # Use datetime.datetime
         print(f"\n📈 [{current_time}] Processing Band: {band_name} (Shifted Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)")
@@ -217,15 +258,15 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         else:
             # Recalculate optimal_segment_span_hz to perfectly divide the band into equal segments
             # This ensures all segments have the same span, even if it slightly deviates from scan_rbw_segmentation
-            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation * (expected_sweep_points - 1))))
+            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation_float * (expected_sweep_points - 1))))
             if total_segments_in_band == 0: # Ensure at least one segment for non-zero spans
                 total_segments_in_band = 1
             
             # Now calculate the actual segment span to ensure equal division
             optimal_segment_span_hz = full_band_span_hz / total_segments_in_band
             # Ensure it's at least the minimum possible span for expected_sweep_points > 1
-            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation * (expected_sweep_points - 1)):
-                optimal_segment_span_hz = scan_rbw_segmentation * (expected_sweep_points - 1)
+            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation_float * (expected_sweep_points - 1)):
+                optimal_segment_span_hz = scan_rbw_segmentation_float * (expected_sweep_points - 1)
 
 
         # Calculate the effective stop frequency for the scan based on equal segments
@@ -264,8 +305,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             write_safe(inst, ":TRAC2:MODE MAXHold;")
 
             # Add settling time for max hold values to show up, if max hold is enabled
-            if max_hold_time > 0:
-                for _ in range(int(max_hold_time * 10)): # Check every 0.1 seconds
+            if max_hold_time_int > 0: # Use _int version
+                for _ in range(int(max_hold_time_int * 10)): # Check every 0.1 seconds
                     while app_instance_ref.paused:
                         app_instance_ref.after(100, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
                         time.sleep(0.1) # Sleep briefly while paused
@@ -280,7 +321,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
                     # Update display for countdown (only update every second for cleaner output)
                     if _ % 10 == 0: # Every 10 iterations (1, second)
-                        sec_remaining = int(max_hold_time - (_ / 10))
+                        sec_remaining = int(max_hold_time_int - (_ / 10)) # Use _int version
                         display_text = f"⏳ {sec_remaining}"
                         app_instance_ref.after(0, app_instance_ref._update_console_line, display_text, False)
                     time.sleep(0.1) # Small sleep to allow other threads/GUI to run

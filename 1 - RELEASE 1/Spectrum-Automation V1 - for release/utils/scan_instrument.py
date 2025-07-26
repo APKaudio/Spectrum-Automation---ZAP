@@ -25,55 +25,96 @@ import tkinter as tk # For messagebox, used in _debug_mode_enabled and within sc
 import datetime # Added import for datetime
 import os # Added for path manipulation
 import pandas as pd # Added for data manipulation (deduplication)
+import csv # Added import for csv module
 
 # Import instrument control functions
-from utils.instrument_control import query_safe, write_safe
+from utils.instrument_control import query_safe, write_safe, debug_print, initialize_instrument # Added initialize_instrument
 # Import CSV utility functions
 from utils.csv_utils import write_scan_data_to_csv # Changed to write_scan_data_to_csv for single file write
 
 # Import constants from frequency_bands.py
 try:
-    from utils.frequency_bands import MHZ_TO_HZ
+    from utils.frequency_bands import (
+        MHZ_TO_HZ,
+        VBW_RBW_RATIO # Import VBW_RBW_RATIO
+    )
 except ImportError:
-    print("Error: frequency_bands.py not found. Please ensure it's in the same directory.")
-    MHZ_TO_HZ = 1_000_000 # Define dummy value
-
-# Note: _debug_mode_enabled and set_debug_mode are now in instrument_control.py
-
-
-# initialize_instrument has been moved to instrument_control.py
-
-# Define the ASCII art printing function
-
+    print("Error: frequency_bands.py not found or VBW_RBW_RATIO missing. Ensure it's in the utils directory.")
+    MHZ_TO_HZ = 1_000_000
+    VBW_RBW_RATIO = 1/3 # Define dummy value to prevent errors
 
 def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz):
     """
-    Helper function to de-duplicate and filter raw scan data for the entire sweep.
-    This function now strictly filters data points to be within the specified
-    overall_start_freq_hz and overall_stop_freq_hz.
+    Processes raw scan data by de-duplicating entries, sorting by frequency,
+    and interpolating missing frequency points to ensure a continuous spectrum.
+
+    Inputs:
+        raw_data (list): A list of (frequency_hz, level_dbm) tuples, potentially with duplicates.
+        overall_start_freq_hz (float): The lowest frequency in the entire scan sweep.
+        overall_stop_freq_hz (float): The highest frequency in the entire scan sweep.
+    Process:
+        1. Converts raw data to a Pandas DataFrame.
+        2. Removes duplicate frequency entries, keeping the first occurrence.
+        3. Sorts the DataFrame by frequency.
+        4. Creates a complete range of frequencies from `overall_start_freq_hz` to `overall_stop_freq_hz`
+           with a step size determined by the unique frequencies in the raw data.
+        5. Merges the raw data with the complete frequency range, filling missing values using linear interpolation.
+        6. Handles NaN values by filling them with the nearest valid data point.
+        7. Converts frequencies to MHz for consistency in the output.
+    Outputs:
+        list: A list of (frequency_mhz, level_dbm) tuples representing the processed,
+              de-duplicated, sorted, and interpolated scan data.
     """
     if not raw_data:
+        debug_print("No raw data to process.")
         return []
 
-    df_band = pd.DataFrame(raw_data, columns=['Frequency_Hz', 'Power_dBm'])
+    # Convert to DataFrame for easier manipulation
+    df = pd.DataFrame(raw_data, columns=['Frequency_Hz', 'Level_dBm'])
 
-    # Sort by frequency to ensure consistent deduplication
-    df_band = df_band.sort_values(by='Frequency_Hz').reset_index(drop=True)
+    # Remove duplicates, keeping the first occurrence
+    df.drop_duplicates(subset=['Frequency_Hz'], keep='first', inplace=True)
 
-    # Drop duplicates based on Frequency_Hz, keeping the last occurrence.
-    # This means if a frequency is measured multiple times due to overlap,
-    # the value from the later segment (which is presumed to be the more accurate/desired) is kept.
-    df_band = df_band.drop_duplicates(subset=['Frequency_Hz'], keep='last')
+    # Sort by frequency
+    df.sort_values(by='Frequency_Hz', inplace=True)
 
-    # Filter to ensure data is strictly within the overall intended scan range [start, stop]
-    # This is crucial to remove any points that might have been acquired slightly outside
-    # due to instrument's internal span rounding or the equal segment calculation.
-    df_band = df_band[
-        (df_band['Frequency_Hz'] >= overall_start_freq_hz) &
-        (df_band['Frequency_Hz'] <= overall_stop_freq_hz + 1e-9) # Add a small epsilon for float comparison at stop
-    ]
+    # Create a complete frequency range for interpolation
+    # Determine step size from the existing data or use a default if not enough points
+    if len(df['Frequency_Hz']) > 1:
+        # Calculate the average step size from the unique frequencies
+        avg_step = np.mean(np.diff(df['Frequency_Hz'].unique()))
+    else:
+        # Fallback if there's not enough data to calculate a step
+        avg_step = 1000 # Default step of 1 kHz, or adjust as appropriate for your instrument
 
-    return list(df_band.itertuples(index=False, name=None))
+    # Ensure the step is not zero or too small to prevent infinite loops or huge arrays
+    if avg_step <= 0:
+        avg_step = 1000 # Fallback to a safe default
+
+    # Create a new, dense frequency range
+    new_freq_range = np.arange(overall_start_freq_hz, overall_stop_freq_hz + avg_step, avg_step)
+    
+    # Create a DataFrame for the new frequency range
+    df_full_range = pd.DataFrame({'Frequency_Hz': new_freq_range})
+
+    # Merge the original data with the full frequency range, then interpolate
+    df_merged = pd.merge(df_full_range, df, on='Frequency_Hz', how='left')
+    
+    # Interpolate missing values
+    df_merged['Level_dBm'] = df_merged['Level_dBm'].interpolate(method='linear')
+
+    # Fill any remaining NaN values (e.g., at the very start/end if interpolation can't reach)
+    # Use ffill (forward fill) then bfill (backward fill) to fill from nearest valid data
+    df_merged['Level_dBm'].ffill(inplace=True)
+    df_merged['Level_dBm'].bfill(inplace=True)
+
+    # Drop any rows where Level_dBm is still NaN (shouldn't happen with ffill/bfill but as a safeguard)
+    df_merged.dropna(subset=['Level_dBm'], inplace=True)
+
+    # Convert frequencies to MHz for output
+    df_merged['Frequency_MHz'] = df_merged['Frequency_Hz'] / MHZ_TO_HZ
+
+    return df_merged[['Frequency_MHz', 'Level_dBm']].values.tolist()
 
 
 def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rbw_config_val, vbw_config_val, max_hold_time, current_freq_offset, last_scanned_band_index=0):
@@ -90,7 +131,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
     Args:
         app_instance_ref (object): A reference to the main Tkinter App instance for GUI updates.
-                                   Expected to have .scanning, .paused, .after, ._update_console_line, .instrument_model attributes.
+                                    Expected to have .scanning, .paused, .after, ._update_console_line, .instrument_model attributes.
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
         selected_bands (list): A list of band dictionaries to scan.
         scan_rbw_segmentation (float): Resolution Bandwidth for segmenting bands (from new GUI input).
@@ -118,12 +159,52 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
     print("💾 Assuming ASCII data format for trace data.")
 
+    # Explicitly convert numerical parameters to their expected types
+    try:
+        scan_rbw_segmentation_float = float(scan_rbw_segmentation)
+    except ValueError:
+        print(f"ERROR: scan_rbw_segmentation '{scan_rbw_segmentation}' cannot be converted to float. Using a default of 10000.0 Hz.")
+        scan_rbw_segmentation_float = 10000.0 # Fallback to a safe default
+    
+    try:
+        vbw_config_val_float = float(vbw_config_val)
+    except ValueError:
+        print(f"ERROR: vbw_config_val '{vbw_config_val}' cannot be converted to float. Using a default of 10000.0 Hz.")
+        vbw_config_val_float = 10000.0 # Fallback to a safe default
+
+    try:
+        rbw_config_val_int = int(float(rbw_config_val)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: rbw_config_val '{rbw_config_val}' cannot be converted to int. Using a default of 1000000 Hz.")
+        rbw_config_val_int = 1000000 # Fallback to a safe default
+
+    try:
+        max_hold_time_int = int(float(max_hold_time)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: max_hold_time '{max_hold_time}' cannot be converted to int. Using a default of 3 seconds.")
+        max_hold_time_int = 3 # Fallback to a safe default
+
+    try:
+        current_freq_offset_int = int(float(current_freq_offset)) # Convert to float first, then int
+    except ValueError:
+        print(f"ERROR: current_freq_offset '{current_freq_offset}' cannot be converted to int. Using a default of 0 Hz.")
+        current_freq_offset_int = 0 # Fallback to a safe default
+
+
+    # Debugging print to confirm types at this point
+    print(f"DEBUG: Type of scan_rbw_segmentation_float: {type(scan_rbw_segmentation_float)}, Value: {scan_rbw_segmentation_float}")
+    print(f"DEBUG: Type of vbw_config_val_float: {type(vbw_config_val_float)}, Value: {vbw_config_val_float}")
+    print(f"DEBUG: Type of rbw_config_val_int: {type(rbw_config_val_int)}, Value: {rbw_config_val_int}")
+    print(f"DEBUG: Type of max_hold_time_int: {type(max_hold_time_int)}, Value: {max_hold_time_int}")
+    print(f"DEBUG: Type of current_freq_offset_int: {type(current_freq_offset_int)}, Value: {current_freq_offset_int}")
+
+
     # Apply RBW and VBW settings here once at the start of the scan
-    # Use scan_rbw_segmentation for the instrument's RBW during the scan
-    write_safe(inst, f":SENSE:BAND:RES {scan_rbw_segmentation}")
-    print(f"📏 Set RBW to {scan_rbw_segmentation/1000:.0f} kHz for scan (from Scan RBW setting).")
-    write_safe(inst, f":SENSE:BAND:VID {vbw_config_val}")
-    print(f"📺 Set VBW to {vbw_config_val} Hz for scan.")
+    # Use scan_rbw_segmentation_float for the instrument's RBW during the scan
+    write_safe(inst, f":SENSE:BAND:RES {scan_rbw_segmentation_float}")
+    print(f"📏 Set RBW to {scan_rbw_segmentation_float/1000:.0f} kHz for scan (from Scan RBW setting).")
+    write_safe(inst, f":SENSE:BAND:VID {vbw_config_val_float}") # Use the float version
+    print(f"📺 Set VBW to {vbw_config_val_float} Hz for scan.") # Use the float version
 
     # Determine the CSV filename for this scan session (continuous raw data)
     # This file is now explicitly for the raw data of the current scan cycle.
@@ -132,15 +213,16 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") # YYYYMMDD_HHMM (no seconds)
     
     # Define the CSV filename for the *current scan cycle's raw data*
-    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val/1000)}K_HOLD{int(max_hold_time)}_Offset{int(current_freq_offset)}_{timestamp_hm}.csv")
+    # Use the _int versions of variables here
+    csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_RBW{int(rbw_config_val_int/1000)}K_HOLD{max_hold_time_int}_Offset{current_freq_offset_int}_{timestamp_hm}.csv")
 
 
     # Ensure output directory exists before starting to write
     os.makedirs(output_folder, exist_ok=True)
 
     # Calculate overall start and stop frequencies for the entire selected_bands list
-    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset
-    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset
+    overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+    overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
 
 
     # *** Use selected_bands for scanning the instrument ***
@@ -149,8 +231,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         band = selected_bands[i]
         band_name = band["Band Name"]
         # Apply the frequency offset here
-        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset
-        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset
+        band_start_freq_hz = (band["Start MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
+        band_stop_freq_hz = (band["Stop MHz"] * MHZ_TO_HZ) + current_freq_offset_int # Use _int version
 
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M") # Use datetime.datetime
         print(f"\n📈 [{current_time}] Processing Band: {band_name} (Shifted Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)")
@@ -176,15 +258,15 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
         else:
             # Recalculate optimal_segment_span_hz to perfectly divide the band into equal segments
             # This ensures all segments have the same span, even if it slightly deviates from scan_rbw_segmentation
-            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation * (expected_sweep_points - 1))))
+            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation_float * (expected_sweep_points - 1))))
             if total_segments_in_band == 0: # Ensure at least one segment for non-zero spans
                 total_segments_in_band = 1
             
             # Now calculate the actual segment span to ensure equal division
             optimal_segment_span_hz = full_band_span_hz / total_segments_in_band
             # Ensure it's at least the minimum possible span for expected_sweep_points > 1
-            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation * (expected_sweep_points - 1)):
-                optimal_segment_span_hz = scan_rbw_segmentation * (expected_sweep_points - 1)
+            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation_float * (expected_sweep_points - 1)):
+                optimal_segment_span_hz = scan_rbw_segmentation_float * (expected_sweep_points - 1)
 
 
         # Calculate the effective stop frequency for the scan based on equal segments
@@ -222,13 +304,9 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             write_safe(inst, ":TRAC1:MODE BLANk;:TRAC2:MODE BLANk;:TRAC3:MODE BLANk")
             write_safe(inst, ":TRAC2:MODE MAXHold;")
 
-            # Add a small delay after setting frequencies to allow instrument to configure
-#            time.sleep(0.1)
- #           time.sleep(0.5) # Add a small delay for data processing within the instrument
-
             # Add settling time for max hold values to show up, if max hold is enabled
-            if max_hold_time > 0:
-                for _ in range(int(max_hold_time * 10)): # Check every 0.1 seconds
+            if max_hold_time_int > 0: # Use _int version
+                for _ in range(int(max_hold_time_int * 10)): # Check every 0.1 seconds
                     while app_instance_ref.paused:
                         app_instance_ref.after(100, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
                         time.sleep(0.1) # Sleep briefly while paused
@@ -243,7 +321,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
 
                     # Update display for countdown (only update every second for cleaner output)
                     if _ % 10 == 0: # Every 10 iterations (1, second)
-                        sec_remaining = int(max_hold_time - (_ / 10))
+                        sec_remaining = int(max_hold_time_int - (_ / 10)) # Use _int version
                         display_text = f"⏳ {sec_remaining}"
                         app_instance_ref.after(0, app_instance_ref._update_console_line, display_text, False)
                     time.sleep(0.1) # Small sleep to allow other threads/GUI to run
@@ -344,6 +422,10 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
             current_segment_start_freq_hz = segment_stop_freq_hz
 
     # --- After all bands are scanned, or if interrupted, process the collected raw data for the full sweep ---
+    if not raw_scan_data_for_current_sweep:
+        print("🚫 No raw data collected across all bands for the current sweep.")
+        return None, -1, None # Return -1 for last_successful_band_index if no data
+
     print("\n--- 🎉 Band Scan Complete! Processing collected data... ---")
     final_sweep_data_for_plotting = _process_raw_scan_data(
         raw_scan_data_for_current_sweep,
@@ -352,9 +434,19 @@ def scan_bands(app_instance_ref, inst, selected_bands, scan_rbw_segmentation, rb
     )
 
     if not final_sweep_data_for_plotting:
-        print(f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name']}.")
+        print(f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name'] if last_successful_band_index != -1 else 'N/A'}.")
     else:
+        # Corrected: Use final_sweep_data_for_plotting instead of final_sweep_data_for_current_sweep
         print(f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.")
 
+    # Save the final processed data to CSV
+    try:
+        # write_scan_data_to_csv expects (freq_mhz, level_dbm)
+        # _process_raw_scan_data already returns (freq_mhz, level_dbm)
+        write_scan_data_to_csv(csv_filename_current_cycle, ["Frequency_MHz", "Power_dBm"], final_sweep_data_for_plotting, append_mode=False)
+        print(f"✅ Full sweep data saved to: {csv_filename_current_cycle}")
+    except Exception as e:
+        print(f"❌ Error saving full sweep data to CSV: {e}")
+        return None, last_successful_band_index, None
 
     return final_sweep_data_for_plotting, last_successful_band_index, csv_filename_current_cycle

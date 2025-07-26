@@ -90,7 +90,8 @@ def reset_setting_colors_logic(app_instance):
             entry_widget.config(fg="white")
 
 def set_band_checkboxes_from_config_logic(app_instance):
-    selected_bands_from_config = app_instance.last_selected_bands_str.get()
+    # Corrected variable name from last_selected_bands_str to selected_bands_str_var
+    selected_bands_from_config = app_instance.selected_bands_str_var.get()
     if selected_bands_from_config:
         selected_band_names = [name.strip() for name in selected_bands_from_config.split(',') if name.strip()]
         for item in app_instance.band_vars:

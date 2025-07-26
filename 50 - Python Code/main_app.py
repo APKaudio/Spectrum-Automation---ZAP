@@ -151,7 +151,8 @@ class App(tk.Tk):
         self.desired_scan_rbw_segmentation_var = tk.DoubleVar(self)
         self.shift_freq_var = tk.DoubleVar(self)
         self.debug_mode_var = tk.BooleanVar(self)
-        self.last_selected_bands_str = tk.StringVar(self)
+        # Corrected variable name to match config_manager.py's expectation
+        self.selected_bands_str_var = tk.StringVar(self) 
         self.default_focus_width_var = tk.DoubleVar(self, value=10000.0) # New: Default focus width variable
 
         self.band_checkboxes = []
@@ -177,7 +178,8 @@ class App(tk.Tk):
             'desired_scan_rbw_segmentation_var': ('last_scan_rbw_hz', 'default_scan_rbw_hz', float),
             'shift_freq_var': ('last_freq_shift_hz', 'default_freq_shift_hz', float),
             'debug_mode_var': ('last_debug_mode', 'default_debug_mode', bool),
-            'last_selected_bands_str': ('last_selected_bands', 'default_selected_bands', str),
+            # Corrected key name to match the Tkinter variable name
+            'selected_bands_str_var': ('last_selected_bands', 'default_selected_bands', str), 
             'default_focus_width_var': ('last_default_focus_width', 'default_default_focus_width', float), # New entry for focus width
         }
 
@@ -194,12 +196,14 @@ class App(tk.Tk):
 
         self.rbw_values = [5000, 10000, 25000, 50000, 100000]
         self.rbw_val_to_idx = {val: i for i, val in enumerate(self.rbw_values)}
-        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(int(self.desired_scan_rbw_segmentation_var.get()), 0))
+        # Ensure the value passed to IntVar is an int, converting from float if necessary
+        self.rbw_slider_index_var = tk.IntVar(self, value=self.rbw_val_to_idx.get(int(float(self.desired_scan_rbw_segmentation_var.get())), 0))
         self.rbw_slider_index_var.trace_add("write", self._update_scan_rbw_from_slider_index)
 
         self.freq_shift_values = [0, 500, 1000, 5000, 10000]
         self.freq_shift_val_to_idx = {val: i for i, val in enumerate(self.freq_shift_values)}
-        self.freq_shift_slider_index_var = tk.IntVar(self, value=self.freq_shift_val_to_idx.get(int(self.shift_freq_var.get()), 0))
+        # Ensure the value passed to IntVar is an int, converting from float if necessary
+        self.freq_shift_slider_index_var = tk.IntVar(self, value=self.freq_shift_val_to_idx.get(int(float(self.shift_freq_var.get())), 0))
         self.freq_shift_slider_index_var.trace_add("write", self._update_freq_shift_from_slider_index)
 
         self.debug_mode_var.trace_add("write", self._update_debug_mode_global)
