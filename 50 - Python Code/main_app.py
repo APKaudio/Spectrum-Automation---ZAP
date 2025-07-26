@@ -42,7 +42,7 @@ from src.scan_logic import (
 )
 from src.settings_logic import (
     restore_default_settings_logic, open_output_folder_logic,
-    open_preset_folder_logic, open_report_folder_logic,
+    open_preset_folder_logic, # open_report_folder_logic, # Removed as it's redundant with open_output_folder_logic
     update_scan_rbw_from_slider_index_logic,
     update_max_hold_time_from_slider_index_logic,
     update_cycle_wait_time_from_slider_index_logic
@@ -169,6 +169,9 @@ class ScanConfigurationTab(ttk.Frame):
         self.app_instance.output_folder_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(output_dir_frame, text="Browse", command=self.app_instance._browse_output_folder).grid(row=0, column=1, sticky="e")
 
+        # FIX: Added "Open Output Folder" button to Scan Control frame
+        ttk.Button(scan_control_frame, text="Open Output Folder", command=lambda: open_output_folder_logic(self.app_instance.output_folder_var.get())).grid(row=8, column=0, padx=5, pady=2, sticky="ew")
+
 
         # Bottom Left: Settings Frame
         settings_frame = ttk.LabelFrame(self, text="Settings")
@@ -246,14 +249,11 @@ class ScanConfigurationTab(ttk.Frame):
         # Restore Defaults Button
         ttk.Button(settings_frame, text="Restore Default Settings", command=lambda: restore_default_settings_logic(self.app_instance)).grid(row=26, column=0, padx=5, pady=10, sticky="ew")
 
-        # Open Output Folder Button
-        ttk.Button(settings_frame, text="Open Output Folder", command=lambda: open_output_folder_logic(self.app_instance.output_folder_var.get())).grid(row=27, column=0, padx=5, pady=2, sticky="ew")
+        # Removed redundant "Open Report Folder" button
+        # ttk.Button(settings_frame, text="Open Report Folder", command=lambda: open_report_folder_logic(self.app_instance.output_folder_var.get())).grid(row=29, column=0, padx=5, pady=2, sticky="ew")
 
         # Open Preset Folder Button
-        ttk.Button(settings_frame, text="Open Instrument Preset Folder", command=lambda: open_preset_folder_logic()).grid(row=28, column=0, padx=5, pady=2, sticky="ew")
-
-        # Open Report Folder Button
-        ttk.Button(settings_frame, text="Open Report Folder", command=lambda: open_report_folder_logic(self.app_instance.output_folder_var.get())).grid(row=29, column=0, padx=5, pady=2, sticky="ew")
+        ttk.Button(settings_frame, text="Open Instrument Preset Folder", command=lambda: open_preset_folder_logic()).grid(row=27, column=0, padx=5, pady=2, sticky="ew")
 
 
         # Bottom Right: Frequency Band Selection Frame
@@ -293,7 +293,9 @@ class App(tk.Tk):
     scan parameters, and data visualization.
     """
 
-    CONFIG_FILE = 'config.ini' # Define config file name at class level
+    # FIX: Define CONFIG_FILE using os.path.join to ensure it's next to main_app.py
+    script_dir = os.path.dirname(__file__)
+    CONFIG_FILE = os.path.join(script_dir, 'config.ini')
 
     def __init__(self):
         """
@@ -305,8 +307,7 @@ class App(tk.Tk):
         # --- FIX: Handle icon loading gracefully ---
         try:
             # Construct the absolute path to the icon
-            script_dir = os.path.dirname(__file__)
-            icon_path = os.path.join(script_dir, 'assets', 'app_icon.ico')
+            icon_path = os.path.join(App.script_dir, 'assets', 'app_icon.ico')
             if os.path.exists(icon_path):
                 self.iconbitmap(default=icon_path) # Set application icon using absolute path
             else:
@@ -353,10 +354,18 @@ class App(tk.Tk):
         # --- Create GUI Widgets ---
         self._create_widgets()
 
+        # FIX: Set resource_var from last_gpib_device_var AFTER _create_widgets
+        # and BEFORE populate_resources_logic to ensure dropdown is correctly pre-selected.
+        last_gpib = self.gpib_device_var.get()
+        if last_gpib:
+            self.resource_var.set(last_gpib)
+            debug_print(f"Set initial VISA resource to: {last_gpib}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+
         # --- Initialize PyVISA Resource Manager ---
         try:
             self.rm = pyvisa.ResourceManager()
-            populate_resources_logic(self) # Populate resources on startup
+            populate_resources_logic(self) # Populate resources on startup (dropdown options)
         except Exception as e:
             messagebox.showerror("PyVISA Error", f"Failed to initialize PyVISA Resource Manager: {e}\n"
                                                   "Please ensure PyVISA and a VISA backend (like NI-VISA or Keysight VISA) are installed correctly.")
@@ -381,6 +390,13 @@ class App(tk.Tk):
 
         # Select the last used bands
         self._load_last_selected_bands()
+
+        # FIX: Ensure debug mode is set based on loaded config
+        set_debug_mode(self.general_debug_enabled_var.get())
+        set_log_visa_commands_mode(self.log_visa_commands_enabled_var.get())
+        debug_print(f"Initial Debug Mode: {self.general_debug_enabled_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        debug_print(f"Initial VISA Log Mode: {self.log_visa_commands_enabled_var.get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
 
     def _initialize_setting_vars(self):
         """
