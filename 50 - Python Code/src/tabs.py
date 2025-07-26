@@ -9,7 +9,7 @@ import inspect # Import inspect module
 import threading # Added: Import the threading module
 
 # Import the new report converter utility functions
-from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw
+from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw, convert_pdf_report_to_csv # Added PDF converter
 # Import instrument_logic for setting focus frequency
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic # Ensure both are imported
 from utils.instrument_control import debug_print, write_safe # Import debug_print and write_safe
@@ -19,7 +19,7 @@ from utils.instrument_control import debug_print, write_safe # Import debug_prin
 class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
     """
     A Tkinter Frame that provides functionality to convert spectrum analyzer
-    report files (HTML or SHW) into CSV format.
+    report files (HTML, SHW, or PDF) into CSV format.
     """
     def __init__(self, master=None, app_instance=None, **kwargs):
         """
@@ -48,7 +48,8 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         style = ttk.Style()
         style.configure("ReportConverter.TFrame", background="#000000") # Dark background
         style.configure("ReportConverter.TLabel", background="#000000", foreground="white")
-        style.configure("ReportConverter.TButton", background="#3a3a3a", foreground="white")
+        # Changed button foreground to black as requested
+        style.configure("ReportConverter.TButton", background="#3a3a3a", foreground="black") 
         style.map("ReportConverter.TButton", background=[('active', '#6a6a6a')])
         style.configure("ReportConverter.TEntry", fieldbackground="#4a4a4a", foreground="black", insertbackground="white")
         style.configure("ReportConverter.TLabelframe", background="#333333", foreground="white")
@@ -75,6 +76,9 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
 
         ttk.Button(file_selection_frame, text="Browse HTML", command=lambda: self._browse_file("HTML"), style="ReportConverter.TButton").grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(file_selection_frame, text="Browse SHW", command=lambda: self._browse_file("SHW"), style="ReportConverter.TButton").grid(row=0, column=2, padx=5, pady=5)
+        # New button for PDF import
+        ttk.Button(file_selection_frame, text="Sound Base PDF Import", command=lambda: self._browse_file("PDF"), style="ReportConverter.TButton").grid(row=0, column=3, padx=5, pady=5)
+
 
         file_selection_frame.grid_columnconfigure(0, weight=1)
 
@@ -91,7 +95,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
 
     def _browse_file(self, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Opens a file dialog to select an HTML or SHW file.
+        Opens a file dialog to select an HTML, SHW, or PDF file.
         """
         debug_print(f"Browsing for {file_type} file...", file=file, function=function)
         file_path = ""
@@ -99,6 +103,8 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             file_path = filedialog.askopenfilename(filetypes=[("HTML files", "*.html"), ("All files", "*.*")])
         elif file_type == "SHW":
             file_path = filedialog.askopenfilename(filetypes=[("SHW files", "*.shw"), ("All files", "*.*")])
+        elif file_type == "PDF": # New PDF file type
+            file_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")])
         
         if file_path:
             self.file_path_var.set(file_path)
@@ -116,7 +122,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         debug_print("Convert button clicked...", file=file, function=function)
         file_path = self.file_path_var.get()
         if not file_path:
-            messagebox.showwarning("No File Selected", "Please select an HTML or SHW file to convert.")
+            messagebox.showwarning("No File Selected", "Please select an HTML, SHW, or PDF file to convert.")
             return
 
         file_extension = os.path.splitext(file_path)[1].lower()
@@ -124,8 +130,10 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             file_type = "HTML"
         elif file_extension == ".shw":
             file_type = "SHW"
+        elif file_extension == ".pdf": # New PDF file type detection
+            file_type = "PDF"
         else:
-            messagebox.showerror("Unsupported File Type", "Selected file is not a supported HTML or SHW format.")
+            messagebox.showerror("Unsupported File Type", "Selected file is not a supported HTML, SHW, or PDF format.")
             return
 
         self.conversion_console.config(state=tk.NORMAL)
@@ -155,6 +163,8 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
                 headers, rows = convert_html_report_to_csv(html_content)
             elif file_type == "SHW":
                 headers, rows = generate_csv_from_shw(file_path)
+            elif file_type == "PDF": # New PDF conversion call
+                headers, rows = convert_pdf_report_to_csv(file_path)
             
             if headers and rows:
                 # Define the output file path as MARKERS.CSV in the scan data directory
@@ -185,3 +195,4 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         if error_message:
             print(f"❌ Conversion failed for {file_name}: {error_message}")
             debug_print(f"Conversion failed for {file_name}: {error_message}", file=file, function=function)
+

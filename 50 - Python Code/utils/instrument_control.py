@@ -570,3 +570,4 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
         debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
         messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
         return False
+

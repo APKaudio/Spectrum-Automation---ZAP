@@ -8,13 +8,15 @@ import inspect # Import inspect module
 from utils.instrument_control import (
     set_debug_mode, list_visa_resources, connect_to_instrument,
     disconnect_instrument as control_disconnect_instrument,
-    initialize_instrument, query_current_instrument_settings,
+    initialize_instrument, # This is the correct initialize_instrument from utils
+    query_current_instrument_settings,
     query_device_presets as control_query_device_presets,
     load_selected_preset as control_load_selected_preset,
     debug_print # Import debug_print
 )
 from utils.frequency_bands import MHZ_TO_HZ
 from src.config_manager import save_config # Import save_config
+import tkinter.ttk as ttk # Import ttk for themed widgets
 
 def _get_float_value(tk_var, default_value, setting_name):
     """
@@ -33,434 +35,311 @@ def _get_float_value(tk_var, default_value, setting_name):
         debug_print(f"Error: Could not convert '{val_str}' for '{setting_name}' to float. Using default: {default_value}", file=current_file, function=current_function)
         return default_value
 
-def populate_resources_logic(app_instance):
+def populate_resources_logic(app_instance, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Populates the VISA resource dropdown menu with available instruments.
-
-    Inputs:
-        app_instance (App): The main application instance, providing access to
-                            `rm`, `instrument_list`, `resource_var`, `resource_dropdown`,
-                            and various button states.
-    Process:
-        1. Uses `list_visa_resources` to find available instruments.
-        2. Updates the `resource_var` with the first found resource or "No Resources Found".
-        3. Clears and repopulates the `resource_dropdown` menu.
-        4. Enables/disables the connect button based on resource availability.
-        5. Starts/stops the connect button blinking animation.
-        6. Disables scan, disconnect, apply, and load preset buttons.
-        7. Handles potential exceptions during resource listing.
-    Outputs: None (modifies GUI state and prints to console)
+    Populates the VISA resource dropdown with available instruments.
     """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print("Attempting to populate VISA resources...", file=current_file, function=current_function)
-    try:
-        app_instance.instrument_list = list_visa_resources(app_instance.rm)
-        
-        # Get the last used device from the config (which is already loaded into resource_var)
-        last_used_device = app_instance.gpib_device_var.get() # Use gpib_device_var for last used
-        
-        selected_device_set = False
-
-        if app_instance.instrument_list:
-            # Check if the last used device is in the currently found list
-            if last_used_device and last_used_device in app_instance.instrument_list:
-                app_instance.resource_var.set(last_used_device)
-                debug_print(f"Set resource to last used: {last_used_device}", file=current_file, function=current_function)
-                selected_device_set = True
+    debug_print("Populating VISA resources...", file=file, function=function)
+    if app_instance.rm:
+        try:
+            app_instance.instrument_list = list_visa_resources(app_instance.rm)
+            if app_instance.instrument_list:
+                # This line will be overridden by main_app.py if last_gpib_device is found
+                app_instance.resource_var.set(app_instance.instrument_list[0]) 
+                print(f"✅ Found {len(app_instance.instrument_list)} VISA resources.")
             else:
-                # If last used device is not found or was empty, default to the first available
-                app_instance.resource_var.set(app_instance.instrument_list[0])
-                debug_print(f"Last used device not found or empty. Defaulting to: {app_instance.instrument_list[0]}", file=current_file, function=current_function)
-                selected_device_set = True
-            
-            app_instance.connect_button.config(state=tk.NORMAL)
-            app_instance._start_connect_button_blink() # Start blinking when resources are found
-        else:
-            app_instance.resource_var.set("No Resources Found")
+                app_instance.resource_var.set("No resources found")
+                print("🚫 No VISA resources found.")
+            # Update the OptionMenu with new list
+            menu = app_instance.resource_dropdown["menu"]
+            menu.delete(0, "end")
+            for resource in app_instance.instrument_list:
+                menu.add_command(label=resource, command=tk._setit(app_instance.resource_var, resource))
+            app_instance.connect_button.config(state=tk.NORMAL if app_instance.instrument_list else tk.DISABLED)
+        except Exception as e:
+            print(f"❌ Error listing VISA resources: {e}")
+            messagebox.showerror("VISA Error", f"Failed to list VISA resources: {e}")
+            app_instance.resource_var.set("Error listing resources")
+            app_instance.instrument_list = []
             app_instance.connect_button.config(state=tk.DISABLED)
-            app_instance._start_connect_button_blink() # Start blinking if no resources
-            selected_device_set = True # Indicate that a device state has been set (no resources)
-        
-        # Update the dropdown menu
-        menu = app_instance.resource_dropdown["menu"]
-        menu.delete(0, "end")
-        for resource in app_instance.instrument_list:
-            menu.add_command(label=resource, command=tk._setit(app_instance.resource_var, resource))
-        
-        # Disable other buttons until connected
-        app_instance.disconnect_button.config(state=tk.DISABLED)
-        app_instance.apply_button.config(state=tk.DISABLED)
-        app_instance.start_scan_button.config(state=tk.DISABLED)
-        app_instance.stop_scan_button.config(state=tk.DISABLED)
-        app_instance.pause_resume_button.config(state=tk.DISABLED)
-        app_instance.query_presets_button.config(state=tk.DISABLED) # Ensure this is disabled until connected
-        app_instance.plot_button.config(state=tk.DISABLED) # Disable plot button on refresh
-
-    except Exception as e:
-        messagebox.showerror("Resource Error", f"Failed to list VISA resources: {e}")
-        print(f"❌ Error listing VISA resources: {e}")
+    else:
+        print("🚫 PyVISA Resource Manager not initialized. Cannot list resources.")
+        app_instance.resource_var.set("RM not initialized")
+        app_instance.connect_button.config(state=tk.DISABLED)
 
 
-def connect_instrument_logic(app_instance):
+def connect_instrument_logic(app_instance, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Handles the connection process to the selected VISA instrument.
-
-    Inputs:
-        app_instance (App): The main application instance, providing access to
-                            `rm`, `resource_var`, `inst`, `instrument_model`,
-                            and various button states.
-    Process:
-        1. Retrieves the selected resource name from `resource_var`.
-        2. Calls `connect_to_instrument` from `utils.instrument_control`.
-        3. If connection is successful:
-           - Stores the instrument object and model in `app_instance.inst` and `app_instance.instrument_model`.
-           - Stops the connect button blinking.
-           - Enables disconnect, apply, and scan buttons.
-           - Queries and updates the preset buttons.
-           - Prints success message.
-        4. If connection fails, resets GUI elements and prints error.
-    Outputs: None (modifies GUI state and prints to console)
+    Connects to the selected instrument and initializes it.
     """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-
+    debug_print("Attempting to connect to instrument...", file=file, function=function)
     selected_resource = app_instance.resource_var.get()
-    if selected_resource == "No Resources Found" or not selected_resource:
-        messagebox.showwarning("No Resource Selected", "Please select a VISA resource to connect to.")
+    if not selected_resource or selected_resource == "No resources found" or selected_resource == "RM not initialized":
+        messagebox.showwarning("No Resource Selected", "Please select a valid VISA resource.")
         return
 
-    debug_print(f"Attempting to connect to: {selected_resource}", file=current_file, function=current_function)
-    app_instance.console_output.insert(tk.END, f"Connecting to {selected_resource}...\n", "cyan")
-    app_instance.console_output.see(tk.END)
-
     try:
-        # Unpack the tuple returned by connect_to_instrument
-        app_instance.inst, debug_mode_status = connect_to_instrument(app_instance.rm, selected_resource)
+        # UNPACK THE TUPLE HERE!
+        instrument_obj, instrument_model_str = connect_to_instrument(app_instance.rm, selected_resource)
         
-        if app_instance.inst:
-            app_instance.gpib_device_var.set(selected_resource) # Update GPIB device display
+        if instrument_obj: # Check if connection was successful
+            app_instance.inst = instrument_obj # Store the actual instrument object
+            app_instance.instrument_model = instrument_model_str # Store the model string
 
-            # Retrieve current desired settings from GUI variables for initialization
-            # Use the helper function to safely get float values, providing reasonable defaults
-            ref_level = _get_float_value(app_instance.desired_reference_level_var, -40.0, "Reference Level")
-            high_sensitivity = app_instance.desired_high_sensitivity_var.get()
-            preamp = app_instance.desired_preamp_on_var.get()
-            rbw = _get_float_value(app_instance.desired_rbw_var, 10000.0, "RBW")
-            vbw = _get_float_value(app_instance.desired_vbw_display_var, rbw / app_instance.VBW_RBW_RATIO, "VBW") # Default VBW based on RBW
-
-            # Call initialize_instrument with all required arguments
-            app_instance.instrument_model = initialize_instrument(
-                app_instance.inst,
-                ref_level_dbm=ref_level,
-                high_sensitivity_on=high_sensitivity,
-                preamp_on=preamp,
-                rbw_config_val=rbw,
-                vbw_config_val=vbw,
-                model_match=None # Pass None for model_match as the model is returned by this function
+            # Retrieve values for initialize_instrument from app_instance's Tkinter variables
+            ref_level_dbm = _get_float_value(app_instance.desired_reference_level_var, -40.0, "Reference Level")
+            high_sensitivity_on = app_instance.desired_high_sensitivity_var.get()
+            preamp_on = app_instance.desired_preamp_on_var.get()
+            rbw_config_val = _get_float_value(app_instance.desired_rbw_var, 10000.0, "RBW")
+            vbw_config_val = rbw_config_val / app_instance.VBW_RBW_RATIO # Calculate VBW based on RBW
+            
+            # Pass the actual instrument object to initialize_instrument
+            initialization_successful = initialize_instrument(
+                app_instance.inst, # Pass the actual instrument object here
+                ref_level_dbm=ref_level_dbm,
+                high_sensitivity_on=high_sensitivity_on,
+                preamp_on=preamp_on,
+                rbw_config_val=rbw_config_val,
+                vbw_config_val=vbw_config_val,
+                model_match=app_instance.instrument_model # Pass current model, or it will be updated by initialize_instrument
             )
-            query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ) # Query and display settings
 
-            app_instance.connect_button.config(state=tk.DISABLED)
-            app_instance.disconnect_button.config(state=tk.NORMAL)
-            app_instance.start_scan_button.config(state=tk.NORMAL)
-            app_instance.apply_button.config(state=tk.NORMAL)
-            app_instance.query_presets_button.config(state=tk.NORMAL) # Enable query presets button
-            app_instance.plot_button.config(state=tk.NORMAL) # Enable plot button on connect
-            app_instance._stop_connect_button_blink() # Stop blinking on successful connect
-            messagebox.showinfo("Connection Successful", f"Successfully connected to {selected_resource} ({app_instance.instrument_model}).")
-            debug_print(f"✅ Successfully connected to {selected_resource} ({app_instance.instrument_model}).", file=current_file, function=current_function)
+            if initialization_successful: # Check if initialization was successful
+                print(f"✅ Successfully connected to {app_instance.instrument_model} at {selected_resource}")
+                app_instance.gpib_device_var.set(selected_resource) # Display connected device
+                app_instance.connect_button.config(state=tk.DISABLED)
+                app_instance.disconnect_button.config(state=tk.NORMAL)
+                app_instance.start_scan_button.config(state=tk.NORMAL)
+                app_instance.apply_button.config(state=tk.NORMAL)
+                app_instance.query_presets_button.config(state=tk.NORMAL)
+                app_instance.plot_button.config(state=tk.NORMAL) # Enable plot button on connect
+                app_instance._stop_connect_button_blink() # Stop blinking on successful connection
+                save_config(app_instance) # Save the last connected device
+                
+                # Apply initial settings from GUI to the instrument after connection
+                apply_settings_to_device_logic(app_instance)
+
+            else:
+                print("❌ Failed to initialize instrument after connection.")
+                messagebox.showerror("Initialization Error", "Failed to initialize instrument after connection.")
+                # Ensure disconnect is called with the actual instrument object
+                control_disconnect_instrument(app_instance.inst)
+                app_instance.inst = None # Clear the instrument reference
+                app_instance._reset_gui_on_disconnect_or_error()
         else:
-            messagebox.showerror("Connection Failed", f"Could not connect to {selected_resource}.")
-            debug_print(f"❌ Failed to connect to {selected_resource}.", file=current_file, function=current_function)
-            app_instance._reset_gui_on_disconnect_or_error() # Reset GUI on failure
+            print("❌ Failed to connect to instrument.")
+            messagebox.showerror("Connection Error", "Failed to connect to instrument.")
+            app_instance._reset_gui_on_disconnect_or_error()
     except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA Error", f"VISA I/O error during connection to {selected_resource}: {e}")
-        debug_print(f"❌ VISA I/O error: {e}", file=current_file, function=current_function)
+        print(f"❌ VISA error during connection: {e}")
+        messagebox.showerror("VISA Error", f"Failed to connect to instrument: {e}")
         app_instance._reset_gui_on_disconnect_or_error()
     except Exception as e:
-        messagebox.showerror("Connection Error", f"An unexpected error occurred during connection: {e}")
-        debug_print(f"❌ Unexpected connection error: {e}", file=current_file, function=current_function)
+        print(f"❌ An unexpected error occurred during connection: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
         app_instance._reset_gui_on_disconnect_or_error()
 
 
-def disconnect_instrument_logic(app_instance):
+def disconnect_instrument_logic(app_instance, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Disconnects from the currently connected VISA instrument.
-
-    Inputs:
-        app_instance (App): The main application instance, providing access to `inst`.
-    Process:
-        1. Calls `control_disconnect_instrument` from `instrument_control`.
-        2. Resets GUI elements to a disconnected state.
-        3. Displays a success or error message.
-    Outputs: None (modifies GUI state and prints to console)
+    Disconnects from the current instrument.
     """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
+    debug_print("Attempting to disconnect from instrument...", file=file, function=function)
+    if app_instance.inst:
+        try:
+            control_disconnect_instrument(app_instance.inst)
+            app_instance.inst = None
+            app_instance.instrument_model = "Unknown"
+            app_instance.gpib_device_var.set("") # Clear displayed device
+            print("✅ Instrument disconnected.")
+            app_instance._reset_gui_on_disconnect_or_error()
+        except Exception as e:
+            print(f"❌ Error during disconnection: {e}")
+            messagebox.showerror("Disconnection Error", f"An error occurred during disconnection: {e}")
+            app_instance._reset_gui_on_disconnect_or_error()
+    else:
+        print("ℹ️ No instrument to disconnect.")
+        messagebox.showinfo("Info", "No instrument is currently connected.")
 
+
+def apply_settings_to_device_logic(app_instance, file=__file__, function=inspect.currentframe().f_code.co_name):
+    """
+    Applies the current GUI settings to the connected instrument.
+    """
+    debug_print("Applying settings to device...", file=file, function=function)
     if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "No instrument is currently connected.")
+        messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
         return
 
-    debug_print("Attempting to disconnect instrument...", file=current_file, function=current_function)
     try:
-        control_disconnect_instrument(app_instance.inst)
-        messagebox.showinfo("Disconnected", "Instrument disconnected successfully.")
-        debug_print("✅ Instrument disconnected successfully.", file=current_file, function=current_function)
-    except Exception as e:
-        messagebox.showerror("Disconnect Error", f"Error disconnecting instrument: {e}")
-        debug_print(f"❌ Error disconnecting instrument: {e}", file=current_file, function=current_function)
-    finally:
-        app_instance._reset_gui_on_disconnect_or_error() # Always reset GUI state
-
-
-def apply_settings_to_device_logic(app_instance):
-    """
-    Applies the current settings from the GUI to the connected instrument.
-    Also saves the current configuration to config.ini.
-
-    Inputs:
-        app_instance (App): The main application instance.
-    Process:
-        1. Checks for active instrument connection.
-        2. Retrieves values from Tkinter variables.
-        3. Constructs and sends SCPI commands to the instrument.
-        4. Handles potential VISA errors during command transmission.
-        5. Calls `save_config` to persist the current settings.
-    Outputs: None
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-
-    if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first to apply settings.")
-        return
-
-    debug_print("Applying settings to instrument...", file=current_file, function=current_function)
-    try:
-        # Get values from Tkinter variables
-        rbw_hz = float(app_instance.desired_rbw_var.get())
-        max_hold_time_s = float(app_instance.desired_max_hold_time_var.get())
-        ref_level_dbm = float(app_instance.desired_reference_level_var.get())
-        freq_shift_hz = float(app_instance.desired_freq_shift_var.get())
+        # Retrieve values, using _get_float_value for numerical settings
+        rbw_hz = _get_float_value(app_instance.desired_rbw_var, 10000.0, "RBW")
+        ref_level_dbm = _get_float_value(app_instance.desired_reference_level_var, -40.0, "Reference Level")
+        freq_shift_hz = _get_float_value(app_instance.desired_freq_shift_var, 0.0, "Frequency Shift")
         maxhold_enabled = app_instance.desired_maxhold_enabled_var.get()
         high_sensitivity = app_instance.desired_high_sensitivity_var.get()
         preamp_on = app_instance.desired_preamp_on_var.get()
 
-        # Apply RBW
+        # Calculate VBW (VBW = RBW / 3 as per common practice)
+        vbw_hz = rbw_hz / app_instance.VBW_RBW_RATIO
+        app_instance.desired_vbw_display_var.set(f"{vbw_hz:.0f}") # Update VBW display
+
+        print("\n--- Applying Instrument Settings ---")
+        # Set RBW
         if not app_instance.inst.write(f":SENSe:BANDwidth:RESolution {rbw_hz}"): return
-        debug_print(f"Sent: :SENSe:BANDwidth:RESolution {rbw_hz}", file=current_file, function=current_function)
-
-        # Apply Max Hold Time (if enabled)
-        if maxhold_enabled:
-            if not app_instance.inst.write(":DISPlay:WINDow:TRACe:MODE MAXH"): return # Set to Max Hold mode
-            debug_print("Sent: :DISPlay:WINDow:TRACe:MODE MAXH", file=current_file, function=current_function)
-            # Note: Max Hold Time might be a display setting or a sweep time setting,
-            # depending on the instrument. Assuming it influences sweep time or display persistence.
-            # This command might need adjustment based on the exact instrument model.
-            # For now, we'll just ensure max hold mode is ON.
-            # Some instruments might not have a direct "max hold time" command, but rather a "sweep time"
-            # or "trace average" setting that implicitly affects max hold duration.
-            # For N9340B, there isn't a direct "MAXH time" setting. It's usually a continuous max hold.
-            # We will just ensure the mode is set.
-        else:
-            if not app_instance.inst.write(":DISPlay:WINDow:TRACe:MODE WRIT"): return # Set to Clear Write mode
-            debug_print("Sent: :DISPlay:WINDow:TRACe:MODE WRIT", file=current_file, function=current_function)
-
-        # Apply Reference Level
+        debug_print(f"Sent: :SENSe:BANDwidth:RESolution {rbw_hz}", file=file, function=function)
+        # Set VBW
+        if not app_instance.inst.write(f":SENSe:BANDwidth:VIDeo {vbw_hz}"): return
+        debug_print(f"Sent: :SENSe:BANDwidth:VIDeo {vbw_hz}", file=file, function=function)
+        # Set Reference Level
         if not app_instance.inst.write(f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return
-        debug_print(f"Sent: :DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", file=current_file, function=current_function)
-
-        # Apply Frequency Shift (if instrument supports it, this is a general command)
-        # Note: Frequency shift is often a marker or measurement specific setting,
-        # not a global instrument setting in all analyzers. This command might need
-        # to be adjusted or removed if the instrument doesn't support it directly.
-        # For N9340B, there isn't a direct global frequency shift.
-        # This might be for a marker or a specific measurement function.
-        # For now, we'll keep it as a placeholder.
-        # if not app_instance.inst.write(f":FREQuency:OFFSet {freq_shift_hz}"): return
-        # debug_print(f"Sent: :FREQuency:OFFSet {freq_shift_hz}")
-
-        # Apply High Sensitivity (often related to preamp or detector mode)
-        # N9340B has :INPut:ATTenuation:AUTO ON|OFF or :SENSe:POWer:RF:RANGe:AUTO ON|OFF
-        # High sensitivity could mean turning off auto-attenuation or enabling preamp.
-        if high_sensitivity:
-            if not app_instance.inst.write(":SENSe:POWer:RF:RANGe:AUTO OFF"): return # Disable auto-range for max sensitivity
-            debug_print("Sent: :SENSe:POWer:RF:RANGe:AUTO OFF", file=current_file, function=current_function)
-        else:
-            if not app_instance.inst.write(":SENSe:POWer:RF:RANGe:AUTO ON"): return # Enable auto-range
-            debug_print("Sent: :SENSe:POWer:RF:RANGe:AUTO ON", file=current_file, function=current_function)
-
-        # Apply Preamp On/Off
-        if preamp_on:
-            if not app_instance.inst.write(":INPut:GAIN:STATe ON"): return # Enable preamplifier
-            debug_print("Sent: :INPut:GAIN:STATe ON", file=current_file, function=current_function)
-        else:
-            if not app_instance.inst.write(":INPut:GAIN:STATe OFF"): return # Disable preamplifier
-            debug_print("Sent: :INPut:GAIN:STATe OFF", file=current_file, function=current_function)
-
-        messagebox.showinfo("Settings Applied", "Settings applied to instrument successfully and configuration saved.")
-        debug_print("✅ Settings applied to instrument successfully.", file=current_file, function=current_function)
+        debug_print(f"Sent: :DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", file=file, function=function)
+        # Set Frequency Shift (if instrument supports it, otherwise this command might error)
+        # Check if freq_shift_hz is non-zero before sending command
+        if freq_shift_hz != 0.0:
+            if not app_instance.inst.write(f":SENSe:FREQuency:RF:SHIFt {freq_shift_hz}"): return
+            debug_print(f"Sent: :SENSe:FREQuency:RF:SHIFt {freq_shift_hz}", file=file, function=function)
         
-        # Save the current configuration after applying settings
-        save_config(app_instance)
+        # Set Max Hold (Trace Type)
+        if maxhold_enabled:
+            if not app_instance.inst.write(":DISPlay:WINDow:TRACe:TYPE MAXH"): return
+            debug_print("Sent: :DISPlay:WINDow:TRACe:TYPE MAXH", file=file, function=function)
+        else:
+            if not app_instance.inst.write(":DISPlay:WINDow:TRACe:TYPE NORM"): return
+            debug_print("Sent: :DISPlay:WINDow:TRACe:TYPE NORM", file=file, function=function)
 
+        # Set High Sensitivity (assuming this maps to something like noise floor extension or specific mode)
+        # This command is highly instrument-specific. For N9340B, it might be related to preamp or detector.
+        # Placeholder: If a specific command for "high sensitivity" exists, it would go here.
+        # For now, we'll just print a debug message if it's enabled.
+        if high_sensitivity:
+            debug_print("High Sensitivity mode is enabled (instrument command not implemented).", file=file, function=function)
+        
+        # Set Preamp On/Off (if instrument supports it)
+        if app_instance.instrument_model != "N9340B": # N9340B does not have a controllable preamp
+            if preamp_on:
+                if not app_instance.inst.write(":SENSe:POWer:RF:GAIN:STATe ON"): return
+                debug_print("Sent: :SENSe:POWer:RF:GAIN:STATe ON (Preamp On)", file=file, function=function)
+            else:
+                if not app_instance.inst.write(":SENSe:POWer:RF:GAIN:STATe OFF"): return
+                debug_print("Sent: :SENSe:POWer:RF:GAIN:STATe OFF (Preamp Off)", file=file, function=function)
+        else:
+            debug_print("Preamp control not available for N9340B. Skipping command.", file=file, function=function)
+
+
+        print("✅ Settings applied to instrument.")
+        app_instance.reset_setting_colors_logic() # Reset colors after successful application
+        save_config(app_instance) # Save current settings as last used
     except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA Error", f"VISA I/O error applying settings: {e}")
-        debug_print(f"❌ VISA I/O error applying settings: {e}", file=current_file, function=current_function)
+        print(f"❌ VISA error applying settings: {e}")
+        messagebox.showerror("VISA Error", f"Failed to apply settings to instrument: {e}")
     except Exception as e:
-        messagebox.showerror("Apply Settings Error", f"An unexpected error occurred while applying settings: {e}")
-        debug_print(f"❌ Unexpected error applying settings: {e}", file=current_file, function=current_function)
+        print(f"❌ An unexpected error occurred while applying settings: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred while applying settings: {e}")
 
 
-def update_preset_buttons(app_instance, buttons_frame):
+def update_preset_buttons(app_instance, parent_frame, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Queries the device for available presets and displays them as buttons in the GUI.
-    Clears existing buttons before populating new ones.
-
-    Inputs:
-        app_instance (App): The main application instance.
-        buttons_frame (ttk.Frame): The frame where preset buttons should be placed.
-    Process:
-        1. Clears all existing widgets (buttons) from `buttons_frame`.
-        2. Queries device presets using `control_query_device_presets`.
-        3. For each preset, creates a `ttk.Button` with the preset name.
-        4. Binds the button's command to `load_selected_preset_logic` with the preset name.
-        5. Handles cases where no presets are found or an error occurs.
-    Outputs: None (modifies GUI state and prints to console)
+    Queries device presets and populates the GUI with buttons for each preset.
     """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-
+    debug_print("Updating preset buttons...", file=file, function=function)
     if not app_instance.inst:
         messagebox.showwarning("Not Connected", "Please connect to an instrument first to query presets.")
         return
-    
+
     # Clear existing buttons
-    for widget in buttons_frame.winfo_children():
+    for widget in parent_frame.winfo_children():
         widget.destroy()
 
-    debug_print("Querying device presets...", file=current_file, function=current_function)
     try:
         presets = control_query_device_presets(app_instance.inst)
         if presets:
-            for i, preset_name in enumerate(sorted(presets)): # Sort for consistent display
+            print(f"✅ Found {len(presets)} presets.")
+            row_idx = 0
+            col_idx = 0
+            for preset_name in sorted(presets):
                 # Create a button for each preset
-                preset_button = ttk.Button(buttons_frame, text=preset_name,
-                                           command=lambda name=preset_name: load_selected_preset_logic(app_instance, name),
-                                           style='GreyText.TButton')
-                preset_button.grid(row=i // 3, column=i % 3, padx=5, pady=5, sticky="ew") # Arrange in a grid
-            buttons_frame.grid_columnconfigure(0, weight=1) # Ensure columns expand
-            buttons_frame.grid_columnconfigure(1, weight=1)
-            buttons_frame.grid_columnconfigure(2, weight=1)
-            debug_print(f"✅ Displayed {len(presets)} presets as buttons.", file=current_file, function=current_function)
+                btn = ttk.Button(parent_frame, text=preset_name, style='GreyText.TButton',
+                                 command=lambda name=preset_name: load_selected_preset_logic(app_instance, name))
+                btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="ew")
+                
+                col_idx += 1
+                if col_idx >= 3: # 3 buttons per row
+                    col_idx = 0
+                    row_idx += 1
+            parent_frame.grid_columnconfigure(0, weight=1)
+            parent_frame.grid_columnconfigure(1, weight=1)
+            parent_frame.grid_columnconfigure(2, weight=1)
         else:
-            ttk.Label(buttons_frame, text="No presets found on device.").grid(row=0, column=0, columnspan=3, padx=5, pady=5)
-            debug_print("🚫 No presets found on device.", file=current_file, function=current_function)
+            ttk.Label(parent_frame, text="No presets found on device.", background="#333333", foreground="white").pack(padx=10, pady=10)
+            print("ℹ️ No presets found on device.")
     except Exception as e:
         messagebox.showerror("Preset Query Error", f"Failed to query device presets: {e}")
-        debug_print(f"❌ Error querying device presets: {e}", file=current_file, function=current_function)
+        print(f"❌ Error querying presets: {e}")
 
 
-def load_selected_preset_logic(app_instance, selected_preset_name):
+def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Loads the specified preset file onto the instrument.
-
-    Inputs:
-        app_instance (App): The main application instance.
-        selected_preset_name (str): The name of the preset to load.
-    Process:
-        1. Checks for active instrument connection.
-        2. Calls `control_load_selected_preset` from `instrument_control`.
-        3. Displays a success or error message.
-    Outputs: None
+    Loads the selected preset onto the instrument.
     """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-
+    debug_print(f"Loading preset: {selected_preset_name}", file=file, function=function)
     if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first to load a preset.")
-        return
-    
-    if app_instance.instrument_model == "N9340B":
-        messagebox.showwarning("Feature Not Supported", "The connected instrument (N9340B) does not support loading presets via SCPI commands.")
-        debug_print("🚫 N9340B does not support loading presets.", file=current_file, function=current_function)
+        messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
         return
 
-    debug_print(f"Attempting to load preset: {selected_preset_name}", file=current_file, function=current_function)
     try:
-        if control_load_selected_preset(app_instance.inst, selected_preset_name):
-            messagebox.showinfo("Preset Loaded", f"Preset '{selected_preset_name}' loaded successfully.")
-            debug_print(f"✅ Preset '{selected_preset_name}' loaded successfully.", file=current_file, function=current_function)
-            # Optionally, query current settings after loading preset to update GUI
-            query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ)
+        if control_load_selected_preset(app_instance.inst, selected_preset_name, MHZ_TO_HZ): # Pass MHZ_TO_HZ
+            print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
+            app_instance.reset_setting_colors_logic() # Reset colors after loading preset
         else:
-            messagebox.showerror("Preset Load Failed", f"Failed to load preset '{selected_preset_name}'. See console for details.")
-            debug_print(f"❌ Failed to load preset '{selected_preset_name}'.", file=current_file, function=current_function)
+            messagebox.showerror("Preset Load Error", f"Failed to load preset '{selected_preset_name}'. Check console for details.")
     except Exception as e:
         messagebox.showerror("Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
-        debug_print(f"❌ Unexpected error loading preset: {e}", file=current_file, function=current_function)
+        print(f"❌ Error loading preset: {e}")
 
 
-def set_focus_frequency_logic(app_instance, frequency_hz):
+def set_focus_frequency_logic(app_instance, frequency_hz, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Sets the instrument's center frequency (or marker frequency) to the specified value.
-
-    Inputs:
-        app_instance (App): The main application instance.
-        frequency_hz (float): The frequency in Hz to set.
-    Process:
-        1. Checks for active instrument connection.
-        2. Sends SCPI command to set center frequency.
-        3. Displays success or error message.
-    Outputs: None
+    Sets the instrument's center frequency.
     """
-    current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
+    current_function = inspect.currentframe().f_code.co_name
+    debug_print(f"Setting focus frequency to {frequency_hz} Hz...", file=current_file, function=current_function)
     if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first to set frequency.")
-        return
+        debug_print("Cannot set focus frequency: Instrument not connected.", file=current_file, function=current_function)
+        messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+        return False
 
-    debug_print(f"Attempting to set instrument frequency to {frequency_hz} Hz...", file=current_file, function=current_function)
     try:
-        # For N9340B, setting center frequency is :SENSe:FREQuency:CENTer
-        if not app_instance.inst.write(f":SENSe:FREQuency:CENTer {frequency_hz}"): return
-        debug_print(f"Sent: :SENSe:FREQuency:CENTer {frequency_hz}", file=current_file, function=current_function)
-        messagebox.showinfo("Frequency Set", f"Instrument center frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz.")
-        debug_print(f"✅ Instrument frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz.", file=current_file, function=current_function)
+        # Set the center frequency
+        if not app_instance.inst.write(f":SENSe:FREQuency:CENTer {frequency_hz}"): return False
+        debug_print(f"Sent: :SENSe:FREQuency:CENTer {frequency_hz} Hz", file=current_file, function=current_function)
+        
+        # Removed the messagebox.showinfo here as requested
+        print(f"✅ Instrument center frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz.")
+        return True
     except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA Error", f"VISA I/O error setting frequency: {e}")
-        debug_print(f"❌ VISA I/O error setting frequency: {e}", file=current_file, function=current_function)
+        print(f"❌ VISA error while setting focus frequency: {e}")
+        messagebox.showerror("VISA Error", f"Failed to set instrument center frequency: {e}")
+        return False
     except Exception as e:
-        messagebox.showerror("Frequency Set Error", f"An unexpected error occurred while setting frequency: {e}")
-        debug_print(f"❌ Unexpected error setting frequency: {e}", file=current_file, function=current_function)
+        print(f"❌ An unexpected error occurred while setting focus frequency: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+        return False
 
 
-def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_name="Marker 1"):
+def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_name, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Sets a marker at a specific frequency and ensures trace mode is normal.
-
-    Inputs:
-        app_instance (App): The main application instance.
-        marker_frequency_hz (float): The frequency in Hz for the marker.
-        marker_name (str): The name of the marker (e.g., "Marker 1").
-    Process:
-        1. Checks for active instrument connection.
-        2. Sends SCPI commands to enable Marker 1, set its frequency, and enable peak search.
-        3. Sets the trace type to Normal (Clear Write).
-        4. Displays success or error message.
-    Outputs: None
+    Sets a marker at the specified frequency and ensures trace mode is normal.
     """
-    current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
+    current_function = inspect.currentframe().f_code.co_name
+    debug_print(f"Setting marker '{marker_name}' at {marker_frequency_hz} Hz and trace modes...", file=current_file, function=current_function)
     if not app_instance.inst:
-        messagebox.showwarning("Not Connected", "Please connect to an instrument first to set markers.")
-        return
+        debug_print("Cannot set marker/trace modes: Instrument not connected.", file=current_file, function=current_function)
+        messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+        return False
 
-    debug_print(f"Attempting to set marker '{marker_name}' at {marker_frequency_hz} Hz...", file=current_file, function=current_function)
     try:
         # Enable Marker 1
         if not app_instance.inst.write(":CALCulate:MARKer1:STATe ON"): return False
@@ -486,6 +365,7 @@ def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_n
         messagebox.showerror("VISA Error", f"Failed to set instrument marker/trace modes: {e}")
         return False
     except Exception as e:
-        print(f"🚨 An unexpected error occurred while setting marker/trace modes: {e}")
-        messagebox.showerror("Marker/Trace Error", f"An unexpected error occurred while setting instrument marker/trace modes: {e}")
+        print(f"❌ An unexpected error occurred while setting marker/trace modes: {e}")
+        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
         return False
+

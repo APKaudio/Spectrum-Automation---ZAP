@@ -70,17 +70,12 @@ class MarkersDisplayTab(ttk.Frame):
         style.configure("TLabelFrame.Label", background="#333333", foreground="white")
         
         # Define a style for the inner_buttons_frame (ttk.Frame)
+        # Corrected style.layout for TFrame to fix SyntaxError
         style.configure("Markers.Inner.Frame", background="#333333") 
         style.layout("Markers.Inner.Frame",
-                     [('TFrame.border', {'sticky': 'nswe', 'children': 
+                     [('TFrame.border', {'sticky': 'nswe', 'border': '1', 'children':
                        [('TFrame.padding', {'sticky': 'nswe', 'children':
-                         [('TFrame.contents', {'sticky': 'nswe'})]})]
-                       })]) 
-
-        # New style for orange buttons
-        style.configure("Orange.Markers.TButton", background="orange", foreground="black")
-        style.map("Orange.Markers.TButton", background=[('active', '#CC8400')]) # Darker orange on active
-
+                         [('TFrame.contents', {'sticky': 'nswe'})]})]})]) # Corrected line
 
         self.config(style="Markers.TFrame") # Apply style to the main frame
 
@@ -134,11 +129,8 @@ class MarkersDisplayTab(ttk.Frame):
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
-        # Changed to 3 columns for buttons
         self.inner_buttons_frame.grid_columnconfigure(0, weight=1)
-        self.inner_buttons_frame.grid_columnconfigure(1, weight=1)
-        self.inner_buttons_frame.grid_columnconfigure(2, weight=1)
-
+        self.inner_buttons_frame.grid_columnconfigure(1, weight=1) # Allow for two columns
 
         # Now call _populate_zone_group_tree after inner_buttons_frame is initialized
         self._populate_zone_group_tree() 
@@ -148,43 +140,56 @@ class MarkersDisplayTab(ttk.Frame):
 
     def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Populates the Treeview with zones/groups. Devices are no longer nested.
+        Populates the Treeview with zones/groups and their associated devices.
         Assumes 'ZONE', 'GROUP', 'DEVICE', 'NAME', and 'FREQ' are available in self.rows.
-        The tree structure will be: ZONE -> GROUP.
+        The tree structure will be: ZONE -> GROUP -> DEVICE -> NAME (with FREQ).
         """
         debug_print("Populating zone/group tree...", file=file, function=function)
         self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing data
 
-        # Nested dictionary to store data: {ZONE: {GROUP: [rows]}}
+        # Nested dictionary to store data: {ZONE: {GROUP: {DEVICE: [rows]}}}
         nested_grouped_data = {}
 
         for row in self.rows:
             zone = row.get('ZONE', 'Uncategorized Zone')
             group = row.get('GROUP', 'Uncategorized Group')
+            device = row.get('DEVICE', 'Uncategorized Device')
             
             if zone not in nested_grouped_data:
                 nested_grouped_data[zone] = {}
             if group not in nested_grouped_data[zone]:
-                nested_grouped_data[zone][group] = []
+                nested_grouped_data[zone][group] = {}
+            if device not in nested_grouped_data[zone][group]:
+                nested_grouped_data[zone][group][device] = []
             
-            nested_grouped_data[zone][group].append(row)
+            nested_grouped_data[zone][group][device].append(row)
 
         for zone_name in sorted(nested_grouped_data.keys()):
             zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True, tags=('zone',))
             
             for group_name in sorted(nested_grouped_data[zone_name].keys()):
-                # Store the full list of rows for this group as a JSON string
-                group_rows_json = json.dumps(nested_grouped_data[zone_name][group_name])
-                group_id = self.zone_group_tree.insert(zone_id, "end", text=group_name, open=True,
-                                                        values=(zone_name, group_name, group_rows_json), tags=('group',))
-                # No longer inserting devices or individual markers here
+                group_id = self.zone_group_tree.insert(zone_id, "end", text=group_name, open=True, tags=('group',))
+                
+                for device_name in sorted(nested_grouped_data[zone_name][group_name].keys()):
+                    device_id = self.zone_group_tree.insert(group_id, "end", text=device_name, open=True, tags=('device',))
+                    
+                    for i, row in enumerate(nested_grouped_data[zone_name][group_name][device_name]):
+                        name = row.get('NAME', f"Marker {i+1}")
+                        freq = row.get('FREQ', 'N/A')
+                        
+                        # Store the full row dictionary as a JSON string in values for easy retrieval on click
+                        row_json = json.dumps(row)
+                        
+                        self.zone_group_tree.insert(device_id, "end", text=f"{name} ({freq} kHz)", # Display in kHz as per CSV
+                                                    values=(zone_name, group_name, device_name, name, freq, row_json), tags=('marker',))
+
         # Clear device buttons when tree is repopulated
         self._populate_device_buttons([])
 
     def _on_tree_select(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Handles selection events in the zone/group treeview.
-        Populates the device buttons based on the selected group.
+        Populates the device buttons based on the selected group or individual device.
         """
         debug_print("Tree item selected...", file=file, function=function)
         selected_items = self.zone_group_tree.selection()
@@ -197,28 +202,36 @@ class MarkersDisplayTab(ttk.Frame):
         for item_id in selected_items:
             item_tags = self.zone_group_tree.item(item_id, 'tags')
             
-            if 'group' in item_tags: # It's a group node
-                group_rows_json = self.zone_group_tree.item(item_id, 'values')[-1]
+            if 'marker' in item_tags: # It's a leaf node (actual marker)
+                full_row_data_json = self.zone_group_tree.item(item_id, 'values')[-1]
                 try:
-                    selected_rows_data.extend(json.loads(group_rows_json))
+                    full_row_data = json.loads(full_row_data_json)
+                    selected_rows_data.append(full_row_data)
                 except json.JSONDecodeError:
-                    debug_print(f"Error decoding JSON for group data: {group_rows_json}", file=file, function=function)
-            elif 'zone' in item_tags: # It's a zone node, get all children groups
-                for child_id in self.zone_group_tree.get_children(item_id):
-                    child_tags = self.zone_group_tree.item(child_id, 'tags')
-                    if 'group' in child_tags:
-                        group_rows_json = self.zone_group_tree.item(child_id, 'values')[-1]
-                        try:
-                            selected_rows_data.extend(json.loads(group_rows_json))
-                        except json.JSONDecodeError:
-                            debug_print(f"Error decoding JSON for child group data: {group_rows_json}", file=file, function=function)
+                    debug_print(f"Error decoding JSON for marker data: {full_row_data_json}", file=file, function=function)
+            else: # It's a parent node (zone, group, or device), get all its descendant markers
+                # Recursively get all children that are 'marker' tags
+                def get_all_marker_children(parent_item_id):
+                    children_markers = []
+                    for child_id in self.zone_group_tree.get_children(parent_item_id):
+                        child_tags = self.zone_group_tree.item(child_id, 'tags')
+                        if 'marker' in child_tags:
+                            child_row_data_json = self.zone_group_tree.item(child_id, 'values')[-1]
+                            try:
+                                children_markers.append(json.loads(child_row_data_json))
+                            except json.JSONDecodeError:
+                                debug_print(f"Error decoding JSON for child marker data: {child_row_data_json}", file=file, function=function)
+                        else:
+                            children_markers.extend(get_all_marker_children(child_id)) # Recurse for deeper levels
+                    return children_markers
+                
+                selected_rows_data.extend(get_all_marker_children(item_id))
         
         self._populate_device_buttons(selected_rows_data)
 
     def _populate_device_buttons(self, devices_to_display, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Populates the right-hand frame with clickable buttons for each device.
-        Buttons are 3 columns wide and have an orange background.
         """
         debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=file, function=function)
         # Clear existing buttons
@@ -226,8 +239,8 @@ class MarkersDisplayTab(ttk.Frame):
             widget.destroy()
 
         if not devices_to_display:
-            ttk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=5, pady=5)
+            ttk.Label(self.inner_buttons_frame, text="Select a zone, group, or device from the left.",
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
             self.inner_buttons_frame.update_idletasks()
             self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
             return
@@ -235,25 +248,22 @@ class MarkersDisplayTab(ttk.Frame):
         row_idx = 0
         col_idx = 0
         for i, device_data in enumerate(devices_to_display):
-            # Use 'NAME', 'DEVICE', and 'FREQ' as per the MARKERS.CSV structure
+            # Use 'NAME' and 'FREQ' as per the MARKERS.CSV structure
             name = device_data.get('NAME', f'Unknown Marker {i+1}')
-            device = device_data.get('DEVICE', 'Unknown Device Type') # Get DEVICE column
             freq_khz = device_data.get('FREQ') # This is in kHz from the CSV
 
             if freq_khz is not None:
                 try:
                     # Convert kHz from CSV to Hz for the instrument (MHZ_TO_HZ is 1,000,000, so 1000 is correct for kHz to Hz)
                     frequency_hz = float(freq_khz) * 1000 # Convert kHz to Hz
+                    button_text = f"{name}: {float(freq_khz):.3f} kHz" # Display in kHz
                     
-                    # Format button text as NAME\nDEVICE\nFREQ
-                    button_text = f"{name}\n{device}\n{float(freq_khz):.3f} kHz" 
-                    
-                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Orange.Markers.TButton", # Apply new orange style
+                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Markers.TButton",
                                      command=lambda f=frequency_hz, n=name: self._on_device_button_click(f, n))
-                    btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="ew", columnspan=1) # Each button is 1 column
+                    btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="ew")
                     
                     col_idx += 1
-                    if col_idx >= 3: # Three columns per row
+                    if col_idx >= 2: # Two columns per row
                         col_idx = 0
                         row_idx += 1
                 except ValueError:
