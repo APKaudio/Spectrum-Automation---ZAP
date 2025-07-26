@@ -33,7 +33,7 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
             1. Calls the parent `ttk.Frame` constructor.
             2. Stores `app_instance`.
             3. Configures the frame's style and layout.
-            4. Creates widgets for file selection, conversion, and output.
+            4. Calls `create_widgets()` to build the GUI elements.
         Outputs: None (modifies GUI state)
         """
         current_function = inspect.currentframe().f_code.co_name
@@ -41,96 +41,124 @@ class ReportConverterTab(ttk.Frame): # Changed from tk.Frame to ttk.Frame
         debug_print("Initializing ReportConverterTab...", file=current_file, function=current_function)
 
         super().__init__(master, **kwargs)
-        self.app_instance = app_instance # Store reference to the main app instance
-        
-        # REMOVED: self.pack(fill="both", expand=True, padx=10, pady=10)
-        # This line was causing the tab content to "explode" over the notebook tabs.
-        # The notebook itself handles the packing of its tabs.
+        self.app_instance = app_instance
 
         # Configure style for this frame's widgets
         style = ttk.Style()
-        style.configure("Converter.TFrame", background="#169721")
-        style.configure("Converter.TLabel", background="#000000", foreground="white")
-        style.configure("Converter.TEntry", fieldbackground="#4a4a4a", foreground="black", insertbackground="white")
-        style.configure("Converter.TButton", background="#3a3a3a", foreground="white")
-        style.map("Converter.TButton", background=[('active', '#6a6a6a')])
+        style.configure("ReportConverter.TFrame", background="#000000") # Dark background
+        style.configure("ReportConverter.TLabel", background="#000000", foreground="white")
+        style.configure("ReportConverter.TButton", background="#3a3a3a", foreground="white")
+        style.map("ReportConverter.TButton", background=[('active', '#6a6a6a')])
+        style.configure("ReportConverter.TEntry", fieldbackground="#4a4a4a", foreground="black", insertbackground="white")
+        style.configure("ReportConverter.TLabelframe", background="#333333", foreground="white")
+        style.configure("ReportConverter.TLabelframe.Label", background="#333333", foreground="white")
 
-        self.config(style="Converter.TFrame")
+        self.config(style="ReportConverter.TFrame") # Apply style to the main frame
 
+        self.create_widgets()
+
+
+    def create_widgets(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Creates the widgets for the Report Converter tab, including file selection,
+        conversion buttons, and output display.
+        """
+        debug_print("Creating ReportConverterTab widgets...", file=file, function=function)
         # File selection frame
-        file_frame = ttk.LabelFrame(self, text="Select Report File", style="Converter.TFrame", padding="10")
-        file_frame.pack(fill="x", pady=5)
+        file_selection_frame = ttk.LabelFrame(self, text="Select Report File", style="ReportConverter.TLabelframe", padding="10")
+        file_selection_frame.pack(pady=10, padx=10, fill=tk.X)
 
-        ttk.Label(file_frame, text="File Path:", style="Converter.TLabel").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
         self.file_path_var = tk.StringVar()
-        self.file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50, style="Converter.TEntry")
-        self.file_path_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
-        ttk.Button(file_frame, text="Browse", command=self.browse_file, style="Converter.TButton").grid(row=0, column=2, padx=5, pady=5)
+        self.file_path_entry = ttk.Entry(file_selection_frame, textvariable=self.file_path_var, width=50, style="ReportConverter.TEntry")
+        self.file_path_entry.grid(row=0, column=0, padx=5, pady=5, sticky=tk.EW)
+
+        ttk.Button(file_selection_frame, text="Browse HTML", command=lambda: self._browse_file("HTML"), style="ReportConverter.TButton").grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(file_selection_frame, text="Browse SHW", command=lambda: self._browse_file("SHW"), style="ReportConverter.TButton").grid(row=0, column=2, padx=5, pady=5)
+
+        file_selection_frame.grid_columnconfigure(0, weight=1)
+
+        # Conversion button frame
+        conversion_button_frame = ttk.Frame(self, style="ReportConverter.TFrame")
+        conversion_button_frame.pack(pady=5, padx=10, fill=tk.X)
+
+        ttk.Button(conversion_button_frame, text="Convert to CSV and Display Markers", command=self._on_convert_button_click, style="ReportConverter.TButton").pack(pady=5)
+
+        # Console output for conversion
+        self.conversion_console = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=10, bg="black", fg="white", font=("Courier New", 10))
+        self.conversion_console.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+        self.conversion_console.config(state=tk.DISABLED)
+
+    def _browse_file(self, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Opens a file dialog to select an HTML or SHW file.
+        """
+        debug_print(f"Browsing for {file_type} file...", file=file, function=function)
+        file_path = ""
+        if file_type == "HTML":
+            file_path = filedialog.askopenfilename(filetypes=[("HTML files", "*.html"), ("All files", "*.*")])
+        elif file_type == "SHW":
+            file_path = filedialog.askopenfilename(filetypes=[("SHW files", "*.shw"), ("All files", "*.*")])
         
-        file_frame.grid_columnconfigure(1, weight=1) # Make entry expand
-
-        # Conversion button
-        self.convert_button = ttk.Button(self, text="Convert to CSV", command=self.select_file, style="Converter.TButton")
-        self.convert_button.pack(pady=10)
-
-        # Output console for conversion messages
-        output_frame = ttk.LabelFrame(self, text="Conversion Output", style="Converter.TFrame", padding="10")
-        output_frame.pack(fill="both", expand=True, pady=5)
-
-        self.output_text = scrolledtext.ScrolledText(output_frame, wrap=tk.WORD, bg="pink", fg="white", font=("Courier New", 10))
-        self.output_text.pack(fill="both", expand=True)
-        self.output_text.config(state=tk.DISABLED) # Make it read-only
-
-    def browse_file(self, file=__file__, function=inspect.currentframe().f_code.co_name):
-        """Opens a file dialog to select an HTML or SHW report file."""
-        debug_print("Browsing for file...", file=file, function=function)
-        file_path = filedialog.askopenfilename(
-            title="Select Report File",
-            filetypes=[("HTML files", "*.html"), ("SHW files", "*.shw"), ("All files", "*.*")]
-        )
         if file_path:
             self.file_path_var.set(file_path)
-            debug_print(f"Selected file: {file_path}", file=file, function=function)
+            self.conversion_console.config(state=tk.NORMAL)
+            self.conversion_console.delete(1.0, tk.END)
+            self.conversion_console.insert(tk.END, f"Selected file: {os.path.basename(file_path)}\n", "cyan")
+            self.conversion_console.config(state=tk.DISABLED)
+            debug_print(f"File selected: {file_path}", file=file, function=function)
 
-    def select_file(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _on_convert_button_click(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Converts the selected report file (HTML or SHW) to CSV format.
+        Handles the conversion button click event.
+        Determines file type and calls the appropriate conversion logic.
         """
-        debug_print("Converting file to CSV...", file=file, function=function)
-        input_file = self.file_path_var.get()
-        if not input_file:
+        debug_print("Convert button clicked...", file=file, function=function)
+        file_path = self.file_path_var.get()
+        if not file_path:
             messagebox.showwarning("No File Selected", "Please select an HTML or SHW file to convert.")
-            debug_print("Conversion aborted: No file selected.", file=file, function=function)
             return
 
-        self.output_text.config(state=tk.NORMAL)
-        self.output_text.delete(1.0, tk.END)
-        self.output_text.insert(tk.END, f"Attempting to convert: {os.path.basename(input_file)}\n", "cyan")
-        self.output_text.config(state=tk.DISABLED)
+        file_extension = os.path.splitext(file_path)[1].lower()
+        if file_extension == ".html":
+            file_type = "HTML"
+        elif file_extension == ".shw":
+            file_type = "SHW"
+        else:
+            messagebox.showerror("Unsupported File Type", "Selected file is not a supported HTML or SHW format.")
+            return
 
+        self.conversion_console.config(state=tk.NORMAL)
+        self.conversion_console.delete(1.0, tk.END)
+        self.conversion_console.insert(tk.END, f"Attempting to convert {file_type} file: {os.path.basename(file_path)}\n", "cyan")
+        self.conversion_console.config(state=tk.DISABLED)
+
+        # Run conversion in a separate thread to keep GUI responsive
+        conversion_thread = threading.Thread(target=self._convert_and_display, args=(file_path, file_type))
+        conversion_thread.start()
+
+    def _convert_and_display(self, file_path, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Performs the file conversion and updates the console and markers tab.
+        This runs in a separate thread.
+        """
+        debug_print(f"Starting conversion for {file_path} (type: {file_type})...", file=file, function=function)
         error_message = None
         try:
-            file_name, file_extension = os.path.splitext(os.path.basename(input_file))
+            file_name = os.path.basename(file_path)
+            headers = []
+            rows = []
+
+            if file_type == "HTML":
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                headers, rows = convert_html_report_to_csv(html_content)
+            elif file_type == "SHW":
+                headers, rows = generate_csv_from_shw(file_path)
             
-            # Use app_instance.scan_directory_var for the output folder
-            output_dir = self.app_instance.scan_directory_var.get()
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-                debug_print(f"Created output directory: {output_dir}", file=file, function=function)
-
-            if file_extension.lower() == '.html':
-                output_csv_file = os.path.join(output_dir, f"{file_name}.csv")
-                headers, rows = convert_html_report_to_csv(input_file, output_csv_file)
-            elif file_extension.lower() == '.shw':
-                output_csv_file = os.path.join(output_dir, f"{file_name}.csv")
-                # Corrected call: generate_csv_from_shw should only take input_file
-                headers, rows = generate_csv_from_shw(input_file) 
-            else:
-                messagebox.showerror("Unsupported File Type", "Only HTML (.html) and SHW (.shw) files are supported for conversion.")
-                debug_print(f"Unsupported file type: {file_extension}", file=file, function=function)
-                return
-
-            if rows: # Only write if there's data to write
+            if headers and rows:
+                # Define the output file path as MARKERS.CSV in the scan data directory
+                output_csv_file = os.path.join(self.app_instance.scan_directory_var.get(), 'MARKERS.CSV')
+                
                 with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
                     csv_writer = csv.DictWriter(csvfile, fieldnames=headers)
                     csv_writer.writeheader()

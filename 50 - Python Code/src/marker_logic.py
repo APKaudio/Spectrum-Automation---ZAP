@@ -4,6 +4,7 @@ from tkinter import messagebox, scrolledtext, filedialog, ttk
 import os
 import csv
 import inspect
+import json # Import json for serializing/deserializing row data
 
 # Import instrument_logic for setting focus frequency
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic
@@ -44,8 +45,8 @@ class MarkersDisplayTab(ttk.Frame):
 
         # Configure style for this frame's widgets
         style = ttk.Style()
-        style.configure("Markers.TFrame", background="#71BE32")
-        style.configure("Markers.TLabel", background="#73AF43", foreground="white")
+        style.configure("Markers.TFrame", background="#000000") # Dark background for the main frame
+        style.configure("Markers.TLabel", background="#000000", foreground="white")
         style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="white")
         style.configure("Markers.Treeview", background="#4a4a4a", foreground="white", fieldbackground="#4a4a4a")
         style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
@@ -64,23 +65,17 @@ class MarkersDisplayTab(ttk.Frame):
                   background=[("selected", "#F4902C")], # New highlight color
                   foreground=[("selected", "white")])
         
-        # FIX: Removed the custom style name for LabelFrame layout, as it was causing "Layout not found" error.
-        # Instead, we will configure the default TLabelFrame style or apply background directly.
-        # The error "Layout Markers.Inner.LabelFrame not found" means this specific layout was not defined.
-        # We can configure the general TLabelFrame or apply background on the widget itself.
-        style.configure("TLabelFrame", background="#333333", foreground="white") # Configure the base TLabelFrame style
-        style.configure("TLabelFrame.Label", background="#333333", foreground="white") # Configure the label part of LabelFrame
+        # Configure the base TLabelFrame style and its label part
+        style.configure("TLabelFrame", background="#333333", foreground="white")
+        style.configure("TLabelFrame.Label", background="#333333", foreground="white")
         
-        # FIX: Define a style for the inner_buttons_frame (ttk.Frame)
-        # TFrame does not directly support 'background' option, it uses style.
-        style.configure("Markers.Inner.Frame", background="#333333")
-        # ADDED FIX: Explicitly define the layout for the custom "Markers.Inner.Frame" style
-        # This tells Tkinter to use the default TFrame layout structure for this custom style name.
+        # Define a style for the inner_buttons_frame (ttk.Frame)
+        # Corrected style.layout for TFrame to fix SyntaxError
+        style.configure("Markers.Inner.Frame", background="#333333") 
         style.layout("Markers.Inner.Frame",
                      [('TFrame.border', {'sticky': 'nswe', 'border': '1', 'children':
                        [('TFrame.padding', {'sticky': 'nswe', 'children':
-                         [('TFrame.contents', {'sticky': 'nswe'})]})]})])
-
+                         [('TFrame.contents', {'sticky': 'nswe'})]})]})]) # Corrected line
 
         self.config(style="Markers.TFrame") # Apply style to the main frame
 
@@ -101,9 +96,6 @@ class MarkersDisplayTab(ttk.Frame):
         main_split_frame.grid_rowconfigure(0, weight=1)
 
         # Left Half: Treeview for Zones and Groups
-        # FIX: Removed 'style="Markers.Inner.LabelFrame"' from ttk.LabelFrame
-        # because the layout was not found. Default TLabelFrame will be used,
-        # and its background/foreground configured above.
         tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5)) 
         tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
         tree_frame.grid_rowconfigure(0, weight=1)
@@ -120,8 +112,6 @@ class MarkersDisplayTab(ttk.Frame):
         self.zone_group_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
         # Right Half: Buttons for Devices
-        # FIX: Removed 'style="Markers.Inner.LabelFrame"' from ttk.LabelFrame
-        # for the same reason as above.
         buttons_frame = ttk.LabelFrame(main_split_frame, text="Devices", padding=(5,5,5,5)) 
         buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
         
@@ -135,8 +125,6 @@ class MarkersDisplayTab(ttk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        # FIX: Removed the 'background' option directly from ttk.Frame as it's not supported.
-        # The style "Markers.Inner.Frame" is now correctly configured in __init__
         self.inner_buttons_frame = ttk.Frame(self.buttons_canvas, style="Markers.Inner.Frame") # Use ttk.Frame
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
@@ -148,44 +136,54 @@ class MarkersDisplayTab(ttk.Frame):
         self._populate_zone_group_tree() 
 
         # Initially populate with an empty list to clear any previous buttons
-        # This call is now redundant if _populate_zone_group_tree already clears/populates buttons.
-        # If _populate_zone_group_tree is expected to populate, this line can be removed.
-        # For safety, keeping it for now, but it might be called twice.
         self._populate_device_buttons([]) 
 
     def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Populates the Treeview with zones/groups and their associated devices.
-        Assumes 'Device' and 'Frequency_MHz' are available in self.rows.
+        Assumes 'ZONE', 'GROUP', 'DEVICE', 'NAME', and 'FREQ' are available in self.rows.
+        The tree structure will be: ZONE -> GROUP -> DEVICE -> NAME (with FREQ).
         """
         debug_print("Populating zone/group tree...", file=file, function=function)
         self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing data
 
-        grouped_data = {}
-        # Group by 'Device' or 'Zone' - prioritizing 'Device' for now
-        # You might need to adjust this key based on your actual SHW/HTML structure
-        group_key = 'Device' # Or 'Zone', 'Band', etc.
+        # Nested dictionary to store data: {ZONE: {GROUP: {DEVICE: [rows]}}}
+        nested_grouped_data = {}
 
         for row in self.rows:
-            group_name = row.get(group_key, 'Uncategorized')
-            if group_name not in grouped_data:
-                grouped_data[group_name] = []
-            grouped_data[group_name].append(row)
+            zone = row.get('ZONE', 'Uncategorized Zone')
+            group = row.get('GROUP', 'Uncategorized Group')
+            device = row.get('DEVICE', 'Uncategorized Device')
+            
+            if zone not in nested_grouped_data:
+                nested_grouped_data[zone] = {}
+            if group not in nested_grouped_data[zone]:
+                nested_grouped_data[zone][group] = {}
+            if device not in nested_grouped_data[zone][group]:
+                nested_grouped_data[zone][group][device] = []
+            
+            nested_grouped_data[zone][group][device].append(row)
 
-        for group_name, group_rows in sorted(grouped_data.items()):
-            parent_id = self.zone_group_tree.insert("", "end", text=group_name, open=True) # No values for parent
-            for i, row in enumerate(group_rows):
-                # Assuming 'Name' or a similar identifier for individual devices/markers
-                device_name = row.get('Name', row.get('Marker', f"Item {i+1}"))
-                freq_mhz = row.get('Frequency_MHz', 'N/A')
-                power_dbm = row.get('Peak_Power_dBm', 'N/A') # Assuming this key exists
-
-                # Store the full row dictionary as the last value for easy retrieval on click
-                self.zone_group_tree.insert(parent_id, "end", text=f"{device_name} ({freq_mhz} MHz)",
-                                            values=(device_name, freq_mhz, power_dbm, row))
+        for zone_name in sorted(nested_grouped_data.keys()):
+            zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True, tags=('zone',))
+            
+            for group_name in sorted(nested_grouped_data[zone_name].keys()):
+                group_id = self.zone_group_tree.insert(zone_id, "end", text=group_name, open=True, tags=('group',))
+                
+                for device_name in sorted(nested_grouped_data[zone_name][group_name].keys()):
+                    device_id = self.zone_group_tree.insert(group_id, "end", text=device_name, open=True, tags=('device',))
+                    
+                    for i, row in enumerate(nested_grouped_data[zone_name][group_name][device_name]):
+                        name = row.get('NAME', f"Marker {i+1}")
+                        freq = row.get('FREQ', 'N/A')
+                        
+                        # Store the full row dictionary as a JSON string in values for easy retrieval on click
+                        row_json = json.dumps(row)
+                        
+                        self.zone_group_tree.insert(device_id, "end", text=f"{name} ({freq} kHz)", # Display in kHz as per CSV
+                                                    values=(zone_name, group_name, device_name, name, freq, row_json), tags=('marker',))
 
         # Clear device buttons when tree is repopulated
-        # This call is now safe because inner_buttons_frame is guaranteed to exist.
         self._populate_device_buttons([])
 
     def _on_tree_select(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
@@ -200,18 +198,34 @@ class MarkersDisplayTab(ttk.Frame):
             return
 
         selected_rows_data = []
+
         for item_id in selected_items:
-            # Check if it's a parent (group) or a child (individual device)
-            if self.zone_group_tree.parent(item_id): # It's a child
-                # Retrieve the full row data stored in values (last element of values tuple)
-                full_row_data = self.zone_group_tree.item(item_id, 'values')[-1]
-                if isinstance(full_row_data, dict):
+            item_tags = self.zone_group_tree.item(item_id, 'tags')
+            
+            if 'marker' in item_tags: # It's a leaf node (actual marker)
+                full_row_data_json = self.zone_group_tree.item(item_id, 'values')[-1]
+                try:
+                    full_row_data = json.loads(full_row_data_json)
                     selected_rows_data.append(full_row_data)
-            else: # It's a parent (group), get all its children's data
-                for child_id in self.zone_group_tree.get_children(item_id):
-                    full_row_data = self.zone_group_tree.item(child_id, 'values')[-1]
-                    if isinstance(full_row_data, dict):
-                        selected_rows_data.append(full_row_data)
+                except json.JSONDecodeError:
+                    debug_print(f"Error decoding JSON for marker data: {full_row_data_json}", file=file, function=function)
+            else: # It's a parent node (zone, group, or device), get all its descendant markers
+                # Recursively get all children that are 'marker' tags
+                def get_all_marker_children(parent_item_id):
+                    children_markers = []
+                    for child_id in self.zone_group_tree.get_children(parent_item_id):
+                        child_tags = self.zone_group_tree.item(child_id, 'tags')
+                        if 'marker' in child_tags:
+                            child_row_data_json = self.zone_group_tree.item(child_id, 'values')[-1]
+                            try:
+                                children_markers.append(json.loads(child_row_data_json))
+                            except json.JSONDecodeError:
+                                debug_print(f"Error decoding JSON for child marker data: {child_row_data_json}", file=file, function=function)
+                        else:
+                            children_markers.extend(get_all_marker_children(child_id)) # Recurse for deeper levels
+                    return children_markers
+                
+                selected_rows_data.extend(get_all_marker_children(item_id))
         
         self._populate_device_buttons(selected_rows_data)
 
@@ -221,12 +235,11 @@ class MarkersDisplayTab(ttk.Frame):
         """
         debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=file, function=function)
         # Clear existing buttons
-        # This line is now safe because self.inner_buttons_frame is guaranteed to exist.
         for widget in self.inner_buttons_frame.winfo_children():
             widget.destroy()
 
         if not devices_to_display:
-            ttk.Label(self.inner_buttons_frame, text="Select a group or device from the left.",
+            ttk.Label(self.inner_buttons_frame, text="Select a zone, group, or device from the left.",
                       background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
             self.inner_buttons_frame.update_idletasks()
             self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
@@ -235,13 +248,16 @@ class MarkersDisplayTab(ttk.Frame):
         row_idx = 0
         col_idx = 0
         for i, device_data in enumerate(devices_to_display):
-            freq_mhz = device_data.get('Frequency_MHz')
-            name = device_data.get('Name', device_data.get('Marker', 'Unknown Device')) # Use 'Marker' if 'Name' not found
-            
-            if freq_mhz is not None:
+            # Use 'NAME' and 'FREQ' as per the MARKERS.CSV structure
+            name = device_data.get('NAME', f'Unknown Marker {i+1}')
+            freq_khz = device_data.get('FREQ') # This is in kHz from the CSV
+
+            if freq_khz is not None:
                 try:
-                    frequency_hz = float(freq_mhz) * self.app_instance.MHZ_TO_HZ
-                    button_text = f"{name}: {float(freq_mhz):.3f} MHz"
+                    # Convert kHz from CSV to Hz for the instrument (MHZ_TO_HZ is 1,000,000, so 1000 is correct for kHz to Hz)
+                    frequency_hz = float(freq_khz) * 1000 # Convert kHz to Hz
+                    button_text = f"{name}: {float(freq_khz):.3f} kHz" # Display in kHz
+                    
                     btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Markers.TButton",
                                      command=lambda f=frequency_hz, n=name: self._on_device_button_click(f, n))
                     btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="ew")
@@ -251,7 +267,7 @@ class MarkersDisplayTab(ttk.Frame):
                         col_idx = 0
                         row_idx += 1
                 except ValueError:
-                    debug_print(f"Could not convert frequency '{freq_mhz}' to float for button. Skipping.", file=file, function=function)
+                    debug_print(f"Could not convert frequency '{freq_khz}' to float for button. Skipping.", file=file, function=function)
             else:
                 debug_print(f"Frequency not found for device '{name}'. Skipping button.", file=file, function=function)
 
