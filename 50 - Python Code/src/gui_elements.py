@@ -39,24 +39,30 @@ class TextRedirector(object):
     def write(self, str_val):
         """
         Writes the given string value to the Tkinter scrolled text widget.
-        It ensures that each logical 'print' statement results in exactly one newline
-        in the console and applies the configured tag for spacing.
+        It handles carriage returns for overwriting and inserts the string
+        as-is, relying on the source (e.g., print function) to provide newlines.
 
         Inputs:
             str_val (str): The string to write to the console.
         Process:
-            1. Strips any trailing newline characters from the input string.
-            2. Inserts the processed string value at the end of the widget, applying the tag.
-            3. Appends exactly one newline character.
-            4. Scrolls to the end of the text widget to show the latest output.
-            5. Updates Tkinter's idle tasks to ensure immediate display.
+            1. If the string contains a carriage return ('\r'), it's treated as an overwrite.
+            2. Otherwise, the string is inserted directly.
+            3. Scrolls to the end of the text widget to show the latest output.
+            4. Updates Tkinter's idle tasks to ensure immediate display.
         Outputs: None
         """
-        # Strip any trailing newlines from the input string to avoid double spacing
-        # if the original print statement already added one.
-        str_val = str_val.rstrip('\n')
-        self.widget.insert(tk.END, str_val, self.tag) # Apply the tag here
-        self.widget.insert(tk.END, '\n') # Always add exactly one newline
+        if '\r' in str_val:
+            # Handle carriage return for overwriting the current line
+            # This is typically for progress updates on the same line
+            self.widget.delete("end - 1 lines", "end")
+            self.widget.insert(tk.END, str_val.replace('\r', ''), self.tag)
+            self.last_char_was_cr = True
+        else:
+            # Insert the string as-is. Python's print() adds a newline by default.
+            # We rely on that or explicit newlines in the string.
+            self.widget.insert(tk.END, str_val, self.tag)
+            self.last_char_was_cr = False # Reset if not a carriage return line
+
         self.widget.see(tk.END) # Always scroll to the end
         self.widget.update_idletasks() # Ensure the display updates immediately
 
@@ -75,43 +81,40 @@ def print_art():
     Inputs: None
     Process:
         1. Uses a series of `print()` statements to output the multi-line ASCII art.
-        2. Each `print()` call is now configured to not add its own newline,
-           relying solely on the `TextRedirector` to manage line breaks.
-        3. Explicit blank lines in the ASCII art are now `print("", end='')`
-           to ensure they are truly empty lines without any spaces.
+        2. Each `print()` call will now add its own newline by default,
+           which `TextRedirector` will then insert directly.
     Outputs: None (prints to console)
     """
-    # By adding end='', we prevent print() from adding its own newline,
-    # allowing TextRedirector to control the spacing.
-    # Changed lines that were just spaces to empty strings for true blank lines.
-    print("", end='') # This was a line of spaces, now truly empty
-    print("", end='') # This was a line of spaces, now truly empty
-    print("", end='') # This was a line of spaces, now truly empty
-    print("                                               $              $$$$$                     $$ $$$$", end='')
-    print("                                               $$$            $$   $$$$$$               $$  $$ ", end='')
-    print("                                               $$$$           $$         $$$$$          $$ $$  ", end='')
-    print("                                  $$           $$ $$          $$             $$$$$      $$$$   ", end='')
-    print("                       $$$$$$$$$$$$            $$  $$$        $                  $$$    $$$$   ", end='')
-    print("             $$$$$$$$$        $$$              $$   $$$      $$                    $$   $$$    ", end='')
-    print("   $$$$$$$$$               $$$                 $$     $$     $$                $$$$     $$     ", end='')
-    print("                         $$$                   $$$$$$$$$$$   $$          $$$$$$         $$     ", end='')
-    print("                       $$$                     $$       $$$  $  $$$$$$$$                $      ", end='')
-    print("                     $$$                       $$         $$$$$                                ", end='')
-    print("                   $$$                         $$           $$                        $ $$     ", end='')
-    print("                 $$$                $$$$$$$                 $$                        $$$      ", end='')
-    print("              $$$$            $$$$$$                        $$                  $$$$$$$$$$     ", end='')
-    print("            $$$        $$$$$$$                                   $$$$$$$$$$$$$$                ", end='')
-    print("          $$$   $$$$$$$                             $$$$$$$$$$$                                ", end='')
-    print("        $$$$$$$$                  $$$$$$$$             $$$$                                    ", end='')
-    print("      $$$              $$$$$$$$$$  $$$$              $$$$$$$$                                  ", end='')
-    print("           $$$$$$$$$$$          $$$         $$$$$$$$                                           ", end='')
-    print(" $$$$$$$$$$                  $$$    $$$$$$$$                                                   ", end='')
-    print("                         $$$$$$$$$$                                                            ", end='')
-    print("                      $$$$$                        ", end='')
-    print("", end='') # Was "    ", now truly empty
-    print("", end='') # Was "    ", now truly empty
-    print("", end='') # Was "    ", now truly empty
-    print("Software created for  https://zimbelaudio.com/ike-zimbel/    ", end='')
-    print("A Colaboration betweeen Ike Zimbel and Anthony P. Kuzub", end='')
-    print("", end='') # Was "    ", now truly empty
-    print("", end='') # Was "    ", now truly empty
+    # Reverting to default print() behavior, letting it add newlines.
+    # TextRedirector will now insert these newlines directly.
+    print("") # First blank line
+    print("") # Second blank line
+    print("") # Third blank line
+    print("                                               $              $$$$$                     $$ $$$$")
+    print("                                               $$$            $$   $$$$$$               $$  $$ ")
+    print("                                               $$$$           $$         $$$$$          $$ $$  ")
+    print("                                  $$           $$ $$          $$             $$$$$      $$$$   ")
+    print("                       $$$$$$$$$$$$            $$  $$$        $                  $$$    $$$$   ")
+    print("             $$$$$$$$$        $$$              $$   $$$      $$                    $$   $$$    ")
+    print("   $$$$$$$$$               $$$                 $$     $$     $$                $$$$     $$     ")
+    print("                         $$$                   $$$$$$$$$$$   $$          $$$$$$         $$     ")
+    print("                       $$$                     $$       $$$  $  $$$$$$$$                $      ")
+    print("                     $$$                       $$         $$$$$                                ")
+    print("                   $$$                         $$           $$                        $ $$     ")
+    print("                 $$$                $$$$$$$                 $$                        $$$      ")
+    print("              $$$$            $$$$$$                        $$                  $$$$$$$$$$     ")
+    print("            $$$        $$$$$$$                                   $$$$$$$$$$$$$$                ")
+    print("          $$$   $$$$$$$                             $$$$$$$$$$$                                ")
+    print("        $$$$$$$$                  $$$$$$$$             $$$$                                    ")
+    print("      $$$              $$$$$$$$$$  $$$$              $$$$$$$$                                  ")
+    print("           $$$$$$$$$$$          $$$         $$$$$$$$                                           ")
+    print(" $$$$$$$$$$                  $$$    $$$$$$$$                                                   ")
+    print("                         $$$$$$$$$$                                                            ")
+    print("                      $$$$$                        ")
+    print("") # Blank line
+    print("") # Blank line
+    print("") # Blank line
+    print("Software created for  https://zimbelaudio.com/ike-zimbel/    ")
+    print("A Colaboration betweeen Ike Zimbel and Anthony P. Kuzub")
+    print("") # Blank line
+    print("") # Blank line
