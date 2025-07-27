@@ -326,15 +326,15 @@ def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__
         return False
 
     # Call the utility function from instrument_control
-    # control_load_selected_preset now returns (success, center_freq, span)
-    success, center_freq, span = control_load_selected_preset(app_instance.inst, selected_preset_name)
+    # control_load_selected_preset now returns (success, center_freq, span, rbw)
+    success, center_freq, span, rbw = control_load_selected_preset(app_instance.inst, selected_preset_name)
     
     if success:
         print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
-        # If center_freq and span are available, update the button info
-        if center_freq is not None and span is not None:
+        # If center_freq, span, and rbw are available, update the button info
+        if center_freq is not None and span is not None and rbw is not None:
             if hasattr(app_instance, 'preset_files_tab'):
-                app_instance.preset_files_tab.update_preset_button_info(selected_preset_name, center_freq, span)
+                app_instance.preset_files_tab.update_preset_button_info(selected_preset_name, center_freq, span, rbw)
             else:
                 debug_print("PresetFilesTab instance not found on app_instance for button update.", file=file, function=function)
     else:

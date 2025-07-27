@@ -1031,6 +1031,26 @@ if __name__ == "__main__":
     style.configure("TLabelFrame", background="#333333", foreground="white")
     style.configure("TLabelFrame.Label", background="#333333", foreground="white")
     
+        # In main_app.py, within the style configuration (e.g., in __init__ or a dedicated style method):
+    style = ttk.Style()
+    # ... other style configurations ...
+    style.configure("LargePreset.TButton",
+                    background="#555555", # Darker grey for buttons
+                    foreground="white",
+                    font=("Helvetica", 40, "bold"), # Set font size to 40
+                    padding=[30, 15, 30, 15]) # Adjust padding as needed
+    style.map("LargePreset.TButton",
+            background=[('active', '#777777')]) # Lighter grey on active
+
+    # Add the new style for selected preset buttons
+    style.configure("SelectedPreset.TButton",
+                    background="#2196F3", # A nice blue color
+                    foreground="white",
+                    font=("Helvetica", 40, "bold"), # Keep the 40-point font
+                    padding=[30, 15, 30, 15])
+    style.map("SelectedPreset.TButton",
+              background=[('active', '#64B5F6'), ('pressed', '#1976D2')])
+
 
     app = App()
     app.mainloop()

@@ -402,7 +402,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
     """
     Queries and prints the current key settings of the connected instrument.
-    Returns the center frequency and span in Hz.
+    Returns the center frequency, span, and RBW in Hz.
 
     Inputs:
         inst (pyvisa.resources.Resource): The VISA instrument object.
@@ -412,18 +412,20 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         2. Prints the queried settings to the console.
         3. Handles errors during querying.
     Outputs:
-        tuple: (center_freq_hz, span_hz) if successful, (None, None) otherwise.
+        tuple: (center_freq_hz, span_hz, rbw_hz) if successful, (None, None, None) otherwise.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
     if not inst:
         print("Not connected to instrument, cannot query settings.")
-        return None, None
+        return None, None, None
 
     print("\n--- Current Instrument Settings ---")
     center_freq_hz = None
     span_hz = None
+    rbw_hz = None # Initialize rbw_hz
+
     try:
         center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?")
         if center_freq_str:
@@ -435,8 +437,10 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
             span_hz = float(span_str)
             print(f"Span: {span_hz} Hz")
 
-        rbw = query_safe(inst, ":SENSe:BANDwidth:RESolution?")
-        if rbw: print(f"Resolution Bandwidth (RBW): {float(rbw)} Hz")
+        rbw_str = query_safe(inst, ":SENSe:BANDwidth:RESolution?") # Query RBW
+        if rbw_str:
+            rbw_hz = float(rbw_str)
+            print(f"Resolution Bandwidth (RBW): {rbw_hz} Hz") # Print RBW
 
         vbw = query_safe(inst, ":SENSe:BANDwidth:VIDeo?")
         if vbw: print(f"Video Bandwidth (VBW): {float(vbw)} Hz")
@@ -446,10 +450,10 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
 
     except Exception as e:
         print(f"❌ Error querying current instrument settings: {e}")
-        return None, None # Return None on error
+        return None, None, None # Return None on error for all values
     finally:
         print("-----------------------------------")
-    return center_freq_hz, span_hz
+    return center_freq_hz, span_hz, rbw_hz # Return RBW as well
 
 def query_device_presets(inst):
     """
@@ -536,15 +540,15 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
         5. Prints status messages.
         6. Handles general `Exception` during the loading process.
     Outputs:
-        tuple: (bool, center_freq_hz, span_hz). True if the preset is loaded successfully;
-               False otherwise. center_freq_hz and span_hz are the queried values or None.
+        tuple: (bool, center_freq_hz, span_hz, rbw_hz). True if the preset is loaded successfully;
+               False otherwise. center_freq_hz, span_hz, and rbw_hz are the queried values or None.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
     if not inst:
         debug_print("Not connected to instrument, cannot load preset.", file=current_file, function=current_function)
-        return False, None, None
+        return False, None, None, None
 
     preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
     command = f':MMEMory:LOAD STA,"{preset_path}"'
@@ -558,13 +562,13 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
             from utils.frequency_bands import MHZ_TO_HZ 
             
             # Query and display current instrument settings after loading preset
-            center_freq, span = query_current_instrument_settings(inst, MHZ_TO_HZ)
-            return True, center_freq, span
+            center_freq, span, rbw = query_current_instrument_settings(inst, MHZ_TO_HZ)
+            return True, center_freq, span, rbw
         else:
             debug_print(f"Failed to load preset '{selected_preset_name}'.", file=current_file, function=current_function)
-            return False, None, None
+            return False, None, None, None
     except Exception as e:
         debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
         messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
-        return False, None, None
+        return False, None, None, None
 
