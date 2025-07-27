@@ -94,27 +94,13 @@ def plot_single_scan_data(
         debug_print("🚫 Cannot plot: DataFrame is empty.", file=current_file, function=current_function)
         return None, None
 
-    debug_print(f"DataFrame columns BEFORE rename in plot_single_scan_data: {df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"DataFrame head BEFORE rename in plot_single_scan_data:\n{df.head()}", file=current_file, function=current_function)
+    # DataFrame should already have correct column names from scan_logic.py's pd.read_csv(..., names=...)
+    debug_print(f"DataFrame columns received in plot_single_scan_data: {df.columns.tolist()}", file=current_file, function=current_function)
+    debug_print(f"DataFrame head received in plot_single_scan_data:\n{df.head()}", file=current_file, function=current_function)
 
-    # Rename columns to match plotting expectations if they are from CSV (no headers)
-    # Assuming column 0 is Frequency and column 1 is Power
-    if 0 in df.columns and 1 in df.columns:
-        df = df.rename(columns={0: 'Frequency (MHz)', 1: 'Amplitude (dBm)'})
-        debug_print("Columns 0 and 1 found and renamed.", file=current_file, function=current_function)
-    elif 'Frequency_MHz' in df.columns and 'Power_dBm' in df.columns:
-        df = df.rename(columns={'Frequency_MHz': 'Frequency (MHz)', 'Power_dBm': 'Amplitude (dBm)'})
-        debug_print("Columns 'Frequency_MHz' and 'Power_dBm' found and renamed.", file=current_file, function=current_function)
-    else:
-        debug_print("No expected numeric or string columns found for renaming. Plotting might fail.", file=current_file, function=current_function)
-
-
-    debug_print(f"DataFrame columns AFTER rename in plot_single_scan_data: {df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"DataFrame head AFTER rename in plot_single_scan_data:\n{df.head()}", file=current_file, function=current_function)
-
-    # Check if the required columns exist after renaming
+    # Check if the required columns exist
     if 'Frequency (MHz)' not in df.columns or 'Amplitude (dBm)' not in df.columns:
-        debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing after renaming. Cannot plot.", file=current_file, function=current_function)
+        debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing. Cannot plot.", file=current_file, function=current_function)
         return None, None
 
     fig = go.Figure()
@@ -184,51 +170,59 @@ def plot_single_scan_data(
 
     # Add custom markers from MARKERS.CSV if enabled
     if include_markers_from_csv and markers_csv_path and os.path.exists(markers_csv_path):
+        debug_print(f"Attempting to load custom markers from: {os.path.abspath(markers_csv_path)}", file=current_file, function=current_function)
         try:
             with open(markers_csv_path, mode='r', newline='', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
-                for row in reader:
-                    try:
-                        freq_mhz = float(row['FREQ'])
-                        zone = row.get('ZONE', 'N/A')
-                        group = row.get('GROUP', 'N/A')
-                        device = row.get('DEVICE', 'N/A')
-                        name = row.get('NAME', 'N/A')
+                debug_print(f"MARKERS.CSV fieldnames: {reader.fieldnames}", file=current_file, function=current_function)
 
-                        # Add vertical dashed line
-                        fig.add_vline(
-                            x=freq_mhz,
-                            line_dash="dash",
-                            line_color="white",
-                            line_width=3,
-                            layer="above" # Ensure markers are visible above the trace
-                        )
-                        # Add text annotation
-                        annotation_text = (
-                            f"Zone: {zone}<br>"
-                            f"Group: {group}<br>"
-                            f"Device: {device}<br>"
-                            f"Freq: {freq_mhz:.3f} MHz"
-                        )
-                        fig.add_annotation(
-                            x=freq_mhz,
-                            y=y_range_max, # Position at the top of the plot
-                            text=annotation_text,
-                            showarrow=False,
-                            font=dict(color="white", size=9),
-                            bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
-                            bordercolor="white",
-                            borderwidth=0.5,
-                            # Adjust xanchor/yanchor for positioning relative to the line
-                            xanchor="left", # Anchor text to the left of the line
-                            yanchor="top",  # Anchor text to the top of the plot
-                            yshift=-5,      # Shift down slightly from the top edge
-                            xshift=5        # Shift right slightly from the line
-                        )
-                    except ValueError:
-                        debug_print(f"Warning: Could not parse frequency for marker row: {row}", file=current_file, function=current_function)
-                    except KeyError as e:
-                        debug_print(f"Warning: Missing expected column '{e}' in marker row: {row}", file=current_file, function=current_function)
+                # Ensure 'FREQ' column exists in the header
+                if 'FREQ' not in reader.fieldnames:
+                    debug_print(f"Error: MARKERS.CSV at {markers_csv_path} does not have a 'FREQ' column. Headers found: {reader.fieldnames}. Skipping custom markers.", file=current_file, function=current_function)
+                else:
+                    for row in reader:
+                        try:
+                            freq_mhz = float(row['FREQ'])
+                            zone = row.get('ZONE', 'N/A')
+                            group = row.get('GROUP', 'N/A')
+                            device = row.get('DEVICE', 'N/A')
+                            name = row.get('NAME', 'N/A')
+
+                            # Add vertical dashed line
+                            fig.add_vline(
+                                x=freq_mhz,
+                                line_dash="dash",
+                                line_color="white",
+                                line_width=3,
+                                layer="above" # Ensure markers are visible above the trace
+                            )
+                            # Add text annotation
+                            annotation_text = (
+                                f"Zone: {zone}<br>"
+                                f"Group: {group}<br>"
+                                f"Device: {device}<br>"
+                                f"Freq: {freq_mhz:.3f} MHz"
+                            )
+                            fig.add_annotation(
+                                x=freq_mhz,
+                                y=y_range_max, # Position at the top of the plot
+                                text=annotation_text,
+                                showarrow=False,
+                                font=dict(color="white", size=9),
+                                bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
+                                bordercolor="white",
+                                borderwidth=0.5,
+                                # Adjust xanchor/yanchor for positioning relative to the line
+                                xanchor="left", # Anchor text to the left of the line
+                                yanchor="top",  # Anchor text to the top of the plot
+                                yshift=-5,      # Shift down slightly from the top edge
+                                xshift=5        # Shift right slightly from the line
+                            )
+                        except ValueError:
+                            debug_print(f"Warning: Could not parse frequency for marker row: {row}", file=current_file, function=current_function)
+                        except KeyError as e:
+                            debug_print(f"Warning: Missing expected column '{e}' in marker row: {row}", file=current_file, function=current_function)
+            debug_print(f"Finished loading custom markers from {os.path.abspath(markers_csv_path)}.", file=current_file, function=current_function)
         except Exception as e:
             debug_print(f"Error loading MARKERS.CSV for plotting: {e}", file=current_file, function=current_function)
     elif include_markers_from_csv and not os.path.exists(markers_csv_path):
@@ -312,26 +306,13 @@ def plot_multi_trace_data(
         debug_print("🚫 Cannot plot: Aggregated DataFrame is empty.", file=current_file, function=current_function)
         return None, None
 
-    debug_print(f"Aggregated DataFrame columns BEFORE rename in plot_multi_trace_data: {aggregated_df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"Aggregated DataFrame head BEFORE rename in plot_multi_trace_data:\n{aggregated_df.head()}", file=current_file, function=current_function)
+    # DataFrame should already have correct column names from scan_logic.py's pd.read_csv(..., names=...)
+    debug_print(f"Aggregated DataFrame columns received in plot_multi_trace_data: {aggregated_df.columns.tolist()}", file=current_file, function=current_function)
+    debug_print(f"Aggregated DataFrame head received in plot_multi_trace_data:\n{aggregated_df.head()}", file=current_file, function=current_function)
 
-    # Rename columns to match plotting expectations if they are from CSV (no headers)
-    # Assuming column 0 is Frequency and column 1 is Power
-    if 0 in aggregated_df.columns and 1 in aggregated_df.columns:
-        aggregated_df = aggregated_df.rename(columns={0: 'Frequency (MHz)', 1: 'Amplitude (dBm)'})
-        debug_print("Columns 0 and 1 found and renamed in aggregated_df.", file=current_file, function=current_function)
-    elif 'Frequency_MHz' in aggregated_df.columns and 'Power_dBm' in aggregated_df.columns:
-        aggregated_df = aggregated_df.rename(columns={'Frequency_MHz': 'Frequency (MHz)', 'Power_dBm': 'Amplitude (dBm)'})
-        debug_print("Columns 'Frequency_MHz' and 'Power_dBm' found and renamed in aggregated_df.", file=current_file, function=current_function)
-    else:
-        debug_print("No expected numeric or string columns found for renaming in aggregated_df. Plotting might fail.", file=current_file, function=current_function)
-
-    debug_print(f"Aggregated DataFrame columns AFTER rename in plot_multi_trace_data: {aggregated_df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"Aggregated DataFrame head AFTER rename in plot_multi_trace_data:\n{aggregated_df.head()}", file=current_file, function=current_function)
-
-    # Check if the required columns exist after renaming
+    # Check if the required columns exist
     if 'Frequency (MHz)' not in aggregated_df.columns or 'Amplitude (dBm)' not in aggregated_df.columns:
-        debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing in aggregated_df after renaming. Cannot plot.", file=current_file, function=current_function)
+        debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing in aggregated_df. Cannot plot.", file=current_file, function=current_function)
         return None, None
 
     fig = go.Figure()
@@ -389,20 +370,13 @@ def plot_multi_trace_data(
     # Add historical overlays if provided
     if historical_dfs_with_names:
         for hist_df, hist_name in historical_dfs_with_names:
-            debug_print(f"Historical DataFrame columns BEFORE rename for {hist_name}: {hist_df.columns.tolist()}", file=current_file, function=current_function)
-            debug_print(f"Historical DataFrame head BEFORE rename for {hist_name}:\n{hist_df.head()}", file=current_file, function=current_function)
-            # Rename columns for historical data too
-            if 0 in hist_df.columns and 1 in hist_df.columns:
-                hist_df = hist_df.rename(columns={0: 'Frequency (MHz)', 1: 'Amplitude (dBm)'})
-                debug_print(f"Columns 0 and 1 found and renamed for historical_df {hist_name}.", file=current_file, function=current_function)
-            elif 'Frequency_MHz' in hist_df.columns and 'Power_dBm' in hist_df.columns:
-                hist_df = hist_df.rename(columns={'Frequency_MHz': 'Frequency (MHz)', 'Power_dBm': 'Amplitude (dBm)'})
-                debug_print(f"Columns 'Frequency_MHz' and 'Power_dBm' found and renamed for historical_df {hist_name}.", file=current_file, function=current_function)
-            else:
-                debug_print(f"No expected numeric or string columns found for renaming in historical_df {hist_name}. Plotting might fail.", file=current_file, function=current_function)
+            debug_print(f"Historical DataFrame columns received for {hist_name}: {hist_df.columns.tolist()}", file=current_file, function=current_function)
+            debug_print(f"Historical DataFrame head received for {hist_name}:\n{hist_df.head()}", file=current_file, function=current_function)
 
-            debug_print(f"Historical DataFrame columns AFTER rename for {hist_name}: {hist_df.columns.tolist()}", file=current_file, function=current_function)
-            debug_print(f"Historical DataFrame head AFTER rename for {hist_name}:\n{hist_df.head()}", file=current_file, function=current_function)
+            # Check if the required columns exist
+            if 'Frequency (MHz)' not in hist_df.columns or 'Amplitude (dBm)' not in hist_df.columns:
+                debug_print(f"❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing in historical_df {hist_name}. Skipping this historical plot.", file=current_file, function=current_function)
+                continue # Skip this historical plot if columns are missing
 
             if 'Frequency (MHz)' in hist_df.columns and 'Average Amplitude (dBm)' in hist_df.columns:
                 fig.add_trace(go.Scatter(

@@ -20,6 +20,7 @@ import time
 from tkinter import messagebox # Corrected import: directly import messagebox
 import inspect # Import inspect module
 import os # Import os module to fix NameError
+from datetime import datetime # Import datetime for timestamp
 
 # Global variable for debug mode, controlled by GUI checkbox
 DEBUG_MODE = False
@@ -58,6 +59,7 @@ def debug_print(message, file=None, function=None):
     """
     Prints a debug message to the console only if DEBUG_MODE is enabled.
     Includes the file name and function name where the call originated.
+    Now includes a timestamp formatted as MM.SS.
 
     Inputs:
         message (str): The message string to print.
@@ -68,17 +70,19 @@ def debug_print(message, file=None, function=None):
     Outputs: None
     """
     if DEBUG_MODE:
+        timestamp = datetime.now().strftime("%M.%S") # Format as MM.SS
         if file and function:
             # Extract just the filename from the full path
             filename = os.path.basename(file)
-            print(f"🚫🐛 [{filename}:{function}] {message}")
+            print(f"🚫🐛 {timestamp} [{filename}:{function}] {message}")
         else:
-            print(f"🚫🐛 {message}")
+            print(f"�🐛 {timestamp} {message}")
 
 def log_visa_command(direction, command_or_response, file=None, function=None):
     """
     Logs VISA commands sent to and responses received from the instrument
     if LOG_VISA_COMMANDS is enabled. Includes the file and function name.
+    Now includes a timestamp formatted as MM.SS.
 
     Inputs:
         direction (str): "SENT" for commands sent, "RECV" for responses received.
@@ -90,11 +94,12 @@ def log_visa_command(direction, command_or_response, file=None, function=None):
     Outputs: None
     """
     if DEBUG_MODE and LOG_VISA_COMMANDS: # Only log if both general debug and VISA logging are enabled
+        timestamp = datetime.now().strftime("%M.%S") # Format as MM.SS
         if file and function:
             filename = os.path.basename(file)
-            print(f"VISA {direction}: [{filename}:{function}] {command_or_response.strip()}")
+            print(f"VISA {direction}: {timestamp} [{filename}:{function}] {command_or_response.strip()}")
         else:
-            print(f"VISA {direction}: {command_or_response.strip()}")
+            print(f"VISA {direction}: {timestamp} {command_or_response.strip()}")
 
 def query_safe(inst, command, delay=0.1):
     """
@@ -432,8 +437,8 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
     if not inst:
         print("Not connected to instrument, cannot query settings.")
         return None, None, None
-
-    print("\n--- Current Instrument Settings ---")
+    
+    debug_print("\n--- Current Instrument Settings ---", file=current_file, function=current_function)
     center_freq_hz = None
     span_hz = None
     rbw_hz = None # Initialize rbw_hz
@@ -442,29 +447,29 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?")
         if center_freq_str:
             center_freq_hz = float(center_freq_str)
-            print(f"Center Frequency: {center_freq_hz / MHZ_TO_HZ:.3f} MHz")
+            debug_print(f"Center Frequency: {center_freq_hz / MHZ_TO_HZ:.3f} MHz", file=current_file, function=current_function)
 
         span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?")
         if span_str:
             span_hz = float(span_str)
-            print(f"Span: {span_hz} Hz")
+            debug_print(f"Span: {span_hz} Hz", file=current_file, function=current_function)
 
         rbw_str = query_safe(inst, ":SENSe:BANDwidth:RESolution?") # Query RBW
         if rbw_str:
             rbw_hz = float(rbw_str)
-            print(f"Resolution Bandwidth (RBW): {rbw_hz} Hz") # Print RBW
+            debug_print(f"Resolution Bandwidth (RBW): {rbw_hz} Hz", file=current_file, function=current_function) # Print RBW
 
         vbw = query_safe(inst, ":SENSe:BANDwidth:VIDeo?")
-        if vbw: print(f"Video Bandwidth (VBW): {float(vbw)} Hz")
+        if vbw: debug_print(f"Video Bandwidth (VBW): {float(vbw)} Hz", file=current_file, function=current_function)
 
         ref_level = query_safe(inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?")
-        if ref_level: print(f"Reference Level: {float(ref_level):.2f} dBm")
+        if ref_level: debug_print(f"Reference Level: {float(ref_level):.2f} dBm", file=current_file, function=current_function)
 
     except Exception as e:
-        print(f"❌ Error querying current instrument settings: {e}")
+        debug_print(f"❌ Error querying current instrument settings: {e}", file=current_file, function=current_function)
         return None, None, None # Return None on error for all values
     finally:
-        print("-----------------------------------")
+        debug_print("-----------------------------------", file=current_file, function=current_function)
     return center_freq_hz, span_hz, rbw_hz # Return RBW as well
 
 def query_device_presets(inst):
@@ -583,4 +588,3 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
         debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
         messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
         return False, None, None, None
-
