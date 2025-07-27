@@ -330,6 +330,18 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
         if not write_safe(inst, "*RST"): return False
         if not query_safe(inst, "*OPC?"): return False # Wait for operation to complete
         time.sleep(1) # Give it a moment after reset
+    # Set trace mode to MAXHold (if applicable)
+        if write_safe(inst, ":TRAC2:MODE MAXHold"):
+            debug_print("Sent: :TRAC2:MODE MAXHold", file=current_file, function=current_function)
+        else:
+            debug_print("Failed to set :TRAC2:MODE MAXHold", file=current_file, function=current_function)
+
+        # Set continuous initiation ON
+        if write_safe(inst, ":INITiate:CONTinuous ON"):
+            debug_print("Sent: :INITiate:CONTinuous ON", file=current_file, function=current_function)
+        else:
+            debug_print("Failed to set :INITiate:CONTinuous ON", file=current_file, function=current_function)
+
 
         # Set reference level
         if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}"): return False

@@ -13,8 +13,9 @@ from utils.scan_instrument import scan_bands
 from utils.frequency_bands import MHZ_TO_HZ # Assuming MHZ_TO_HZ is needed here
 from utils.instrument_control import log_visa_command, debug_print # Import debug_print
 
-# Changed to import the module instead of the specific function to avoid potential circular import issues
-import src.plot_logic as plot_logic_module
+# Import specific plotting functions directly from their source files
+from src.plot_logic import plot_single_scan_data # Import plot_single_scan_data directly
+from utils.averaging_utils import generate_current_cycle_average_csv_and_plot as generate_average_plot_logic # Import from averaging_utils and alias
 
 
 def start_scan_thread_logic(app_instance):
@@ -65,7 +66,6 @@ def run_scan_logic(app_instance): # Renamed from _run_scan to run_scan_logic
 
     try:
         # Get current settings from Tkinter variables
-        # FIX: Changed variable names to match those defined in App (e.g., desired_rbw_var)
         # Assuming num_scan_cycles_var will be defined in main_app.py
         num_scan_cycles = app_instance.num_scan_cycles_var.get()
         rbw_val = app_instance.desired_rbw_var.get()
@@ -144,12 +144,13 @@ def run_scan_logic(app_instance): # Renamed from _run_scan to run_scan_logic
                 # Generate and open plot for the current single scan cycle
                 output_html_path_single = os.path.join(output_folder, f"{scan_name}_Cycle{cycle}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")
                 
-                # Use the imported module alias to call the function
-                app_instance.after(0, lambda: plot_logic_module.generate_single_scan_plot_and_open_wrapper_logic(
-                    app_instance,
-                    csv_filename_current_cycle, # Pass the CSV file path
-                    output_html_path_single,
-                    app_instance.open_html_after_complete_var.get() # Pass auto_open_browser setting
+                # Use the directly imported function: plot_single_scan_data
+                app_instance.after(0, lambda: plot_single_scan_data(
+                    csv_file_path=csv_filename_current_cycle, # Pass the CSV file path
+                    output_html_path=output_html_path_single,
+                    auto_open_browser=app_instance.open_html_after_complete_var.get(), # Pass auto_open_browser setting
+                    include_tv_markers=app_instance.include_tv_markers_var.get(), # Pass TV markers setting
+                    include_gov_markers=app_instance.include_gov_markers_var.get() # Pass Gov markers setting
                 ))
 
             else:
@@ -162,7 +163,15 @@ def run_scan_logic(app_instance): # Renamed from _run_scan to run_scan_logic
 
         # After all cycles, generate the averaged plot if data was collected
         if app_instance.collected_scans_dataframes:
-            app_instance.after(0, lambda: plot_logic_module.generate_average_plot_logic(app_instance)) # Use the imported module alias
+            # Use the directly imported and aliased function
+            app_instance.after(0, lambda: generate_average_plot_logic(
+                app_instance.collected_scans_dataframes,
+                app_instance.scan_name_var,
+                app_instance.output_folder_var,
+                app_instance.open_html_after_complete_var,
+                app_instance.include_tv_markers_var,
+                app_instance.include_gov_markers_var
+            ))
         else:
             app_instance.after(0, app_instance._update_console_line, "No data collected across all cycles to generate an average plot.\n")
 

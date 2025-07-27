@@ -293,7 +293,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
             # --- Minimal Instrument Settings per segment ---
             # Only set frequency range and trace mode per segment
-            if not write_safe(inst, f":SENS:FREQ:STAR {current_segment_start_freq_hz};:SENS:FREQ:STOP {segment_stop_freq_hz}"):
+            if not write_safe(inst, f":SENS:FREQ:STAR {current_segment_start_freq_hz};:SENS:FREQ:STOP {segment_stop_freq_hz};:TRAC2:MODE Blank"):
                 return last_successful_band_index, None
             
             # Set trace mode (only Trace2 needs to be set to MAXH or NORM)
@@ -302,10 +302,6 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             else:
                 if not write_safe(inst, ":TRAC2:MODE NORM;"): return last_successful_band_index, None # Use Normal if max hold is off
 
-            # Initiate a single sweep with :INITiate:CONTinuous ON
-            # This allows the instrument to sweep continuously.
-            if not write_safe(inst, ":INITiate:CONTinuous ON"): return last_successful_band_index, None
-            debug_print("Sent: :INITiate:CONTinuous ON", file=file, function=function)
 
 
            
@@ -325,10 +321,10 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                     # Update display for countdown (only update every second for cleaner output)
                     if _ % 10 == 0: # Every 10 iterations (1 second)
                         sec_remaining = int(maxhold_time_val - (_ / 10))
-                        display_text = f"⏳ {sec_remaining}\n"
+                        display_text = f"⏳ {sec_remaining}"
                         app_instance_ref.after(0, app_instance_ref._update_console_line, display_text) # Added \n
                     time.sleep(0.1)
-                app_instance_ref.after(0, app_instance_ref._update_console_line, "✅\n") # Added \n
+                app_instance_ref.after(0, app_instance_ref._update_console_line, "✅") # Added \n
 
             if stop_event.is_set():
                 debug_print(f"Stop event detected after max hold for segment {segment_counter + 1}.", file=file, function=function)

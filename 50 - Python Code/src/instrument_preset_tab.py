@@ -4,6 +4,7 @@ from tkinter import messagebox, scrolledtext, filedialog, ttk
 import os
 import sys
 import inspect
+import subprocess # Add this import for opening folders
 
 # Import instrument_logic for setting focus frequency and loading presets
 from src.instrument_logic import (
@@ -322,7 +323,7 @@ class PresetFilesTab(ttk.Frame):
                       background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=10, pady=10) # Changed columnspan to 3
 
 
-    def _on_tab_selected(self, event):
+    def _on_tab_selected(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Callback when this tab is selected. Updates the state of the query presets button.
         """
@@ -345,3 +346,41 @@ class PresetFilesTab(ttk.Frame):
             self.query_presets_button.config(state=tk.DISABLED)
             # Clear buttons if no instrument is connected
             self.clear_preset_buttons()
+
+    def _open_preset_folder(self):
+        """
+        Opens the directory where local preset files are stored.
+        This method is typically called by a button in the main application.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+
+        # Use the application's configured scan directory to determine the preset folder path
+        # Assuming 'presets' is a subfolder within the scan directory
+        preset_folder = os.path.join(self.app_instance.scan_directory_var.get(), "presets")
+        
+        # Ensure the directory exists before trying to open it
+        if not os.path.exists(preset_folder):
+            try:
+                os.makedirs(preset_folder, exist_ok=True)
+                print(f"Created preset folder: {preset_folder}")
+                debug_print(f"Created preset folder: {preset_folder}", file=current_file, function=current_function)
+            except Exception as e:
+                messagebox.showerror("Folder Creation Error", f"Failed to create preset folder: {e}")
+                debug_print(f"Failed to create preset folder: {e}", file=current_file, function=current_function)
+                return
+
+        try:
+            # Open the folder using the appropriate command for the OS
+            if sys.platform == "win32":
+                os.startfile(preset_folder)
+            elif sys.platform == "darwin": # macOS
+                subprocess.Popen(["open", preset_folder])
+            else: # Linux
+                subprocess.Popen(["xdg-open", preset_folder])
+            print(f"Opened preset folder: {preset_folder}")
+            debug_print(f"Opened preset folder: {preset_folder}", file=current_file, function=current_function)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open preset folder: {e}")
+            debug_print(f"Error opening preset folder '{preset_folder}': {e}", file=current_file, function=current_function)
+

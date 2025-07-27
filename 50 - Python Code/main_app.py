@@ -40,13 +40,9 @@ from src.scan_logic import (
     start_scan_thread_logic, run_scan_logic,
     stop_scan_logic, reset_scan_buttons_logic, pause_resume_scan_logic
 )
-from src.settings_logic import (
-    restore_default_settings_logic, open_output_folder_logic,
-    open_preset_folder_logic, # open_report_folder_logic, # Removed as it's redundant with open_output_folder_logic
-    update_scan_rbw_from_slider_index_logic,
-    update_max_hold_time_from_slider_index_logic,
-    update_cycle_wait_time_from_slider_index_logic
-)
+# Removed the unnecessary imports for slider update functions from src.settings_logic
+
+
 import src.plot_logic as plot_logic_module
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
 from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode
@@ -187,9 +183,7 @@ class ScanConfigurationTab(ttk.Frame):
         self.app_instance.output_folder_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(output_dir_frame, text="Browse", command=self.app_instance._browse_output_folder).grid(row=0, column=1, sticky="e")
 
-        # FIX: Added "Open Output Folder" button to Scan Control frame
-        ttk.Button(scan_control_frame, text="Open Output Folder", command=lambda: open_output_folder_logic(self.app_instance.output_folder_var.get())).grid(row=8, column=0, padx=5, pady=2, sticky="ew")
-
+        ttk.Button(scan_control_frame, text="Open Output Folder", command=lambda: self.app_instance._call_open_output_folder()).grid(row=8, column=0, padx=5, pady=2, sticky="ew")
 
         # Bottom Left: Settings Frame
         settings_frame = ttk.LabelFrame(self, text="Settings")
@@ -263,15 +257,15 @@ class ScanConfigurationTab(ttk.Frame):
         self.app_instance.default_focus_width_entry.grid(row=25, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.default_focus_width_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_default_focus_width_var, 'last_default_focus_width'))
 
-
-        # Restore Defaults Button
-        ttk.Button(settings_frame, text="Restore Default Settings", command=lambda: restore_default_settings_logic(self.app_instance)).grid(row=26, column=0, padx=5, pady=10, sticky="ew")
-
+        ttk.Button(settings_frame, text="Restore Default Settings",
+        command=lambda: self.app_instance._call_restore_default_settings()).grid(row=26, column=0, padx=5, pady=10, sticky="ew")
         # Removed redundant "Open Report Folder" button
         # ttk.Button(settings_frame, text="Open Report Folder", command=lambda: open_report_folder_logic(self.app_instance.output_folder_var.get())).grid(row=29, column=0, padx=5, pady=2, sticky="ew")
 
-        # Open Preset Folder Button
-        ttk.Button(settings_frame, text="Open Instrument Preset Folder", command=lambda: open_preset_folder_logic()).grid(row=27, column=0, padx=5, pady=2, sticky="ew")
+        # Open Preset Folder Button - This button's command will be set after App's _create_widgets
+        # to ensure self.app_instance.preset_files_tab is initialized.
+        self.open_preset_folder_button = ttk.Button(settings_frame, text="Open Instrument Preset Folder")
+        self.open_preset_folder_button.grid(row=27, column=0, padx=5, pady=2, sticky="ew")
 
 
         # Bottom Right: Frequency Band Selection Frame
@@ -318,6 +312,47 @@ class App(tk.Tk):
     # FIX: Define CONFIG_FILE using os.path.join to ensure it's next to main_app.py
     script_dir = os.path.dirname(__file__)
     CONFIG_FILE = os.path.join(script_dir, 'config.ini')
+
+    def _call_restore_default_settings(self):
+        """
+        Calls the restore_default_settings_logic function, deferring its import
+        to avoid circular dependencies.
+        """
+        try:
+            from src.settings_logic import restore_default_settings_logic
+            restore_default_settings_logic(self)
+        except ImportError as e:
+            messagebox.showerror("Import Error", f"Failed to load restore settings module: {e}")
+            debug_print(f"Error importing restore_default_settings_logic: {e}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+    def _call_open_output_folder(self):
+        """
+        Opens the application's configured output folder in the file explorer.
+        """
+        output_folder_path = self.output_folder_var.get()
+        if not output_folder_path:
+            messagebox.showwarning("No Output Folder", "Please set an output directory first.")
+            return
+
+        if not os.path.isdir(output_folder_path):
+            try:
+                os.makedirs(output_folder_path, exist_ok=True)
+                print(f"Created output folder: {output_folder_path}")
+            except Exception as e:
+                messagebox.showerror("Folder Creation Error", f"Failed to create output folder: {e}")
+                return
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(output_folder_path)
+            elif sys.platform == "darwin": # macOS
+                subprocess.Popen(["open", output_folder_path])
+            else: # Linux
+                subprocess.Popen(["xdg-open", output_folder_path])
+            print(f"Opened output folder: {output_folder_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open output folder: {e}")
+
 
     def __init__(self):
         """
@@ -583,7 +618,11 @@ class App(tk.Tk):
         # Set initial slider positions based on loaded config values
         # This call needs to be after all widgets (including those in ScanConfigurationTab) are created.
         # It's currently at the end of App.__init__, which is correct.
-        # self._set_initial_slider_positions() # This is called in __init__ after _create_widgets()
+        self._set_initial_slider_positions() # This is called in __init__ after _create_widgets()
+
+        # Set the command for the "Open Instrument Preset Folder" button here,
+        # after self.preset_files_tab has been initialized.
+        self.scan_config_tab.open_preset_folder_button.config(command=self.preset_files_tab._open_preset_folder)
 
 
     def _set_initial_slider_positions(self):
@@ -1060,3 +1099,4 @@ if __name__ == "__main__":
     
     app = App()
     app.mainloop()
+
