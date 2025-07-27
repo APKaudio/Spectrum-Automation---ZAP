@@ -10,6 +10,9 @@ import json # Import json for serializing/deserializing row data
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic
 from utils.instrument_control import debug_print # Import debug_print
 
+# Removed the hardcoded MARKERS_FILE_PATH, it will now be determined dynamically
+
+
 class MarkersDisplayTab(ttk.Frame):
     """
     A Tkinter Frame that displays extracted frequency markers in a hierarchical treeview
@@ -265,3 +268,52 @@ class MarkersDisplayTab(ttk.Frame):
         self.rows = rows
         self._populate_zone_group_tree() # Repopulate the treeview with new data
         self._populate_device_buttons([]) # Clear device buttons when new data loaded
+
+    def _on_tab_selected(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback when this tab is selected. Checks for and loads MARKERS.CSV.
+        """
+        debug_print("MarkersDisplayTab selected. Checking for MARKERS.CSV...", file=file, function=function)
+        
+        # Dynamically determine MARKERS.CSV path from the main app's output folder
+        markers_file_path = None
+        if self.app_instance and hasattr(self.app_instance, 'output_folder_var'):
+            output_folder = self.app_instance.output_folder_var.get()
+            if output_folder:
+                markers_file_path = os.path.join(output_folder, 'MARKERS.CSV')
+                debug_print(f"Attempting to load MARKERS.CSV from configured output folder: {markers_file_path}", file=file, function=function)
+            else:
+                debug_print("Output folder not configured in main app. Cannot check for MARKERS.CSV.", file=file, function=function)
+        else:
+            debug_print("App instance or output_folder_var not available. Cannot check for MARKERS.CSV.", file=file, function=function)
+
+        if markers_file_path and os.path.exists(markers_file_path):
+            debug_print(f"MARKERS.CSV found at: {markers_file_path}", file=file, function=function)
+            try:
+                headers = []
+                rows = []
+                with open(markers_file_path, mode='r', newline='', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    headers = reader.fieldnames
+                    for row_data in reader:
+                        rows.append(row_data)
+                
+                if headers and rows:
+                    debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=file, function=function)
+                    self.update_markers_data(headers, rows)
+                else:
+                    debug_print("MARKERS.CSV is empty or has no data rows.", file=file, function=function)
+                    # Changed messagebox to debug_print
+                    debug_print("No Markers: The MARKERS.CSV file was found but contains no data.", file=file, function=function)
+                    self.update_markers_data([], []) # Clear any existing display
+            except Exception as e:
+                debug_print(f"Error loading MARKERS.CSV: {e}", file=file, function=function)
+                # Changed messagebox to debug_print
+                debug_print(f"Error Loading Markers: An error occurred while loading MARKERS.CSV: {e}", file=file, function=function)
+                self.update_markers_data([], []) # Clear any existing display on error
+        else:
+            debug_print(f"MARKERS.CSV not found or path not determined. Path: {markers_file_path}", file=file, function=function)
+            # Changed messagebox to debug_print
+            debug_print("No Markers File: MARKERS.CSV not found. Please generate a report first.", file=file, function=function)
+            self.update_markers_data([], []) # Ensure display is clear if file doesn't exist
+

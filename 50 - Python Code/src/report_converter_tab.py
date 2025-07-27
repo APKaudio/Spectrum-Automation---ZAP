@@ -73,7 +73,8 @@ class ReportConverterTab(ttk.Frame):
             filetypes=[("HTML files", "*.html"), ("All files", "*.*")]
         )
         if not file_path:
-            print("HTML conversion cancelled.")
+            # Direct output to the tab's console
+            self.app_instance.after(0, self._update_message_text, "HTML conversion cancelled.")
             return
 
         # Run conversion in a separate thread to keep GUI responsive
@@ -89,7 +90,8 @@ class ReportConverterTab(ttk.Frame):
             filetypes=[("SHW files", "*.shw"), ("XML files", "*.xml"), ("All files", "*.*")]
         )
         if not file_path:
-            print("SHW conversion cancelled.")
+            # Direct output to the tab's console
+            self.app_instance.after(0, self._update_message_text, "SHW conversion cancelled.")
             return
 
         # Run conversion in a separate thread to keep GUI responsive
@@ -105,12 +107,22 @@ class ReportConverterTab(ttk.Frame):
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
         )
         if not file_path:
-            print("PDF conversion cancelled.")
+            # Direct output to the tab's console
+            self.app_instance.after(0, self._update_message_text, "PDF conversion cancelled.")
             return
 
         # Run conversion in a separate thread to keep GUI responsive
         conversion_thread = threading.Thread(target=self._convert_and_display, args=(file_path, "PDF"))
         conversion_thread.start()
+
+    def _update_message_text(self, message):
+        """
+        Appends a message to the scrolled text widget in the Report Converter tab.
+        """
+        self.message_text.config(state=tk.NORMAL)
+        self.message_text.insert(tk.END, message + "\n")
+        self.message_text.see(tk.END) # Scroll to the end
+        self.message_text.config(state=tk.DISABLED)
 
     def _convert_and_display(self, file_path, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
         debug_print(f"Starting conversion for {file_path} (type: {file_type})...", file=file, function=function)
@@ -120,9 +132,8 @@ class ReportConverterTab(ttk.Frame):
         # Temporarily redirect stdout and stderr to the conversion console
         old_stdout = sys.stdout
         old_stderr = sys.stderr
-        # Removed 'file=file, function=function' as TextRedirector does not accept them
         sys.stdout = TextRedirector(self.message_text, "stdout")
-        sys.stderr = TextRedirector(self.message_text, "stderr") # Corrected: removed file= and function=
+        sys.stderr = TextRedirector(self.message_text, "stderr")
 
         try:
             # Clear previous messages in the conversion console
@@ -151,7 +162,7 @@ class ReportConverterTab(ttk.Frame):
                 if not output_folder or not os.path.isdir(output_folder):
                     error_message = "Invalid Output Folder. Please set a valid output directory in the Scan Configuration tab."
                     print(f"❌ Conversion failed: {error_message}") # This will go to the tab's console
-                    messagebox.showwarning("Invalid Output Folder", error_message) # Still show messagebox
+                    # Removed messagebox.showwarning
                     return # Exit early if output folder is invalid
 
                 output_csv_filename = "MARKERS.CSV"
@@ -181,20 +192,20 @@ class ReportConverterTab(ttk.Frame):
                     debug_print("MarkersDisplayTab instance not found on app_instance.", file=__file__, function=inspect.currentframe().f_code.co_name)
             else:
                 error_message = f"No relevant data could be extracted from '{file_name}'. CSV file was not created."
-                messagebox.showwarning("No Data Extracted", error_message)
+                # Removed messagebox.showwarning
                 print(f"🚫 {error_message}") # This will go to the tab's console
 
         except FileNotFoundError as e:
             error_message = f"File not found: {e}"
-            messagebox.showerror("File Error", error_message)
+            # Removed messagebox.showerror
             print(f"❌ {error_message}") # This will go to the tab's console
         except ET.ParseError as e:
             error_message = f"Error parsing XML (SHW) file: {e}"
-            messagebox.showerror("Parsing Error", error_message)
+            # Removed messagebox.showerror
             print(f"❌ {error_message}") # This will go to the tab's console
         except Exception as e:
             error_message = f"An unexpected error occurred during conversion: {e}"
-            messagebox.showerror("Conversion Error", error_message)
+            # Removed messagebox.showerror
             print(f"❌ {error_message}") # This will go to the tab's console
         
         finally:
