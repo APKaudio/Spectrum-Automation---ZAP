@@ -397,7 +397,7 @@ def set_focus_frequency_logic(app_instance, frequency_hz, file=__file__, functio
         debug_print(f"Sent: :SENSe:FREQuency:CENTer {frequency_hz}", file=file, function=function)
 
         # Set span around the focus frequency
-        focus_width = _get_float_value(app_instance.desired_default_focus_width_var, 10000.0, "desired_default_focus_width_var")
+        focus_width = _get_float_value(app_instance.desired_default_focus_width_var, 10000000.0, "desired_default_focus_width_var")
         if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {focus_width}"): return False
         debug_print(f"Sent: :SENSe:FREQuency:SPAN {focus_width}", file=file, function=function)
 

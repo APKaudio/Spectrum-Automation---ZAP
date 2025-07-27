@@ -80,7 +80,7 @@ def start_scan_thread_logic(app_instance):
     ))
     scan_thread.daemon = True # Allow the thread to exit with the main program
     scan_thread.start()
-    app_instance._update_console_line("Scan started in background...", False)
+    app_instance._update_console_line("Scan started in background...")
 
 
 def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
@@ -104,7 +104,8 @@ def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
                     break
 
             app_instance.current_scan_cycle_count += 1
-            app_instance._update_console_line(f"Starting scan cycle {app_instance.current_scan_cycle_count}...", True)
+            # Removed 'True' argument as _update_console_line no longer takes 'overwrite'
+            app_instance._update_console_line(f"Starting scan cycle {app_instance.current_scan_cycle_count}...")
 
             # Call the scan_bands function from scan_instrument.py
             last_successful_band_index, current_cycle_csv_filename = scan_bands(
@@ -118,7 +119,8 @@ def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
             )
 
             if app_instance.stop_event.is_set():
-                app_instance._update_console_line("Scan stopped by user.", False)
+                # Removed 'False' argument
+                app_instance._update_console_line("Scan stopped by user.")
                 break
 
             if current_cycle_csv_filename:
@@ -126,7 +128,8 @@ def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
                 try:
                     df = pd.read_csv(current_cycle_csv_filename, header=None, names=['Frequency_MHz', 'Power_dBm'])
                     app_instance.collected_scans_dataframes.append(df)
-                    app_instance._update_console_line(f"Cycle {app_instance.current_scan_cycle_count} data collected. Total dataframes: {len(app_instance.collected_scans_dataframes)}", True)
+                    # Removed 'True' argument
+                    app_instance._update_console_line(f"Cycle {app_instance.current_scan_cycle_count} data collected. Total dataframes: {len(app_instance.collected_scans_dataframes)}")
 
                     # Generate single scan plot after each cycle if desired
                     if app_instance.open_html_after_complete_var.get():
@@ -137,26 +140,30 @@ def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
                                            app_instance, current_cycle_csv_filename, plot_html_output_path, True)
 
                 except Exception as e:
-                    app_instance._update_console_line(f"❌ Error processing CSV for cycle {app_instance.current_scan_cycle_count}: {e}", False)
+                    # Removed 'False' argument
+                    app_instance._update_console_line(f"❌ Error processing CSV for cycle {app_instance.current_scan_cycle_count}: {e}")
                     debug_print(f"Error processing CSV for cycle {app_instance.current_scan_cycle_count}: {e}", file=__file__, function=inspect.currentframe().f_code.co_name)
                     # FIX: Schedule messagebox.showerror on the main thread
                     app_instance.after(100, messagebox.showerror, "Error Processing CSV", f"Error processing CSV for cycle {app_instance.current_scan_cycle_count}: {e}")
                     break # Stop scan on critical error
 
             else:
-                app_instance._update_console_line(f"🚫 No data collected for cycle {app_instance.current_scan_cycle_count}.", False)
+                # Removed 'False' argument
+                app_instance._update_console_line(f"🚫 No data collected for cycle {app_instance.current_scan_cycle_count}.")
                 # If a band failed, we might want to continue to the next or stop.
                 # For now, let's continue if no data was collected for a band, but log it.
 
             time.sleep(cycle_wait_time_val) # Wait before next cycle
 
     except pyvisa.errors.VisaIOError as e:
-        app_instance._update_console_line(f"❌ VISA I/O Error during scan: {e}", False)
+        # Removed 'False' argument
+        app_instance._update_console_line(f"❌ VISA I/O Error during scan: {e}")
         # FIX: Schedule messagebox.showerror on the main thread
         app_instance.after(100, messagebox.showerror, "VISA Error", f"A VISA I/O error occurred during scan: {e}")
         debug_print(f"VISA I/O Error during scan: {e}", file=__file__, function=inspect.currentframe().f_code.co_name)
     except Exception as e:
-        app_instance._update_console_line(f"❌ An unexpected error occurred during scan: {e}", False)
+        # Removed 'False' argument
+        app_instance._update_console_line(f"❌ An unexpected error occurred during scan: {e}")
         # FIX: Schedule messagebox.showerror on the main thread
         app_instance.after(100, messagebox.showerror, "Scan Error", f"An unexpected error occurred during scan: {e}")
         debug_print(f"Unexpected error during scan: {e}", file=__file__, function=inspect.currentframe().f_code.co_name)
@@ -173,9 +180,11 @@ def run_scan_logic(app_instance, rbw_val, cycle_wait_time_val, maxhold_time_val,
         if app_instance.collected_scans_dataframes:
             # FIX: Correctly pass arguments to config method
             app_instance.after(100, lambda: app_instance.plot_button.config(state=tk.NORMAL))
-            app_instance._update_console_line("Scan finished. Plot button enabled.", False)
+            # Removed 'False' argument
+            app_instance._update_console_line("Scan finished. Plot button enabled.")
         else:
-            app_instance._update_console_line("Scan finished. No data collected for plotting.", False)
+            # Removed 'False' argument
+            app_instance._update_console_line("Scan finished. No data collected for plotting.")
 
 
 def stop_scan_logic(app_instance):
@@ -185,7 +194,8 @@ def stop_scan_logic(app_instance):
     if app_instance.scanning:
         app_instance.stop_event.set()
         app_instance.pause_event.set() # Also set pause event to unblock if paused
-        app_instance._update_console_line("Stopping scan...", False)
+        # Removed 'False' argument
+        app_instance._update_console_line("Stopping scan...")
     else:
         messagebox.showwarning("No Scan in Progress", "No scan is currently running to stop.")
 
@@ -195,12 +205,14 @@ def pause_resume_scan_logic(app_instance):
         if app_instance.paused:
             app_instance.pause_resume_button.config(text="Resume Scan")
             app_instance._start_pause_button_blink() # Start blinking when paused
-            app_instance.after(100, app_instance._update_console_line, "Scan Paused. Click Resume to continue.", False)
+            # Removed 'False' argument
+            app_instance.after(100, app_instance._update_console_line, "Scan Paused. Click Resume to continue.")
         else:
             app_instance.pause_event.set() # Signal to resume
             app_instance.pause_resume_button.config(text="Pause Scan")
             app_instance._stop_pause_button_blink() # Stop blinking when resumed
-            app_instance.after(100, app_instance._update_console_line, "Scan Resumed.", True)
+            # Removed 'True' argument
+            app_instance.after(100, app_instance._update_console_line, "Scan Resumed.")
     else:
         messagebox.showwarning("No Scan in Progress", "No scan is currently running to pause or resume.")
 
@@ -224,3 +236,4 @@ def reset_scan_buttons_logic(app_instance):
         # Disable query presets button
         if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
             app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)
+

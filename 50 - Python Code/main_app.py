@@ -154,10 +154,10 @@ class ScanConfigurationTab(ttk.Frame):
         self.app_instance.start_scan_button = ttk.Button(scan_control_frame, text="Start Scan", command=lambda: start_scan_thread_logic(self.app_instance), state=tk.DISABLED, style='Green.TButton')
         self.app_instance.start_scan_button.grid(row=0, column=0, padx=5, pady=2, sticky="ew")
 
-        self.app_instance.stop_scan_button = ttk.Button(scan_control_frame, text="Stop Scan", command=lambda: stop_scan_logic(self.app_instance), state=tk.DISABLED, style='Red.TButton')
+        self.app_instance.stop_scan_button = ttk.Button(scan_control_frame, text="Stop Scan", command=lambda: stop_scan_logic(self.app_instance), state=tk.NORMAL, style='Red.TButton') # Changed to NORMAL for testing
         self.app_instance.stop_scan_button.grid(row=1, column=0, padx=5, pady=2, sticky="ew")
 
-        self.app_instance.pause_resume_button = ttk.Button(scan_control_frame, text="Pause Scan", command=lambda: pause_resume_scan_logic(self.app_instance), state=tk.DISABLED, style='Orange.TButton')
+        self.app_instance.pause_resume_button = ttk.Button(scan_control_frame, text="Pause Scan", command=lambda: pause_resume_scan_logic(self.app_instance), state=tk.NORMAL, style='Orange.TButton') # Changed to NORMAL for testing
         self.app_instance.pause_resume_button.grid(row=2, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.pause_blink_id = None # For blinking effect
 
@@ -288,8 +288,12 @@ class ScanConfigurationTab(ttk.Frame):
         # Populate band checkboxes
         for i, band_item in enumerate(self.app_instance.band_vars):
             band_name = band_item["band"]["Band Name"]
+            start_freq = band_item["band"]["Start MHz"]
+            stop_freq = band_item["band"]["Stop MHz"]
+            # Display band name with start and stop frequencies
+            display_text = f"{band_name} ({start_freq:.3f} - {stop_freq:.3f} MHz)"
             var = band_item["var"]
-            chk = ttk.Checkbutton(self.app_instance.inner_band_frame, text=band_name, variable=var,
+            chk = ttk.Checkbutton(self.app_instance.inner_band_frame, text=display_text, variable=var,
                                   command=self.app_instance._on_band_checkbox_change)
             chk.grid(row=i, column=0, sticky="w", padx=5, pady=1)
 
@@ -730,20 +734,16 @@ class App(tk.Tk):
         """Toggles the global debug mode and updates the setting."""
         new_state = self.general_debug_enabled_var.get()
         set_debug_mode(new_state)
-        # --- FIX: Correct how _on_setting_change is called for these specific toggles ---
         # The _on_setting_change expects a tk_var and a config_key.
         # It's better to pass the actual tk_var instance directly.
         # Also, the config_key should be the 'last_key' string, not the tk_var instance.
         self._on_setting_change(self.general_debug_enabled_var, 'last_general_debug_enabled')
-        # --- END FIX ---
 
     def _toggle_log_visa_commands(self):
         """Toggles the global VISA command logging mode and updates the setting."""
         new_state = self.log_visa_commands_enabled_var.get()
         set_log_visa_commands_mode(new_state)
-        # --- FIX: Correct how _on_setting_change is called for these specific toggles ---
         self._on_setting_change(self.log_visa_commands_enabled_var, 'last_log_visa_commands_enabled')
-        # --- END FIX ---
 
 
     def _browse_output_folder(self):
@@ -765,26 +765,15 @@ class App(tk.Tk):
         sys.stderr = TextRedirector(self.console_text, "stderr")
         print("Console output redirected to GUI.")
 
-    def _update_console_line(self, message, overwrite=False):
+    def _update_console_line(self, message):
         """
-        Updates the last line of the console or appends a new one.
-        Used for progress updates that overwrite the same line.
+        Updates the console with a new message, always on a new line.
+        This function no longer handles overwriting; TextRedirector does that if \r is present.
         """
         if self.console_text:
-            self.console_text.see(tk.END) # Scroll to end
-            self.console_text.update_idletasks() # Ensure update happens immediately
-
-            if overwrite:
-                # Find the start of the last line and delete it
-                try:
-                    last_line_start = self.console_text.index("end-1c linestart")
-                    self.console_text.delete(last_line_start, "end-1c")
-                except TclError:
-                    # Handle case where there's no previous line (e.g., first message)
-                    pass
-            
-            self.console_text.insert(tk.END, message + "\n")
-            self.console_text.see(tk.END) # Scroll to end again
+            # Simply write the message. TextRedirector's write method will handle
+            # appending it and adding a newline.
+            sys.stdout.write(message)
 
 
     def _start_connect_button_blink(self):
@@ -816,7 +805,6 @@ class App(tk.Tk):
         self.connect_button_blink_id = self.after(500, self._blink_connect_button)
 
 
-    # FIX: Added missing _toggle_pause_button_color method
     def _toggle_pause_button_color(self):
         """Toggles the pause/resume button color for blinking."""
         current_style = self.pause_resume_button.cget("style")

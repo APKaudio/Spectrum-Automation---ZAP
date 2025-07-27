@@ -25,53 +25,38 @@ class TextRedirector(object):
         """
         self.widget = widget
         self.tag = tag
+        # The last_char_was_cr flag is no longer strictly needed for the simplified write,
+        # but keeping it for now if future complex behavior is reintroduced.
         self.last_char_was_cr = False
 
     def write(self, str_val):
         """
         Writes the given string value to the Tkinter scrolled text widget.
-        Handles carriage returns (`\r`) to overwrite the current line,
-        useful for progress bars or dynamic console updates.
+        This simplified version will always append the string and then a newline,
+        effectively making every "print" statement appear on a new line.
 
         Inputs:
             str_val (str): The string to write to the console.
         Process:
-            1. Sets the widget state to `tk.NORMAL` to allow editing.
-            2. Checks if `str_val` contains `\r`.
-            3. If `\r` is present, splits the string and handles line deletion
-               for overwriting if the previous character was also a carriage return.
-            4. Inserts the string (or parts of it) into the widget at the end.
-            5. Scrolls the widget to the end to show the latest output.
-            6. Sets the widget state back to `tk.DISABLED` to prevent user editing.
-            7. Updates Tkinter idle tasks to ensure immediate display.
+            1. Inserts the string value at the end of the widget.
+            2. Appends a newline character.
+            3. Scrolls to the end of the text widget to show the latest output.
         Outputs: None
         """
-        self.widget.config(state=tk.NORMAL)
-        
-        if '\r' in str_val:
-            parts = str_val.split('\r')
-            for i, part in enumerate(parts):
-                if self.last_char_was_cr and i == 0:
-                    self.widget.delete("end-1c linestart", "end-1c")
-                self.widget.insert(tk.END, part, (self.tag,))
-                self.widget.see(tk.END)
-                if i < len(parts) - 1:
-                    self.last_char_was_cr = True
-                else:
-                    self.last_char_was_cr = False
-        else:
-            self.widget.insert(tk.END, str_val, (self.tag,))
-            self.widget.see(tk.END)
-            self.last_char_was_cr = False
+        self.widget.insert(tk.END, str_val)
+        # Ensure a newline is always added if the string doesn't already end with one,
+        # to prevent "run-on" lines from different print statements.
+        if not str_val.endswith('\n'):
+            self.widget.insert(tk.END, '\n')
+        self.widget.see(tk.END) # Always scroll to the end
+        self.widget.update_idletasks() # Ensure the display updates immediately
 
-        self.widget.config(state=tk.DISABLED)
-        self.widget.update_idletasks()
 
     def flush(self):
         """
-        Required method for file-like objects. Does nothing in this implementation.
+        Required for file-like objects. Ensures that output is processed.
         """
-        pass
+        pass # Tkinter widget updates are handled by .see(tk.END) and .update_idletasks()
 
 def print_art():
     """

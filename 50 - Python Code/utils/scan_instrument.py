@@ -107,7 +107,23 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                                                          for the current cycle, or None if no data.
     """
     debug_print(f"Starting scan_bands for cycle {current_scan_cycle_count}...", file=file, function=function)
-    
+    debug_print(f"scan_bands parameters: "
+                f"instrument_model={instrument_model}, "
+                f"rbw_val={rbw_val}, "
+                f"cycle_wait_time_val={cycle_wait_time_val}, "
+                f"maxhold_time_val={maxhold_time_val}, "
+                f"reference_level_val={reference_level_val}, "
+                f"freq_shift_val={freq_shift_val}, "
+                f"maxhold_enabled_val={maxhold_enabled_val}, "
+                f"high_sensitivity_val={high_sensitivity_val}, "
+                f"preamp_on_val={preamp_on_val}, "
+                f"scan_rbw_segmentation_val={scan_rbw_segmentation_val}, "
+                f"scan_name='{scan_name}', "
+                f"output_folder='{output_folder}', "
+                f"selected_bands={selected_bands}, "
+                f"current_scan_cycle_count={current_scan_cycle_count}",
+                file=file, function=function)
+
     # Ensure output folder exists
     os.makedirs(output_folder, exist_ok=True)
 
@@ -126,15 +142,17 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
     timestamp_hm = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_filename_current_cycle = os.path.join(output_folder, f"{scan_name}_Cycle{current_scan_cycle_count}_{timestamp_hm}.csv")
 
-    app_instance_ref.after(0, app_instance_ref._update_console_line, "\n--- 📡 Starting Band Scan ---", False)
-    app_instance_ref.after(0, app_instance_ref._update_console_line, "💾 Assuming ASCII data format for trace data.", False)
+    app_instance_ref.after(0, app_instance_ref._update_console_line, "\n--- 📡 Starting Band Scan ---")
+    app_instance_ref.after(0, app_instance_ref._update_console_line, "💾 Assuming ASCII data format for trace data.")
 
     # Calculate overall start and stop frequencies for the entire selected_bands list
     if selected_bands:
-        overall_start_freq_hz = (selected_bands[0]["Start MHz"] * MHZ_TO_HZ) + freq_shift_val
-        overall_stop_freq_hz = (selected_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + freq_shift_val
+        # Sort bands by start frequency to ensure overall range is correct
+        sorted_bands = sorted(selected_bands, key=lambda x: x["Start MHz"])
+        overall_start_freq_hz = (sorted_bands[0]["Start MHz"] * MHZ_TO_HZ) + freq_shift_val
+        overall_stop_freq_hz = (sorted_bands[-1]["Stop MHz"] * MHZ_TO_HZ) + freq_shift_val
     else:
-        app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No bands selected for scanning.", False)
+        app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No bands selected for scanning.")
         return -1, None
 
     # --- Apply global instrument settings once before starting band-specific sweeps ---
@@ -143,44 +161,44 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
     vbw_calculated = rbw_val * VBW_RBW_RATIO
     if not write_safe(inst, f":SENSE:BAND:VID {vbw_calculated}"): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                           f"📏 Global RBW set to {rbw_val/1000:.0f} kHz, VBW to {vbw_calculated:.0f} Hz.", False)
+                           f"📏 Global RBW set to {rbw_val/1000:.0f} kHz, VBW to {vbw_calculated:.0f} Hz.")
 
     # Set Reference Level
     if not write_safe(inst, f":DISPlay:WINdow:TRACe:Y:RLEVel {reference_level_val}DBM"): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                           f"⬆️ Reference Level set to {reference_level_val} dBm.", False)
+                           f"⬆️ Reference Level set to {reference_level_val} dBm.")
     
     # Set Preamplifier
     preamp_cmd = ":INPut:ATTenuation:PREamp ON" if preamp_on_val else ":INPut:ATTenuation:PREamp OFF"
     if not write_safe(inst, preamp_cmd): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                           f"⚡ Preamplifier set to {'ON' if preamp_on_val else 'OFF'}.", False)
+                           f"⚡ Preamplifier set to {'ON' if preamp_on_val else 'OFF'}.")
 
     # Set High Sensitivity (N9340B specific)
     if is_n9340b:
         hs_cmd = ":SENSe:POWer:RF:HSENs ON" if high_sensitivity_val else ":SENSe:POWer:RF:HSENs OFF"
         if not write_safe(inst, hs_cmd): return last_successful_band_index, None
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"🔬 High Sensitivity set to {'ON' if high_sensitivity_val else 'OFF'}.", False)
+                               f"🔬 High Sensitivity set to {'ON' if high_sensitivity_val else 'OFF'}.")
 
     # Set Frequency Shift
     if freq_shift_val != 0:
         if not write_safe(inst, f":FREQuency:SHIFt {freq_shift_val}"): return last_successful_band_index, None
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"↔️ Frequency Shift set to {freq_shift_val} Hz.", False)
+                               f"↔️ Frequency Shift set to {freq_shift_val} Hz.")
     else:
         if not write_safe(inst, ":FREQuency:SHIFt 0"): return last_successful_band_index, None
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               "↔️ Frequency Shift set to 0 Hz.", False)
+                               "↔️ Frequency Shift set to 0 Hz.")
 
     # Set Sweep Time to Auto
     if not write_safe(inst, ":SWEep:TIME:AUTO ON"): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                           "⏱️ Sweep Time set to Auto.", False)
+                           "⏱️ Sweep Time set to Auto.")
     # Set initial trace modes (blank all, then set Trace2 for Max Hold/Normal)
     if not write_safe(inst, ":TRAC1:MODE BLANk;:TRAC2:MODE BLANk;:TRAC3:MODE BLANk"): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                           "✨ Traces 1, 2, 3 set to Blank mode.", False)
+                           "✨ Traces 1, 2, 3 set to Blank mode.")
     # --- End global instrument settings ---
 
 
@@ -196,8 +214,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"\n📈 [{current_time}] Processing Band: {band_name} (Shifted Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)", 
-                               False)
+                               f"\n📈 [{current_time}] Processing Band: {band_name} (Shifted Range: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {band_stop_freq_hz/MHZ_TO_HZ:.3f} MHz)")
 
         # Determine actual_sweep_points based on instrument model
         if instrument_model == "N9340B":
@@ -207,57 +224,65 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
         else:
             expected_sweep_points = 500 # Default for unknown models
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} ({instrument_model if instrument_model else 'Unknown'} detected).", 
-                               False)
+                               f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} ({instrument_model if instrument_model else 'Unknown'} detected).")
 
 
-        # Calculate total number of segments for the current band based on desired RBW and sweep points
+        # --- Corrected Segment Calculation Logic ---
         full_band_span_hz = band_stop_freq_hz - band_start_freq_hz
+        
         if full_band_span_hz <= 0:
+            # Handle zero or negative span (e.g., single frequency point)
             total_segments_in_band = 1
-            optimal_segment_span_hz = full_band_span_hz
+            optimal_segment_span_hz = max(1.0, full_band_span_hz) # Ensure it's at least 1 Hz if zero
         else:
-            # Calculate total segments to cover the band with the desired RBW segmentation
-            # Each segment will have approximately (expected_sweep_points - 1) * scan_rbw_segmentation_val span
-            span_per_segment_at_rbw = scan_rbw_segmentation_val * (expected_sweep_points - 1)
-            total_segments_in_band = int(np.ceil(full_band_span_hz / span_per_segment_at_rbw))
-            if total_segments_in_band == 0:
-                total_segments_in_band = 1
+            # Calculate the span per segment based on scan_rbw_segmentation_val and expected_sweep_points
+            # This is the span that the instrument will sweep in one go.
+            span_per_instrument_sweep = scan_rbw_segmentation_val * (expected_sweep_points - 1)
             
-            # Now calculate the actual segment span to ensure equal division across the band
+            # Ensure span_per_instrument_sweep is not zero to avoid division by zero
+            if span_per_instrument_sweep <= 0:
+                span_per_instrument_sweep = 1 # Fallback to 1 Hz to prevent division by zero
+
+            # Calculate the number of segments needed to cover the full band span
+            total_segments_in_band = int(np.ceil(full_band_span_hz / span_per_instrument_sweep))
+            if total_segments_in_band == 0:
+                total_segments_in_band = 1 # At least one segment even for very small spans
+
+            # Calculate the actual optimal segment span to divide the band equally
             optimal_segment_span_hz = full_band_span_hz / total_segments_in_band
-            # Ensure it's at least the minimum possible span for expected_sweep_points > 1
-            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation_val * (expected_sweep_points - 1)):
-                optimal_segment_span_hz = scan_rbw_segmentation_val * (expected_sweep_points - 1)
+        # --- End Corrected Segment Calculation Logic ---
 
 
         # The effective scan stop frequency for the segment loop
-        effective_scan_stop_freq_hz = band_start_freq_hz + (total_segments_in_band * optimal_segment_span_hz)
+        # This should be the actual end of the current band, not an extended range.
+        effective_scan_stop_freq_hz = band_stop_freq_hz 
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"🎯 Optimal segment span for {band_name}: {optimal_segment_span_hz / MHZ_TO_HZ:.3f} MHz.", 
-                               False)
+                               f"🎯 Optimal segment span for {band_name}: {optimal_segment_span_hz / MHZ_TO_HZ:.3f} MHz.")
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"📏 Effective scanned range for equal segments: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {effective_scan_stop_freq_hz/MHZ_TO_HZ:.3f} MHz.", 
-                               False)
+                               f"📏 Effective scanned range for equal segments: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {effective_scan_stop_freq_hz/MHZ_TO_HZ:.3f} MHz.")
 
 
         current_segment_start_freq_hz = band_start_freq_hz
         segment_counter = 0
 
-        while current_segment_start_freq_hz < effective_scan_stop_freq_hz and not stop_event.is_set():
+        # Loop until the current segment start frequency reaches or exceeds the band's actual stop frequency
+        while current_segment_start_freq_hz < band_stop_freq_hz and not stop_event.is_set():
             # Handle pause/resume
             while pause_event.is_set():
-                app_instance_ref.after(0, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
+                app_instance_ref.after(0, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.")
                 time.sleep(0.1)
                 if stop_event.is_set(): # Check stop event even when paused
                     debug_print(f"Stop event detected during pause in segment {segment_counter + 1}.", file=file, function=function)
                     return last_successful_band_index, csv_filename_current_cycle
 
+            if stop_event.is_set(): # Check stop event after pause loop
+                debug_print(f"Stop event detected, exiting band scan loop.", file=file, function=function)
+                break
+
             segment_counter += 1
             segment_stop_freq_hz = current_segment_start_freq_hz + optimal_segment_span_hz
 
             # Ensure segment stop frequency does not exceed the band's actual stop frequency
-            # This is important for the last segment if optimal_segment_span_hz overshoots slightly
             segment_stop_freq_hz = min(segment_stop_freq_hz, band_stop_freq_hz)
 
             # --- Minimal Instrument Settings per segment ---
@@ -281,8 +306,8 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             if maxhold_enabled_val and maxhold_time_val > 0:
                 for _ in range(int(maxhold_time_val * 10)): # Check every 0.1 seconds
                     while pause_event.is_set():
-                        app_instance_ref.after(0, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.", False)
-                        time.sleep(0.1)
+                        app_instance_ref.after(0, app_instance_ref._update_console_line, "Scan Paused. Click Resume to continue.")
+                        time.sleep(0.1) # Sleep briefly while paused
                         if stop_event.is_set():
                             debug_print(f"Stop event detected during pause in max hold for segment {segment_counter + 1}.", file=file, function=function)
                             return last_successful_band_index, csv_filename_current_cycle
@@ -294,9 +319,9 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                     if _ % 10 == 0: # Every 10 iterations (1 second)
                         sec_remaining = int(maxhold_time_val - (_ / 10))
                         display_text = f"⏳ {sec_remaining}"
-                        app_instance_ref.after(0, app_instance_ref._update_console_line, display_text, True) # Overwrite
+                        app_instance_ref.after(0, app_instance_ref._update_console_line, display_text) # No \r here
                     time.sleep(0.1)
-                app_instance_ref.after(0, app_instance_ref._update_console_line, "✅", True) # Overwrite with final checkmark
+                app_instance_ref.after(0, app_instance_ref._update_console_line, "✅") # No \r here
 
             if stop_event.is_set():
                 debug_print(f"Stop event detected after max hold for segment {segment_counter + 1}.", file=file, function=function)
@@ -309,16 +334,11 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             # Using '█' (U+2588 Full Block) and '-' (Hyphen) for better compatibility
             progressbar = '█' * filled_length + '-' * (bar_length - filled_length)
 
-            # Combined print statement as per user request, now using _update_console_line with overwrite
-            # Removed the trailing '\n' from progress_message as _update_console_line with overwrite=True
-            # handles line breaks automatically for overwriting effect.
+            # Combined print statement as per user request, now using _update_console_line without overwrite
             progress_message = (f"{progressbar}🔍 Span:📊{optimal_segment_span_hz/MHZ_TO_HZ:.3f} MHz--"
                                 f"📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to "
                                 f"📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz   ✅{segment_counter} of {total_segments_in_band} ")
-            # Add '\r' to ensure the next message overwrites this line correctly, as requested by the user.
-            # While `overwrite=True` in `_update_console_line` handles this, explicitly adding `\r` here
-            # ensures adherence to the user's provided snippet.
-            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message + '\r', True)
+            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message) # No \r here
 
 
             # Read and process trace data
@@ -335,7 +355,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
 
                 if trace_data_str is None or "[Not Supported or Timeout]" in trace_data_str or not trace_data_str.strip():
-                    app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No valid trace data string received for this segment.", False)
+                    app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No valid trace data string received for this segment.")
                     current_segment_start_freq_hz = segment_stop_freq_hz
                     continue # Move to the next segment if no data
 
@@ -350,7 +370,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                     freq_step_per_point_actual = 0 # Single point, no step
                 else:
                     freq_step_per_point_actual = 0 # No points
-                    app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No trace data received for this segment after parsing.", False)
+                    app_instance_ref.after(0, app_instance_ref._update_console_line, "🚫 No trace data received for this segment after parsing.")
                     current_segment_start_freq_hz = segment_stop_freq_hz
                     continue # Move to the next segment if no data
 
@@ -385,23 +405,23 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                 last_successful_band_index = band_index
 
             except pyvisa.errors.VisaIOError as e:
-                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🛑 Error reading trace data (PyVISA IO Error): {e}", False)
-                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🐛 Raw data string potentially causing error: {e}", False)
+                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🛑 Error reading trace data (PyVISA IO Error): {e}")
+                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🐛 Raw data string potentially causing error: {e}")
                 # Do not raise, allow the scan to continue to the next segment/band if possible
                 break # Exit current band, try next if not stopping entirely
             except ValueError as e:
-                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🚫 Error processing ASCII trace data (ValueError - cannot convert/unpack): {e}", False)
-                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🐞 Raw data string for parsing: {e}", False)
+                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🚫 Error processing ASCII trace data (ValueError - cannot convert/unpack): {e}")
+                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🐞 Raw data string for parsing: {e}")
                 continue # Move to the next segment if parsing fails
             except Exception as e:
-                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🚨 An unexpected error occurred during trace processing: {e}", False)
+                app_instance_ref.after(0, app_instance_ref._update_console_line, f"🚨 An unexpected error occurred during trace processing: {e}")
                 continue # Move to the next segment if other error occurs
 
             # Move to the start of the next segment
             current_segment_start_freq_hz = segment_stop_freq_hz
 
     # --- After all bands are scanned, or if interrupted, process the collected raw data for the full sweep ---
-    app_instance_ref.after(0, app_instance_ref._update_console_line, "\n--- 🎉 Band Scan Complete! Processing collected data... ---", False)
+    app_instance_ref.after(0, app_instance_ref._update_console_line, "\n--- 🎉 Band Scan Complete! Processing collected data... ---")
     final_sweep_data_for_plotting = _process_raw_scan_data(
         raw_scan_data_for_current_sweep,
         overall_start_freq_hz, # Use the calculated overall start
@@ -410,23 +430,9 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
     if not final_sweep_data_for_plotting:
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name'] if last_successful_band_index != -1 else 'N/A'}.", 
-                               False)
+                               f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name'] if last_successful_band_index != -1 else 'N/A'}.")
         return last_successful_band_index, None # Return None for filename if no data after processing
     else:
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.", 
-                               False)
-
-    # Save the final processed data to CSV
-    try:
-        # write_scan_data_to_csv expects (freq_mhz, level_dbm)
-        # _process_raw_scan_data now returns (freq_mhz, level_dbm)
-        # Pass header as None to indicate no header should be written
-        write_scan_data_to_csv(csv_filename_current_cycle, None, final_sweep_data_for_plotting, append_mode=False)
-        app_instance_ref.after(0, app_instance_ref._update_console_line, f"✅ Full sweep data saved to: {csv_filename_current_cycle}", False)
+                               f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.")
         return last_successful_band_index, csv_filename_current_cycle
-    except Exception as e:
-        app_instance_ref.after(0, messagebox.showerror, "CSV Save Error", f"Could not save full sweep data to CSV: {e}")
-        app_instance_ref.after(0, app_instance_ref._update_console_line, f"❌ Error saving full sweep data to CSV: {e}", False)
-        return last_successful_band_index, None # Indicate failure to save CSV
