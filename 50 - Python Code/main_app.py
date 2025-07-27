@@ -58,7 +58,15 @@ from src.marker_logic import MarkersDisplayTab
 # This block ensures that all necessary Python packages are installed before the
 # application attempts to import and use them. This is critical for user experience,
 # as it prevents ModuleNotFoundError and guides the user if manual installation is needed.
-REQUIRED_PACKAGES = ['pyvisa', 'pandas', 'beautifulsoup4', 'lxml', 'pdfplumber', 'plotly', 'numpy']
+REQUIRED_PACKAGES = {
+    'pyvisa': 'pyvisa',
+    'pandas': 'pandas',
+    'beautifulsoup4': 'bs4', # FIX: Map 'beautifulsoup4' to its import name 'bs4'
+    'lxml': 'lxml',
+    'pdfplumber': 'pdfplumber',
+    'plotly': 'plotly',
+    'numpy': 'numpy'
+}
 
 def check_and_install_dependencies():
     """
@@ -66,11 +74,11 @@ def check_and_install_dependencies():
     """
     print("Checking for required Python packages...")
     packages_to_install = []
-    for package in REQUIRED_PACKAGES:
+    for package_name, import_name in REQUIRED_PACKAGES.items():
         try:
-            __import__(package)
+            __import__(import_name) # FIX: Use the actual import name for checking
         except ImportError:
-            packages_to_install.append(package)
+            packages_to_install.append(package_name) # Use the package name for pip install
 
     if packages_to_install:
         print(f"Missing packages: {', '.join(packages_to_install)}. Attempting to install...")
@@ -806,6 +814,16 @@ class App(tk.Tk):
         else:
             self.connect_button.config(style='Red.TButton')
         self.connect_button_blink_id = self.after(500, self._blink_connect_button)
+
+
+    # FIX: Added missing _toggle_pause_button_color method
+    def _toggle_pause_button_color(self):
+        """Toggles the pause/resume button color for blinking."""
+        current_style = self.pause_resume_button.cget("style")
+        if current_style == 'Red.TButton':
+            self.pause_resume_button.config(style='Orange.TButton')
+        else:
+            self.pause_resume_button.config(style='Red.TButton')
 
 
     def _start_pause_button_blink(self):
