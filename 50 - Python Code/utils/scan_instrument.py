@@ -296,12 +296,19 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             else:
                 if not write_safe(inst, ":TRAC2:MODE NORM;"): return last_successful_band_index, None # Use Normal if max hold is off
 
-            # Initiate a single sweep and wait for completion
-            if not write_safe(inst, ":INITiate:IMMediate"): return last_successful_band_index, None
-            if not query_safe(inst, "*OPC?"): # Wait for operation complete
-                debug_print("Operation not complete after initiate immediate.", file=file, function=function)
-                return last_successful_band_index, None
+            # Initiate a single sweep with :INITiate:CONTinuous ON
+            # This allows the instrument to sweep continuously.
+            if not write_safe(inst, ":INITiate:CONTinuous ON"): return last_successful_band_index, None
+            debug_print("Sent: :INITiate:CONTinuous ON", file=file, function=function)
 
+            # Wait for the cycle_wait_time_val to allow the scan to settle
+            app_instance_ref.after(0, app_instance_ref._update_console_line, f"⏳ Waiting for {cycle_wait_time_val:.1f} seconds for scan to settle...")
+            time.sleep(cycle_wait_time_val) # Introduce the settling time
+
+            # After settling, stop continuous sweep and query trace data
+            if not write_safe(inst, ":INITiate:CONTinuous OFF"): return last_successful_band_index, None
+            debug_print("Sent: :INITiate:CONTinuous OFF", file=file, function=function)
+            
             # Add settling time for max hold values to show up, if max hold is enabled
             if maxhold_enabled_val and maxhold_time_val > 0:
                 for _ in range(int(maxhold_time_val * 10)): # Check every 0.1 seconds
