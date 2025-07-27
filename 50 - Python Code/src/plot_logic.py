@@ -119,10 +119,21 @@ def plot_single_scan_data(
     shapes = []
     annotations = []
 
+    # Staggered Y-offset levels for text markers
+    y_offset_levels = [0.05, 0.10, 0.15, 0.20, 0.25] # Added one more level for more staggering
+
+    # Define a list of colors for custom markers
+    custom_marker_colors = [
+        "red", "darkorange", "orange", "gold", "yellow", "chartreuse", "green",
+        "emerald", "cyan", "deepskyblue", "blue", "indigo", "darkviolet", "magenta"
+    ]
+    zone_color_map = {} # To store assigned colors for each ZONE
+    color_index = 0
+
     # Add TV channel markers if enabled
     if include_tv_markers:
         debug_print("Adding TV channel markers...", file=current_file, function=current_function)
-        for marker in TV_PLOT_BAND_MARKERS:
+        for i, marker in enumerate(TV_PLOT_BAND_MARKERS):
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
@@ -137,11 +148,15 @@ def plot_single_scan_data(
                     layer="below"
                 )
             )
+            # Determine the Y position based on staggering
+            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+
             # Add text annotation for the band name
             annotations.append(
                 dict(
                     x=(start_freq + stop_freq) / 2,
-                    y=y_range_max - 5,  # Position slightly below max Y
+                    y=y_text_position,
                     text=band_name,
                     showarrow=False,
                     font=dict(color="orange", size=8),
@@ -155,7 +170,7 @@ def plot_single_scan_data(
     # Add Government band markers if enabled
     if include_gov_markers:
         debug_print("Adding Government band markers...", file=current_file, function=current_function)
-        for marker in GOV_PLOT_BAND_MARKERS:
+        for i, marker in enumerate(GOV_PLOT_BAND_MARKERS):
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
@@ -170,11 +185,15 @@ def plot_single_scan_data(
                     layer="below"
                 )
             )
+            # Determine the Y position based on staggering
+            current_y_offset = y_offset_levels[(i + 1) % len(y_offset_levels)] # Offset slightly from TV markers
+            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+
             # Add text annotation for the band name
             annotations.append(
                 dict(
                     x=(start_freq + stop_freq) / 2,
-                    y=y_range_max - 10,  # Position slightly below TV markers
+                    y=y_text_position,
                     text=band_name,
                     showarrow=False,
                     font=dict(color="lightgreen", size=8),
@@ -193,12 +212,14 @@ def plot_single_scan_data(
                 reader = csv.DictReader(file)
                 debug_print(f"MARKERS.CSV fieldnames: {reader.fieldnames}", file=current_file, function=current_function)
 
-                # Ensure 'FREQ' column exists in the header
-                if 'FREQ' not in reader.fieldnames:
-                    debug_print(f"Error: MARKERS.CSV at {markers_csv_path} does not have a 'FREQ' column. Headers found: {reader.fieldnames}. Skipping custom markers.", file=current_file, function=current_function)
+                # Ensure 'FREQ' and 'ZONE' columns exist in the header
+                if 'FREQ' not in reader.fieldnames or 'ZONE' not in reader.fieldnames:
+                    debug_print(f"Error: MARKERS.CSV at {markers_csv_path} does not have required 'FREQ' or 'ZONE' columns. Headers found: {reader.fieldnames}. Skipping custom markers.", file=current_file, function=current_function)
                 else:
                     marker_count = 0
-                    for row in reader:
+                    zone_marker_counts = {} # To track markers per zone for staggering
+
+                    for row_idx, row in enumerate(reader):
                         try:
                             freq_mhz = float(row['FREQ'])
                             zone = row.get('ZONE', 'N/A')
@@ -206,12 +227,23 @@ def plot_single_scan_data(
                             device = row.get('DEVICE', 'N/A')
                             name = row.get('NAME', 'N/A')
 
+                            # Assign color to zone if not already assigned
+                            if zone not in zone_color_map:
+                                zone_color_map[zone] = custom_marker_colors[color_index % len(custom_marker_colors)]
+                                color_index += 1
+                            marker_color = zone_color_map[zone]
+
+                            # Track marker count per zone for staggering
+                            zone_marker_counts[zone] = zone_marker_counts.get(zone, 0) + 1
+                            current_y_offset = y_offset_levels[zone_marker_counts[zone] % len(y_offset_levels)]
+                            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+
                             # Collect vertical dashed line
                             shapes.append(
                                 dict(
                                     type="line",
                                     x0=freq_mhz, y0=y_range_min, x1=freq_mhz, y1=y_range_max,
-                                    line=dict(dash="dash", color="white", width=3),
+                                    line=dict(dash="dash", color=marker_color, width=3),
                                     layer="above"
                                 )
                             )
@@ -225,12 +257,12 @@ def plot_single_scan_data(
                             annotations.append(
                                 dict(
                                     x=freq_mhz,
-                                    y=y_range_max, # Position at the top of the plot
+                                    y=y_text_position, # Use staggered Y position
                                     text=annotation_text,
                                     showarrow=False,
-                                    font=dict(color="white", size=9),
+                                    font=dict(color=marker_color, size=9),
                                     bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
-                                    bordercolor="white",
+                                    bordercolor=marker_color,
                                     borderwidth=0.5,
                                     xanchor="left", # Anchor text to the left of the line
                                     yanchor="top",  # Anchor text to the top of the plot
@@ -403,6 +435,17 @@ def plot_multi_trace_data(
     shapes = []
     annotations = []
 
+    # Staggered Y-offset levels for text markers
+    y_offset_levels = [0.05, 0.10, 0.15, 0.20, 0.25] # Added one more level for more staggering
+
+    # Define a list of colors for custom markers
+    custom_marker_colors = [
+        "red", "darkorange", "orange", "gold", "yellow", "chartreuse", "green",
+        "emerald", "cyan", "deepskyblue", "blue", "indigo", "darkviolet", "magenta"
+    ]
+    zone_color_map = {} # To store assigned colors for each ZONE
+    color_index = 0
+
     # Add historical overlays if provided
     if historical_dfs_with_names:
         debug_print("Adding historical overlays...", file=current_file, function=current_function)
@@ -430,7 +473,7 @@ def plot_multi_trace_data(
     # Add TV channel markers if enabled
     if include_tv_markers:
         debug_print("Adding TV channel markers...", file=current_file, function=current_function)
-        for marker in TV_PLOT_BAND_MARKERS:
+        for i, marker in enumerate(TV_PLOT_BAND_MARKERS):
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
@@ -444,10 +487,12 @@ def plot_multi_trace_data(
                     layer="below"
                 )
             )
+            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
             annotations.append(
                 dict(
                     x=(start_freq + stop_freq) / 2,
-                    y=y_range_max - 5,
+                    y=y_text_position,
                     text=band_name,
                     showarrow=False,
                     font=dict(color="orange", size=8),
@@ -462,7 +507,7 @@ def plot_multi_trace_data(
     # Add Government band markers if enabled
     if include_gov_markers:
         debug_print("Adding Government band markers...", file=current_file, function=current_function)
-        for marker in GOV_PLOT_BAND_MARKERS:
+        for i, marker in enumerate(GOV_PLOT_BAND_MARKERS):
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
@@ -476,10 +521,12 @@ def plot_multi_trace_data(
                     layer="below"
                 )
             )
+            current_y_offset = y_offset_levels[(i + 1) % len(y_offset_levels)] # Offset slightly from TV markers
+            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
             annotations.append(
                 dict(
                     x=(start_freq + stop_freq) / 2,
-                    y=y_range_max - 10,
+                    y=y_text_position,
                     text=band_name,
                     showarrow=False,
                     font=dict(color="lightgreen", size=8),
