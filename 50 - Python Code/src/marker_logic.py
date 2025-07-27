@@ -300,7 +300,7 @@ class MarkersDisplayTab(ttk.Frame):
             set_marker_and_trace_modes_logic(self.app_instance, freq, name)
         else:
             debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
-            messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+
 
     def _on_span_button_click(self, span_hz, button_widget=None, button_text=None, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
@@ -354,7 +354,7 @@ class MarkersDisplayTab(ttk.Frame):
                 return False
         else:
             debug_print("Cannot set span: Instrument not connected.", file=file, function=function)
-            messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+            
 
 
     def update_markers_data(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
@@ -414,4 +414,3 @@ class MarkersDisplayTab(ttk.Frame):
             # Changed messagebox to debug_print
             debug_print("No Markers File: MARKERS.CSV not found. Please generate a report first.", file=file, function=function)
             self.update_markers_data([], []) # Ensure display is clear if file doesn't exist
-

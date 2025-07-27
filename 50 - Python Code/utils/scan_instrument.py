@@ -52,6 +52,12 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
     # Convert Frequency to MHz
     df['Frequency_MHz'] = df['Frequency_Hz'] / MHZ_TO_HZ
 
+    # Ensure Power_dBm is numeric (it might be read as string from CSV if not handled)
+    # This line is crucial for preventing the TypeError
+    df['Power_dBm'] = pd.to_numeric(df['Power_dBm'], errors='coerce')
+    df.dropna(subset=['Power_dBm'], inplace=True) # Remove rows where conversion failed
+
+
     # Remove duplicates based on Frequency_MHz, keeping the last (or first, depending on preference)
     df.drop_duplicates(subset='Frequency_MHz', keep='last', inplace=True)
 
@@ -385,8 +391,9 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                 # and to segment_raw_data (for immediate CSV writing after filtering)
                 for j, amp_value in enumerate(trace_data):
                     current_freq_for_point_hz = current_segment_start_freq_hz + (j * freq_step_per_point_actual)
-                    segment_raw_data.append((current_freq_for_point_hz, amp_value))
-                    raw_scan_data_for_current_sweep.append((current_freq_for_point_hz, amp_value))
+                    # Convert amp_value to float here to ensure numeric type
+                    segment_raw_data.append((current_freq_for_point_hz, float(amp_value)))
+                    raw_scan_data_for_current_sweep.append((current_freq_for_point_hz, float(amp_value)))
 
 
                 # *** Filter segment data before writing to CSV ***
