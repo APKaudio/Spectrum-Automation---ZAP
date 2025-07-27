@@ -65,8 +65,8 @@ def plot_single_scan_data(
     include_gov_markers=False,
     include_markers_from_csv=False, # New parameter for custom markers
     markers_csv_path=None,          # Path to MARKERS.CSV
-    y_range_min=-100,
-    y_range_max=0
+    y_range_min_override=None,      # New parameter for overriding y_range_min
+    y_range_max_override=0          # New parameter for overriding y_range_max (default to 0)
 ):
     """
     Generates an interactive Plotly HTML plot for a single scan's frequency vs. amplitude data.
@@ -80,8 +80,8 @@ def plot_single_scan_data(
         include_gov_markers (bool): Whether to include Government band markers.
         include_markers_from_csv (bool): Whether to include custom markers from MARKERS.CSV.
         markers_csv_path (str): Path to the MARKERS.CSV file.
-        y_range_min (int): Minimum Y-axis (Amplitude) value.
-        y_range_max (int): Maximum Y-axis (Amplitude) value.
+        y_range_min_override (int, optional): If provided, overrides the calculated minimum Y-axis value.
+        y_range_max_override (int, optional): If provided, overrides the calculated maximum Y-axis value (default 0).
 
     Returns:
         tuple: A tuple containing the Plotly figure object and the output HTML path,
@@ -96,12 +96,21 @@ def plot_single_scan_data(
 
     # DataFrame should already have correct column names from scan_logic.py's pd.read_csv(..., names=...)
     debug_print(f"DataFrame columns received in plot_single_scan_data: {df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"DataFrame head received in plot_single_scan_data:\n{df.head()}", file=current_file, function=current_function)
+    debug_print(f"DataFrame head received in plot_single_scan_data:\n{df.head()}", file=current_function)
 
     # Check if the required columns exist
     if 'Frequency (MHz)' not in df.columns or 'Amplitude (dBm)' not in df.columns:
         debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing. Cannot plot.", file=current_file, function=current_function)
         return None, None
+
+    # Determine Y-axis range
+    y_range_max = y_range_max_override if y_range_max_override is not None else 0
+    y_range_min = y_range_min_override if y_range_min_override is not None else df['Amplitude (dBm)'].min() - 5 # Default to min data with padding
+
+    # Ensure a reasonable default range if data is flat or single point
+    if y_range_max <= y_range_min:
+        y_range_min = -100 # Fallback to a common low value if min is unexpectedly high or data is flat
+        y_range_max = 0 # Keep max at 0
 
     fig = go.Figure()
 
@@ -120,12 +129,28 @@ def plot_single_scan_data(
     annotations = []
 
     # Staggered Y-offset levels for text markers
-    y_offset_levels = [0.05, 0.10, 0.15, 0.20, 0.25] # Added one more level for more staggering
+    # These are relative offsets from the y_range_max for TV/Gov markers
+    # and from the marker_y_position for custom markers.
+    y_offset_levels_tv_gov = [0.05, 0.10, 0.15, 0.20, 0.25]
+    y_offset_levels_custom = [0, 0.05, 0.1, 0.15, 0.2] # Smaller offsets for custom markers to stack tightly
 
-    # Define a list of colors for custom markers
-    custom_marker_colors = [
-        "red", "darkorange", "orange", "gold", "yellow", "chartreuse", "green",
-        "emerald", "cyan", "deepskyblue", "blue", "indigo", "darkviolet", "magenta"
+    # Define a list of colors for custom markers (using Plotly-compatible RGBA colors for transparency)
+    # Each color will have 30% opacity (alpha = 0.3)
+    custom_marker_colors_rgba = [
+        "rgba(255, 0, 0, 0.9)",      # red
+        "rgba(255, 140, 0, 0.9)",    # DarkOrange
+        "rgba(255, 165, 0, 0.9)",    # orange
+        "rgba(255, 215, 0, 0.9)",    # gold
+        "rgba(255, 255, 0, 0.9)",    # yellow
+        "rgba(127, 255, 0, 0.9)",    # Chartreuse
+        "rgba(0, 128, 0, 0.9)",      # green
+        "rgba(46, 139, 87, 0.9)",    # SeaGreen
+        "rgba(0, 255, 255, 0.9)",    # cyan
+        "rgba(0, 191, 255, 0.9)",    # DeepSkyBlue
+        "rgba(0, 0, 255, 0.9)",      # blue
+        "rgba(75, 0, 130, 0.9)",     # indigo
+        "rgba(148, 0, 211, 0.9)",    # DarkViolet
+        "rgba(255, 0, 255, 0.9)"     # magenta
     ]
     zone_color_map = {} # To store assigned colors for each ZONE
     color_index = 0
@@ -143,13 +168,13 @@ def plot_single_scan_data(
                 dict(
                     type="rect",
                     x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                    fillcolor="rgba(255, 165, 0, 0.1)",  # Light orange, semi-transparent
-                    line_width=0,
+                    fillcolor="rgba(200, 200, 200, 0.1)",  # Light orange, semi-transparent
+                    line_width=1,
                     layer="below"
                 )
             )
             # Determine the Y position based on staggering
-            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+            current_y_offset = y_offset_levels_tv_gov[i % len(y_offset_levels_tv_gov)]
             y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
 
             # Add text annotation for the band name
@@ -180,13 +205,13 @@ def plot_single_scan_data(
                 dict(
                     type="rect",
                     x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                    fillcolor="rgba(144, 238, 144, 0.1)",  # Light green, semi-transparent
-                    line_width=0,
+                    fillcolor="rgba(150, 150, 150, 0.1)",  # Light green, semi-transparent
+                    line_width=1,
                     layer="below"
                 )
             )
             # Determine the Y position based on staggering
-            current_y_offset = y_offset_levels[(i + 1) % len(y_offset_levels)] # Offset slightly from TV markers
+            current_y_offset = y_offset_levels_tv_gov[(i + 1) % len(y_offset_levels_tv_gov)] # Offset slightly from TV markers
             y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
 
             # Add text annotation for the band name
@@ -218,6 +243,9 @@ def plot_single_scan_data(
                 else:
                     marker_count = 0
                     zone_marker_counts = {} # To track markers per zone for staggering
+                    
+                    # Define a base Y position for custom markers (e.g., -30 dBm)
+                    marker_base_y = -30
 
                     for row_idx, row in enumerate(reader):
                         try:
@@ -229,21 +257,23 @@ def plot_single_scan_data(
 
                             # Assign color to zone if not already assigned
                             if zone not in zone_color_map:
-                                zone_color_map[zone] = custom_marker_colors[color_index % len(custom_marker_colors)]
+                                zone_color_map[zone] = custom_marker_colors_rgba[color_index % len(custom_marker_colors_rgba)]
                                 color_index += 1
-                            marker_color = zone_color_map[zone]
+                            marker_color_rgba = zone_color_map[zone]
 
                             # Track marker count per zone for staggering
                             zone_marker_counts[zone] = zone_marker_counts.get(zone, 0) + 1
-                            current_y_offset = y_offset_levels[zone_marker_counts[zone] % len(y_offset_levels)]
-                            y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
+                            # Calculate staggered Y position relative to marker_base_y
+                            stagger_offset = y_offset_levels_custom[zone_marker_counts[zone] % len(y_offset_levels_custom)]
+                            y_text_position = marker_base_y - (y_range_max - y_range_min) * stagger_offset
+
 
                             # Collect vertical dashed line
                             shapes.append(
                                 dict(
                                     type="line",
                                     x0=freq_mhz, y0=y_range_min, x1=freq_mhz, y1=y_range_max,
-                                    line=dict(dash="dash", color=marker_color, width=3),
+                                    line=dict(dash="solid", color=marker_color_rgba, width=1), # Solid line, width 0.25, color includes transparency
                                     layer="above"
                                 )
                             )
@@ -260,9 +290,9 @@ def plot_single_scan_data(
                                     y=y_text_position, # Use staggered Y position
                                     text=annotation_text,
                                     showarrow=False,
-                                    font=dict(color=marker_color, size=9),
+                                    font=dict(color=marker_color_rgba, size=9), # Use RGBA color for font
                                     bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
-                                    bordercolor=marker_color,
+                                    bordercolor=marker_color_rgba, # Use RGBA color for border
                                     borderwidth=0.5,
                                     xanchor="left", # Anchor text to the left of the line
                                     yanchor="top",  # Anchor text to the top of the plot
@@ -350,8 +380,8 @@ def plot_multi_trace_data(
     include_gov_markers=False,
     historical_dfs_with_names=None,
     output_html_path=None,
-    y_range_min=-100,
-    y_range_max=0
+    y_range_min_override=None, # New parameter for overriding y_range_min
+    y_range_max_override=0     # New parameter for overriding y_range_max (default to 0)
 ):
     """
     Generates an interactive Plotly HTML plot for aggregated scan data (average, median, etc.)
@@ -366,12 +396,21 @@ def plot_multi_trace_data(
 
     # DataFrame should already have correct column names from scan_logic.py's pd.read_csv(..., names=...)
     debug_print(f"Aggregated DataFrame columns received in plot_multi_trace_data: {aggregated_df.columns.tolist()}", file=current_file, function=current_function)
-    debug_print(f"Aggregated DataFrame head received in plot_multi_trace_data:\n{aggregated_df.head()}", file=current_file, function=current_function)
+    debug_print(f"Aggregated DataFrame head received in plot_multi_trace_data:\n{aggregated_df.head()}", file=current_function)
 
     # Check if the required columns exist
     if 'Frequency (MHz)' not in aggregated_df.columns or 'Amplitude (dBm)' not in aggregated_df.columns:
         debug_print("❌ Required columns 'Frequency (MHz)' or 'Amplitude (dBm)' are missing in aggregated_df. Cannot plot.", file=current_file, function=current_function)
         return None, None
+
+    # Determine Y-axis range
+    y_range_max = y_range_max_override if y_range_max_override is not None else 0
+    y_range_min = y_range_min_override if y_range_min_override is not None else aggregated_df['Amplitude (dBm)'].min() - 5 # Default to min data with padding
+
+    # Ensure a reasonable default range if data is flat or single point
+    if y_range_max <= y_range_min:
+        y_range_min = -100 # Fallback to a common low value if min is unexpectedly high or data is flat
+        y_range_max = 0 # Keep max at 0
 
     fig = go.Figure()
 
@@ -436,12 +475,25 @@ def plot_multi_trace_data(
     annotations = []
 
     # Staggered Y-offset levels for text markers
-    y_offset_levels = [0.05, 0.10, 0.15, 0.20, 0.25] # Added one more level for more staggering
+    y_offset_levels_tv_gov = [0.05, 0.10, 0.15, 0.20, 0.25]
+    y_offset_levels_custom = [0, 0.02, 0.04, 0.06, 0.08] # Smaller offsets for custom markers to stack tightly
 
     # Define a list of colors for custom markers
-    custom_marker_colors = [
-        "red", "darkorange", "orange", "gold", "yellow", "chartreuse", "green",
-        "emerald", "cyan", "deepskyblue", "blue", "indigo", "darkviolet", "magenta"
+    custom_marker_colors_rgba = [
+        "rgba(255, 0, 0, 0.7)",      # red
+        "rgba(255, 140, 0, 0.7)",    # DarkOrange
+        "rgba(255, 165, 0, 0.7)",    # orange
+        "rgba(255, 215, 0, 0.7)",    # gold
+        "rgba(255, 255, 0, 0.7)",    # yellow
+        "rgba(127, 255, 0, 0.7)",    # Chartreuse
+        "rgba(0, 128, 0, 0.7)",      # green
+        "rgba(46, 139, 87, 0.7)",    # SeaGreen
+        "rgba(0, 255, 255, 0.7)",    # cyan
+        "rgba(0, 191, 255, 0.7)",    # DeepSkyBlue
+        "rgba(0, 0, 255, 0.7)",      # blue
+        "rgba(75, 0, 130, 0.7)",     # indigo
+        "rgba(148, 0, 211, 0.7)",    # DarkViolet
+        "rgba(255, 0, 255, 0.7)"     # magenta
     ]
     zone_color_map = {} # To store assigned colors for each ZONE
     color_index = 0
@@ -451,7 +503,7 @@ def plot_multi_trace_data(
         debug_print("Adding historical overlays...", file=current_file, function=current_function)
         for hist_df, hist_name in historical_dfs_with_names:
             debug_print(f"Historical DataFrame columns received for {hist_name}: {hist_df.columns.tolist()}", file=current_file, function=current_function)
-            debug_print(f"Historical DataFrame head received for {hist_name}:\n{hist_df.head()}", file=current_file, function=current_function)
+            debug_print(f"Historical DataFrame head received for {hist_name}:\n{hist_df.head()}", file=current_function)
 
             # Check if the required columns exist
             if 'Frequency (MHz)' not in hist_df.columns or 'Amplitude (dBm)' not in hist_df.columns:
@@ -487,7 +539,7 @@ def plot_multi_trace_data(
                     layer="below"
                 )
             )
-            current_y_offset = y_offset_levels[i % len(y_offset_levels)]
+            current_y_offset = y_offset_levels_tv_gov[i % len(y_offset_levels_tv_gov)]
             y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
             annotations.append(
                 dict(
@@ -521,7 +573,7 @@ def plot_multi_trace_data(
                     layer="below"
                 )
             )
-            current_y_offset = y_offset_levels[(i + 1) % len(y_offset_levels)] # Offset slightly from TV markers
+            current_y_offset = y_offset_levels_tv_gov[(i + 1) % len(y_offset_levels_tv_gov)] # Offset slightly from TV markers
             y_text_position = y_range_max - (y_range_max - y_range_min) * current_y_offset
             annotations.append(
                 dict(
