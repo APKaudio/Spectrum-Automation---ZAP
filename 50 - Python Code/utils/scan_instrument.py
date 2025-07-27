@@ -163,9 +163,11 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
     # --- Apply global instrument settings once before starting band-specific sweeps ---
     # Set RBW and VBW
-    if not write_safe(inst, f":SENSE:BAND:RES {rbw_val}"): return last_successful_band_index, None
+    # Convert rbw_val to int to ensure no decimal point is sent to the instrument
+    if not write_safe(inst, f":SENSE:BAND:RES {int(rbw_val)}"): return last_successful_band_index, None
     vbw_calculated = rbw_val * VBW_RBW_RATIO
-    if not write_safe(inst, f":SENSE:BAND:VID {vbw_calculated}"): return last_successful_band_index, None
+    # Convert vbw_calculated to int to ensure no decimal point is sent to the instrument
+    if not write_safe(inst, f":SENSE:BAND:VID {int(vbw_calculated)}"): return last_successful_band_index, None
     app_instance_ref.after(0, app_instance_ref._update_console_line, 
                            f"📏 Global RBW set to {rbw_val/1000:.0f} kHz, VBW to {vbw_calculated:.0f} Hz.\n")
 
@@ -237,7 +239,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
         full_band_span_hz = band_stop_freq_hz - band_start_freq_hz
         
         if full_band_span_hz <= 0:
-            # Handle zero or negative span (e.g., single frequency point)
+            # Handle zero or negative span (e.e.g., single frequency point)
             total_segments_in_band = 1
             optimal_segment_span_hz = max(1.0, full_band_span_hz) # Ensure it's at least 1 Hz if zero
         else:
@@ -293,7 +295,8 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
             # --- Minimal Instrument Settings per segment ---
             # Only set frequency range and trace mode per segment
-            if not write_safe(inst, f":SENS:FREQ:STAR {current_segment_start_freq_hz};:SENS:FREQ:STOP {segment_stop_freq_hz};:TRAC2:MODE Blank"):
+            # Convert frequencies to int to ensure no decimal point is sent to the instrument
+            if not write_safe(inst, f":SENS:FREQ:STAR {int(current_segment_start_freq_hz)};:SENS:FREQ:STOP {int(segment_stop_freq_hz)};:TRAC2:MODE Blank"):
                 return last_successful_band_index, None
             
             # Set trace mode (only Trace2 needs to be set to MAXH or NORM)
