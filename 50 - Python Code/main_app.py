@@ -50,7 +50,11 @@ from src.settings_logic import (
 from src.plot_logic import generate_single_scan_plot_and_open_wrapper_logic, generate_average_plot_logic
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
 from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode
-from src.tabs import ReportConverterTab, PresetFilesTab
+
+from src.report_converter_tab import ReportConverterTab
+from src.instrument_preset_tab import PresetFilesTab
+
+
 from src.marker_logic import MarkersDisplayTab
 
 
