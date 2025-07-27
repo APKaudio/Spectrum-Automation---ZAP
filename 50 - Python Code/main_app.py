@@ -47,7 +47,7 @@ from src.settings_logic import (
     update_max_hold_time_from_slider_index_logic,
     update_cycle_wait_time_from_slider_index_logic
 )
-from src.plot_logic import generate_single_scan_plot_and_open_wrapper_logic, generate_average_plot_logic
+import src.plot_logic as plot_logic_module
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
 from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode
 
@@ -157,6 +157,12 @@ class ScanConfigurationTab(ttk.Frame):
 
         self.app_instance.start_scan_button = ttk.Button(scan_control_frame, text="Start Scan", command=lambda: start_scan_thread_logic(self.app_instance), state=tk.DISABLED, style='Green.TButton')
         self.app_instance.start_scan_button.grid(row=0, column=0, padx=5, pady=2, sticky="ew")
+
+        # In Scan Control Frame
+        ttk.Label(scan_control_frame, text="Number of Scan Cycles:").grid(row=9, column=0, padx=5, pady=2, sticky="w")
+        self.app_instance.num_scan_cycles_entry = ttk.Entry(scan_control_frame, textvariable=self.app_instance.num_scan_cycles_var)
+        self.app_instance.num_scan_cycles_entry.grid(row=10, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.num_scan_cycles_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.num_scan_cycles_var, 'last_num_scan_cycles'))
 
         self.app_instance.stop_scan_button = ttk.Button(scan_control_frame, text="Stop Scan", command=lambda: stop_scan_logic(self.app_instance), state=tk.NORMAL, style='Red.TButton') # Changed to NORMAL for testing
         self.app_instance.stop_scan_button.grid(row=1, column=0, padx=5, pady=2, sticky="ew")
@@ -423,6 +429,9 @@ class App(tk.Tk):
         self.desired_rbw_var = tk.StringVar(self)
         # --- FIX: Update setting_var_map structure to include (last_key, default_key, tk_var) tuple ---
         self.setting_var_map['desired_rbw_var'] = ('last_scan_rbw_hz', 'default_scan_rbw_hz', self.desired_rbw_var)
+
+        self.num_scan_cycles_var = tk.IntVar(self, value=1) # Default to 1 scan cycle
+        self.setting_var_map['num_scan_cycles_var'] = ('last_num_scan_cycles', 'default_num_scan_cycles', self.num_scan_cycles_var)
 
         self.desired_cycle_wait_time_var = tk.StringVar(self)
         self.setting_var_map['desired_cycle_wait_time_var'] = ('last_cycle_wait_time_seconds', 'default_cycle_wait_time_seconds', self.desired_cycle_wait_time_var)

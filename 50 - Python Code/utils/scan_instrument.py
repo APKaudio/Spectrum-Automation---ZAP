@@ -307,13 +307,8 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             if not write_safe(inst, ":INITiate:CONTinuous ON"): return last_successful_band_index, None
             debug_print("Sent: :INITiate:CONTinuous ON", file=file, function=function)
 
-            # Removed the "Waiting for scan to settle" message as requested.
-            time.sleep(cycle_wait_time_val) # Introduce the settling time
 
-            # After settling, stop continuous sweep and query trace data
-            if not write_safe(inst, ":INITiate:CONTinuous OFF"): return last_successful_band_index, None
-            debug_print("Sent: :INITiate:CONTinuous OFF", file=file, function=function)
-            
+           
             # Add settling time for max hold values to show up, if max hold is enabled
             if maxhold_enabled_val and maxhold_time_val > 0:
                 for _ in range(int(maxhold_time_val * 10)): # Check every 0.1 seconds
@@ -411,7 +406,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                     # Convert frequencies to MHz for the CSV
                     csv_data_to_write = [(f / MHZ_TO_HZ, amp) for f, amp in filtered_segment_data_for_csv]
                     # This will create/append to the CSV file defined at the start of scan_bands
-                    write_scan_data_to_csv(csv_filename_current_cycle, header, csv_data_to_write, append_mode=True)
+                    write_scan_data_to_csv(csv_filename_current_cycle, None, csv_data_to_write, append_mode=True)
                     # Removed the print statement here as requested
 
 

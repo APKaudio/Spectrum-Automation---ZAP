@@ -86,7 +86,7 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
     Process:
         1. **Data Loading**: Reads the input `csv_file_path` into a pandas DataFrame,
            specifying `header=None` and then manually assigning 'Frequency_MHz' and 'Power_dBm' columns.
-           **Crucially, it now converts 'Power_dBm' to numeric type.**
+           **Crucially, it now converts 'Frequency_MHz' and 'Power_dBm' to numeric type.**
         2. **Plotly Figure Initialization**: Creates an empty `go.Figure` object.
         3. **Main Trace Addition**: Adds a `go.Scatter` trace for the main scan data
            (Frequency_MHz vs. Power_dBm) with specific line styling.
@@ -118,10 +118,12 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
         df = pd.read_csv(csv_file_path, header=None)
         df.columns = ['Frequency_MHz', 'Power_dBm']
         
-        # Explicitly convert 'Power_dBm' to numeric, coercing errors to NaN
+        # Explicitly convert 'Frequency_MHz' and 'Power_dBm' to numeric, coercing errors to NaN
+        df['Frequency_MHz'] = pd.to_numeric(df['Frequency_MHz'], errors='coerce')
         df['Power_dBm'] = pd.to_numeric(df['Power_dBm'], errors='coerce')
-        # Drop any rows where Power_dBm could not be converted (e.g., if it was truly non-numeric)
-        df.dropna(subset=['Power_dBm'], inplace=True)
+        
+        # Drop any rows where conversion failed
+        df.dropna(subset=['Frequency_MHz', 'Power_dBm'], inplace=True)
 
     except FileNotFoundError:
         print(f"🚫 Plotting Error: CSV file not found at {csv_file_path}")
@@ -151,19 +153,26 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
         showlegend=False # Hide this trace from the legend
     ))
 
-    # Set Y-axis range: Max always 0 dBm, Min based on data with padding
-    y_range_max = 0 # Fixed maximum at 0 dBm
-    y_range_min = df['Power_dBm'].min() - 5 # Min based on data with 5 dB padding
+    # Set Y-axis range: Min based on data with 5 dB padding, Max based on data with 5 dB padding
+    if not df.empty:
+        y_range_min = df['Power_dBm'].min() - 5
+        y_range_max = df['Power_dBm'].max() + 5
+    else:
+        y_range_min = -100 # Fallback default
+        y_range_max = 0    # Fallback default
 
     # Ensure a reasonable default range if data is flat or single point
-    # Also handle cases where min_power_dbm is very high (e.g., positive)
     if y_range_max <= y_range_min:
         y_range_min = -100 # Fallback to a common low value if min is unexpectedly high or data is flat
-        y_range_max = 0 # Keep max at 0
+        y_range_max = 0 # Keep max at 0 (or a sensible default if all data is negative)
 
     # Get X-axis range from data
-    x_range_min = df['Frequency_MHz'].min()
-    x_range_max = df['Frequency_MHz'].max()
+    if not df.empty:
+        x_range_min = df['Frequency_MHz'].min()
+        x_range_max = df['Frequency_MHz'].max()
+    else:
+        x_range_min = None
+        x_range_max = None
 
     # Define colors for markers
     tv_band_fill_color = 'rgba(255, 255, 0, 0.1)' # Yellow, semi-transparent
@@ -306,19 +315,14 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            rangeslider=dict(
-                visible=True,
-                thickness=0.05,
-                # Reverted: Removed attempts to hide rangeslider yaxis labels, as it's not directly supported
-            ),
-            type="linear",
+            autorange=False, # Explicitly set autorange to False
             range=[x_range_min, x_range_max] if x_range_min is not None and x_range_max is not None else None
         ),
         yaxis=dict(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            autorange=True,
+            autorange=False, # Explicitly set autorange to False
             range=[y_range_min, y_range_max]
         ),
         plot_bgcolor='black',
@@ -418,7 +422,43 @@ def plot_multi_trace_data(
 
     fig = go.Figure()
 
-    # Add aggregated traces (Average, Median, Range, Std Dev) at the top of the legend
+    # Add historical overlays first so aggregated traces appear on top
+    if historical_dfs_with_names:
+        for i, hist_item in enumerate(historical_dfs_with_names):
+            hist_df = hist_item['df']
+            full_name = hist_item['name']
+            
+            # Extract only the date and time part from the filename for display
+            match_paren = re.search(r'\((\d{8}_\d{6})\)', full_name)
+            match_end = re.search(r'(\d{8}_\d{6})$', full_name)
+
+            if match_paren:
+                display_name = match_paren.group(1)
+            elif match_end:
+                display_name = match_end.group(1)
+            else:
+                display_name = full_name # Fallback to full name if no match
+
+            if not hist_df.empty:
+                # Explicitly convert 'Frequency_MHz' and 'Power_dBm' to numeric
+                hist_df['Frequency_MHz'] = pd.to_numeric(hist_df['Frequency_MHz'], errors='coerce')
+                hist_df['Power_dBm'] = pd.to_numeric(hist_df['Power_dBm'], errors='coerce')
+                hist_df.dropna(subset=['Frequency_MHz', 'Power_dBm'], inplace=True)
+
+                # Use a more opaque orange for historical overlays
+                line_color = 'rgba(244, 144, 44, 0.4)' # Increased opacity from 0.2 to 0.7
+                
+                fig.add_trace(go.Scatter(
+                    x=hist_df['Frequency_MHz'],
+                    y=hist_df['Power_dBm'],
+                    mode='lines',
+                    name=display_name, # Now only shows date and time
+                    line=dict(color=line_color, width=1, dash='dash'), # Changed to dotted line for overlays
+                    hoverinfo='x+y+name', # Show frequency, power, and name on hover
+                    showlegend=True # Show in legend
+                ))
+
+    # Add aggregated traces (Average, Median, Range, Std Dev) after historical traces
     if not aggregated_df.empty:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency_MHz'],
@@ -455,37 +495,6 @@ def plot_multi_trace_data(
                 name='Standard Deviation (dB)',
                 line=dict(color='lime', width=1.5, dash='solid') # Greenish color
             ))
-
-    # Add historical overlays after aggregated traces, with more opaque orange
-    if historical_dfs_with_names:
-        for i, hist_item in enumerate(historical_dfs_with_names):
-            hist_df = hist_item['df']
-            full_name = hist_item['name']
-            
-            # Extract only the date and time part from the filename for display
-            match_paren = re.search(r'\((\d{8}_\d{6})\)', full_name)
-            match_end = re.search(r'(\d{8}_\d{6})$', full_name)
-
-            if match_paren:
-                display_name = match_paren.group(1)
-            elif match_end:
-                display_name = match_end.group(1)
-            else:
-                display_name = full_name # Fallback to full name if no match
-
-            if not hist_df.empty:
-                # Use a more opaque orange for historical overlays
-                line_color = 'rgba(244, 144, 44, 0.4)' # Increased opacity from 0.2 to 0.7
-                
-                fig.add_trace(go.Scatter(
-                    x=hist_df['Frequency_MHz'],
-                    y=hist_df['Power_dBm'],
-                    mode='lines',
-                    name=display_name, # Now only shows date and time
-                    line=dict(color=line_color, width=1, dash='dash'), # Changed to dotted line for overlays
-                    hoverinfo='x+y+name', # Show frequency, power, and name on hover
-                    showlegend=True # Show in legend
-                ))
 
 
     # Determine initial Y-axis range based on all data (including historical and new metrics)
@@ -637,17 +646,14 @@ def plot_multi_trace_data(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            rangeslider=dict(
-                visible=False, # Set rangeslider to not visible as requested
-            ),
-            type="linear",
+            autorange=False, # Explicitly set autorange to False
             range=[x_range_min, x_range_max] if x_range_min is not None and x_range_max is not None else None
         ),
         yaxis=dict(
             showgrid=True,
             gridcolor='rgba(255,255,255,0.1)',
             zeroline=False,
-            autorange=True,
+            autorange=False, # Explicitly set autorange to False
             range=[y_range_min, y_range_max]
         ),
         plot_bgcolor='black',
@@ -677,4 +683,3 @@ def plot_multi_trace_data(
         print(f"✅ Plot saved to: {output_html_path}")
 
     return fig, output_html_path
-
