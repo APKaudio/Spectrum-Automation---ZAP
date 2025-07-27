@@ -86,6 +86,7 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
     Process:
         1. **Data Loading**: Reads the input `csv_file_path` into a pandas DataFrame,
            specifying `header=None` and then manually assigning 'Frequency_MHz' and 'Power_dBm' columns.
+           **Crucially, it now converts 'Power_dBm' to numeric type.**
         2. **Plotly Figure Initialization**: Creates an empty `go.Figure` object.
         3. **Main Trace Addition**: Adds a `go.Scatter` trace for the main scan data
            (Frequency_MHz vs. Power_dBm) with specific line styling.
@@ -116,6 +117,12 @@ def plot_single_scan_data(csv_file_path, include_tv_markers=True, include_gov_ma
         # Read CSV without header and assign column names
         df = pd.read_csv(csv_file_path, header=None)
         df.columns = ['Frequency_MHz', 'Power_dBm']
+        
+        # Explicitly convert 'Power_dBm' to numeric, coercing errors to NaN
+        df['Power_dBm'] = pd.to_numeric(df['Power_dBm'], errors='coerce')
+        # Drop any rows where Power_dBm could not be converted (e.g., if it was truly non-numeric)
+        df.dropna(subset=['Power_dBm'], inplace=True)
+
     except FileNotFoundError:
         print(f"🚫 Plotting Error: CSV file not found at {csv_file_path}")
         messagebox.showerror("Plotting Error", f"Scan data CSV file not found: {csv_file_path}")
@@ -670,3 +677,4 @@ def plot_multi_trace_data(
         print(f"✅ Plot saved to: {output_html_path}")
 
     return fig, output_html_path
+
