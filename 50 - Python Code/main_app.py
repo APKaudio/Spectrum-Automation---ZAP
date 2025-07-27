@@ -970,15 +970,6 @@ if __name__ == "__main__":
               background=[('active', '!disabled', '#777777'), ('pressed', '#333333')],
               foreground=[('disabled', '#888888')])
 
-    # In main_app.py, within the style configuration (e.g., in __init__ or a dedicated style method):
-    style.configure("LargePreset.TButton",
-                    background="#555555", # Darker grey for buttons
-                    foreground="white",
-                    font=("Helvetica", 40, "bold"), # Set font size to 40
-                    padding=[30, 15, 30, 15]) # Adjust padding as needed
-    style.map("LargePreset.TButton",
-            background=[('active', '#777777')]) # Lighter grey on active
-
     # Specific button styles
     style.configure('Green.TButton', background='#4CAF50', foreground='white')
     style.map('Green.TButton', background=[('active', '!disabled', '#66BB6A'), ('pressed', '#388E3C')])
@@ -1009,12 +1000,12 @@ if __name__ == "__main__":
     style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
     
     style.configure("Markers.TButton", 
-                    background="#F4902C", # Orange background
-                    foreground="black",   # Black text
+                    background="#555555", # Darker grey for span buttons (default unselected)
+                    foreground="white",   # White text
                     font=("Helvetica", 14, "bold"), # Larger font
                     padding=[15, 15, 15, 15]) # More padding
     style.map("Markers.TButton", 
-              background=[('active', '#FFB050')]) # Lighter orange on active
+              background=[('active', '#777777')]) # Lighter grey on active for unselected
 
     style.configure("Markers.Inner.Treeview",
                     background="#333333", # Darker grey
@@ -1031,9 +1022,10 @@ if __name__ == "__main__":
     style.configure("TLabelFrame", background="#333333", foreground="white")
     style.configure("TLabelFrame.Label", background="#333333", foreground="white")
     
-        # In main_app.py, within the style configuration (e.g., in __init__ or a dedicated style method):
-    style = ttk.Style()
-    # ... other style configurations ...
+    # The problematic line: This was creating a *new* local style object
+    # style = ttk.Style() # REMOVED THIS REDUNDANT LINE
+
+    # Add the new style for selected preset buttons (already correct)
     style.configure("LargePreset.TButton",
                     background="#555555", # Darker grey for buttons
                     foreground="white",
@@ -1042,7 +1034,6 @@ if __name__ == "__main__":
     style.map("LargePreset.TButton",
             background=[('active', '#777777')]) # Lighter grey on active
 
-    # Add the new style for selected preset buttons
     style.configure("SelectedPreset.TButton",
                     background="#2196F3", # A nice blue color
                     foreground="white",
@@ -1050,7 +1041,15 @@ if __name__ == "__main__":
                     padding=[30, 15, 30, 15])
     style.map("SelectedPreset.TButton",
               background=[('active', '#64B5F6'), ('pressed', '#1976D2')])
-
+    
+    # Corrected style for selected span buttons
+    style.configure("SelectedSpan.TButton",
+                        background="#F4902C", # Orange background
+                        foreground="black",
+                        font=("Helvetica", 14, "bold"), # Or whatever font you prefer
+                        padding=[15, 15, 15, 15])
+    style.map("SelectedSpan.TButton",
+                background=[('active', '#FFB050')]) # Lighter orange on active
 
     app = App()
     app.mainloop()

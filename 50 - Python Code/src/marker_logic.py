@@ -48,6 +48,7 @@ class MarkersDisplayTab(ttk.Frame):
 
         # Apply style to the main frame (this style is now defined globally in main_app.py)
         self.config(style="Markers.TFrame") 
+        self.last_selected_span_button = None # To keep track of the last selected span button
 
         self.create_widgets()
 
@@ -60,10 +61,15 @@ class MarkersDisplayTab(ttk.Frame):
         debug_print("Creating MarkersDisplayTab widgets...", file=file, function=function)
         # Main frame for the split layout
         main_split_frame = ttk.Frame(self, style="Markers.TFrame") # Use ttk.Frame
-        main_split_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0) # Removed outer padding as it's already on self
+        # Changed to grid layout to accommodate span control frame at the bottom
+        main_split_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.grid_rowconfigure(0, weight=1) # Allow main_split_frame to expand
+        self.grid_columnconfigure(0, weight=1)
+
         main_split_frame.grid_columnconfigure(0, weight=1) # Left half
         main_split_frame.grid_columnconfigure(1, weight=1) # Right half
-        main_split_frame.grid_rowconfigure(0, weight=1)
+        main_split_frame.grid_rowconfigure(0, weight=1) # Top row for treeview and device buttons
+        main_split_frame.grid_rowconfigure(1, weight=0) # Bottom row for span controls (fixed height)
 
         # Left Half: Treeview for Zones and Groups
         tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5)) 
@@ -95,9 +101,7 @@ class MarkersDisplayTab(ttk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        # --- FIX: Changed to tk.Frame and removed style attribute ---
         self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") 
-        # --- END FIX ---
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
@@ -110,6 +114,39 @@ class MarkersDisplayTab(ttk.Frame):
 
         # Initially populate with an empty list to clear any previous buttons
         self._populate_device_buttons([]) 
+
+        # --- New: Span Control Buttons Frame (Bottom of main_split_frame) ---
+        span_control_frame = ttk.Frame(main_split_frame, height=50, style="Markers.TFrame") # Fixed height
+        span_control_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        span_control_frame.grid_propagate(False) # Prevent frame from resizing to fit contents
+
+        # Configure columns for the buttons within span_control_frame
+        for i in range(5): # 5 buttons
+            span_control_frame.grid_columnconfigure(i, weight=1)
+
+        # Define span values in Hz
+        self.span_options = {
+            "Ultra Wide": 10_000_000, # 10 MHz
+            "Wide": 5_000_000,     # 5 MHz
+            "Normal": 1_000_000,   # 1 MHz
+            "Tight": 500_000,      # 500 KHz
+            "Microscope": 250_000  # 250 KHz
+        }
+
+        # Create buttons
+        self.span_buttons = {}
+        col = 0
+        for text, span_hz in self.span_options.items():
+            btn = ttk.Button(span_control_frame, text=text, style="Markers.TButton", # Default style
+                             command=lambda s=span_hz, b=None, txt=text: self._on_span_button_click(s, b, txt)) # Pass button and text
+            btn.grid(row=0, column=col, padx=2, pady=2, sticky="nsew")
+            self.span_buttons[text] = btn
+            col += 1
+        
+        # Set "Normal" as the initially selected button
+        self._on_span_button_click(self.span_options["Normal"], self.span_buttons["Normal"], "Normal")
+        # --- End New ---
+
 
     def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
@@ -253,11 +290,65 @@ class MarkersDisplayTab(ttk.Frame):
         """
         debug_print(f"Device button clicked: {name} at {freq} Hz", file=file, function=function)
         if self.app_instance and self.app_instance.inst:
-            set_focus_frequency_logic(self.app_instance, freq)
+            # When a device button is clicked, use the default focus width from app_instance
+            default_span = float(self.app_instance.desired_default_focus_width_var.get())
+            set_focus_frequency_logic(self.app_instance, freq, span_hz=default_span)
             set_marker_and_trace_modes_logic(self.app_instance, freq, name)
         else:
             debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
             messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+
+    def _on_span_button_click(self, span_hz, button_widget=None, button_text=None, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Callback for span control buttons. Changes the instrument's span and toggles button color.
+        """
+        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=file, function=function)
+        if self.app_instance and self.app_instance.inst:
+            # Toggle button colors
+            if self.last_selected_span_button and self.last_selected_span_button != button_widget:
+                self.last_selected_span_button.config(style="Markers.TButton") # Revert old button
+            
+            if button_widget:
+                button_widget.config(style="SelectedSpan.TButton") # Set new button to selected style
+                self.last_selected_span_button = button_widget
+            else:
+                # If button_widget is None (e.g., if called programmatically without a button reference)
+                # find the button by its span value and set its style.
+                # This part is more complex and might require iterating self.span_buttons
+                # For simplicity, we assume button_widget is always passed when clicked.
+                pass # If called without button_widget, we can't change its color here.
+
+            try:
+                # Direct SCPI command to set span
+                if not self.app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
+                    debug_print(f"Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
+                    messagebox.showerror("Instrument Error", "Failed to set instrument span.")
+                    return False
+                debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
+                print(f"✅ Instrument span set to {span_hz / 1_000_000:.3f} MHz.")
+
+                # Send additional trace mode commands
+                if not self.app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
+                debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=file, function=function)
+                
+                if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHoldl;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
+                debug_print("Sent: :TRAC1:MODE WRITel:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
+                
+
+            except pyvisa.errors.VisaIOError as e:
+                print(f"❌ VISA error while setting span: {e}")
+                messagebox.showerror("VISA Error", f"Failed to set instrument span: {e}")
+                debug_print(f"VISA Error setting span: {e}", file=file, function=function)
+                return False
+            except Exception as e:
+                print(f"❌ An unexpected error occurred while setting span: {e}")
+                messagebox.showerror("Error", f"An unexpected error occurred while setting span: {e}")
+                debug_print(f"An unexpected error occurred while setting span: {e}", file=file, function=function)
+                return False
+        else:
+            debug_print("Cannot set span: Instrument not connected.", file=file, function=function)
+            messagebox.showwarning("Not Connected", "Please connect to an instrument first.")
+
 
     def update_markers_data(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
         """

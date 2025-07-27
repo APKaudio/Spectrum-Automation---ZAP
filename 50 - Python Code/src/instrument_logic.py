@@ -340,7 +340,6 @@ def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__
     else:
         print(f"❌ Failed to load preset '{selected_preset_name}'.")
         # Error message already handled by control_load_selected_preset
-
     return success
 
 
@@ -392,9 +391,10 @@ def query_device_presets_logic(app_instance, file=__file__, function=inspect.cur
             app_instance.preset_files_tab.clear_preset_buttons()
 
 
-def set_focus_frequency_logic(app_instance, frequency_hz, file=__file__, function=inspect.currentframe().f_code.co_name):
+def set_focus_frequency_logic(app_instance, frequency_hz, span_hz=None, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
-    Sets the instrument's center frequency to a specified value (in Hz).
+    Sets the instrument's center frequency to a specified value (in Hz) and optionally its span.
+    Also sends trace mode commands.
     """
     debug_print(f"Setting focus frequency to {frequency_hz} Hz...", file=file, function=function)
     if not app_instance.inst:
@@ -407,12 +407,37 @@ def set_focus_frequency_logic(app_instance, frequency_hz, file=__file__, functio
         if not app_instance.inst.write(f":SENSe:FREQuency:CENTer {frequency_hz}"): return False
         debug_print(f"Sent: :SENSe:FREQuency:CENTer {frequency_hz}", file=file, function=function)
 
-        # Set span around the focus frequency
-        focus_width = _get_float_value(app_instance.desired_default_focus_width_var, 10000000.0, "desired_default_focus_width_var")
-        if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {focus_width}"): return False
-        debug_print(f"Sent: :SENSe:FREQuency:SPAN {focus_width}", file=file, function=function)
+        # Set span if provided, otherwise use default focus width from app_instance
+        if span_hz is None:
+            span_to_set = _get_float_value(app_instance.desired_default_focus_width_var, 10000000.0, "desired_default_focus_width_var")
+        else:
+            span_to_set = span_hz
+            
+        if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_to_set}"): return False
+        debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_to_set}", file=file, function=function)
 
-        print(f"✅ Instrument center frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz with span {focus_width} Hz.")
+        # Send additional trace mode commands
+        if not app_instance.inst.write(":TRAC1:MODE WRITe"): return False
+        debug_print("Sent: :TRAC1:MODE WRITe", file=file, function=function)
+        if not app_instance.inst.write(":TRAC2:MODE MAXhold"): return False
+        debug_print("Sent: :TRAC2:MODE WRITe", file=file, function=function)
+        if not app_instance.inst.write(":TRAC3:MODE MINHold"): return False
+        debug_print("Sent: :TRAC3:MODE MINHold", file=file, function=function)
+        if not app_instance.inst.write(":TRAC4:MODE BLANK"): return False
+        debug_print("Sent: :TRAC4:MODE BLANK", file=file, function=function)
+        
+
+
+ # Send additional trace mode commands
+        if not app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
+        debug_print("Sent: :TRAC1:MODE BLANK:TRAC2:MODE BLANK;:TRAC3:MODE BLANK;:TRAC4:MODE BLANK", file=file, function=function)
+                
+        if not app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
+        debug_print("Sent: :TRAC1:MODE WRITel:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
+                
+        
+
+        print(f"✅ Instrument center frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_to_set / MHZ_TO_HZ:.3f} MHz. Trace modes set.")
         return True
     except pyvisa.errors.VisaIOError as e:
         print(f"❌ VISA error while setting focus frequency: {e}")
@@ -466,4 +491,3 @@ def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_n
         messagebox.showerror("Error", f"An unexpected error occurred while setting marker/trace modes: {e}")
         debug_print(f"An unexpected error occurred while setting marker/trace modes: {e}", file=file, function=function)
         return False
-
