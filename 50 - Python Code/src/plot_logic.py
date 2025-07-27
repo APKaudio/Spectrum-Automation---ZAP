@@ -113,60 +113,77 @@ def plot_single_scan_data(
         name='Scan Trace',
         line=dict(color='cyan', width=2)
     ))
+    debug_print("Added main scan trace.", file=current_file, function=current_function)
+
+    # Lists to collect shapes and annotations for batch updating
+    shapes = []
+    annotations = []
 
     # Add TV channel markers if enabled
     if include_tv_markers:
+        debug_print("Adding TV channel markers...", file=current_file, function=current_function)
         for marker in TV_PLOT_BAND_MARKERS:
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
 
             # Add shaded regions for TV bands
-            fig.add_shape(
-                type="rect",
-                x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                fillcolor="rgba(255, 165, 0, 0.1)",  # Light orange, semi-transparent
-                line_width=0,
-                layer="below"
+            shapes.append(
+                dict(
+                    type="rect",
+                    x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
+                    fillcolor="rgba(255, 165, 0, 0.1)",  # Light orange, semi-transparent
+                    line_width=0,
+                    layer="below"
+                )
             )
             # Add text annotation for the band name
-            fig.add_annotation(
-                x=(start_freq + stop_freq) / 2,
-                y=y_range_max - 5,  # Position slightly below max Y
-                text=band_name,
-                showarrow=False,
-                font=dict(color="orange", size=8),
-                bgcolor="rgba(0,0,0,0.5)",
-                bordercolor="orange",
-                borderwidth=0.5
+            annotations.append(
+                dict(
+                    x=(start_freq + stop_freq) / 2,
+                    y=y_range_max - 5,  # Position slightly below max Y
+                    text=band_name,
+                    showarrow=False,
+                    font=dict(color="orange", size=8),
+                    bgcolor="rgba(0,0,0,0.5)",
+                    bordercolor="orange",
+                    borderwidth=0.5
+                )
             )
+        debug_print(f"Added {len(TV_PLOT_BAND_MARKERS)} TV channel markers.", file=current_file, function=current_function)
 
     # Add Government band markers if enabled
     if include_gov_markers:
+        debug_print("Adding Government band markers...", file=current_file, function=current_function)
         for marker in GOV_PLOT_BAND_MARKERS:
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
 
             # Add shaded regions for Government bands
-            fig.add_shape(
-                type="rect",
-                x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                fillcolor="rgba(144, 238, 144, 0.1)",  # Light green, semi-transparent
-                line_width=0,
-                layer="below"
+            shapes.append(
+                dict(
+                    type="rect",
+                    x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
+                    fillcolor="rgba(144, 238, 144, 0.1)",  # Light green, semi-transparent
+                    line_width=0,
+                    layer="below"
+                )
             )
             # Add text annotation for the band name
-            fig.add_annotation(
-                x=(start_freq + stop_freq) / 2,
-                y=y_range_max - 10,  # Position slightly below TV markers
-                text=band_name,
-                showarrow=False,
-                font=dict(color="lightgreen", size=8),
-                bgcolor="rgba(0,0,0,0.5)",
-                bordercolor="lightgreen",
-                borderwidth=0.5
+            annotations.append(
+                dict(
+                    x=(start_freq + stop_freq) / 2,
+                    y=y_range_max - 10,  # Position slightly below TV markers
+                    text=band_name,
+                    showarrow=False,
+                    font=dict(color="lightgreen", size=8),
+                    bgcolor="rgba(0,0,0,0.5)",
+                    bordercolor="lightgreen",
+                    borderwidth=0.5
+                )
             )
+        debug_print(f"Added {len(GOV_PLOT_BAND_MARKERS)} Government band markers.", file=current_file, function=current_function)
 
     # Add custom markers from MARKERS.CSV if enabled
     if include_markers_from_csv and markers_csv_path and os.path.exists(markers_csv_path):
@@ -180,6 +197,7 @@ def plot_single_scan_data(
                 if 'FREQ' not in reader.fieldnames:
                     debug_print(f"Error: MARKERS.CSV at {markers_csv_path} does not have a 'FREQ' column. Headers found: {reader.fieldnames}. Skipping custom markers.", file=current_file, function=current_function)
                 else:
+                    marker_count = 0
                     for row in reader:
                         try:
                             freq_mhz = float(row['FREQ'])
@@ -188,41 +206,44 @@ def plot_single_scan_data(
                             device = row.get('DEVICE', 'N/A')
                             name = row.get('NAME', 'N/A')
 
-                            # Add vertical dashed line
-                            fig.add_vline(
-                                x=freq_mhz,
-                                line_dash="dash",
-                                line_color="white",
-                                line_width=3,
-                                layer="above" # Ensure markers are visible above the trace
+                            # Collect vertical dashed line
+                            shapes.append(
+                                dict(
+                                    type="line",
+                                    x0=freq_mhz, y0=y_range_min, x1=freq_mhz, y1=y_range_max,
+                                    line=dict(dash="dash", color="white", width=3),
+                                    layer="above"
+                                )
                             )
-                            # Add text annotation
+                            # Collect text annotation
                             annotation_text = (
                                 f"Zone: {zone}<br>"
                                 f"Group: {group}<br>"
                                 f"Device: {device}<br>"
                                 f"Freq: {freq_mhz:.3f} MHz"
                             )
-                            fig.add_annotation(
-                                x=freq_mhz,
-                                y=y_range_max, # Position at the top of the plot
-                                text=annotation_text,
-                                showarrow=False,
-                                font=dict(color="white", size=9),
-                                bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
-                                bordercolor="white",
-                                borderwidth=0.5,
-                                # Adjust xanchor/yanchor for positioning relative to the line
-                                xanchor="left", # Anchor text to the left of the line
-                                yanchor="top",  # Anchor text to the top of the plot
-                                yshift=-5,      # Shift down slightly from the top edge
-                                xshift=5        # Shift right slightly from the line
+                            annotations.append(
+                                dict(
+                                    x=freq_mhz,
+                                    y=y_range_max, # Position at the top of the plot
+                                    text=annotation_text,
+                                    showarrow=False,
+                                    font=dict(color="white", size=9),
+                                    bgcolor="rgba(0,0,0,0.7)", # Semi-transparent black background
+                                    bordercolor="white",
+                                    borderwidth=0.5,
+                                    xanchor="left", # Anchor text to the left of the line
+                                    yanchor="top",  # Anchor text to the top of the plot
+                                    yshift=-5,      # Shift down slightly from the top edge
+                                    xshift=5        # Shift right slightly from the line
+                                )
                             )
+                            marker_count += 1
                         except ValueError:
                             debug_print(f"Warning: Could not parse frequency for marker row: {row}", file=current_file, function=current_function)
                         except KeyError as e:
                             debug_print(f"Warning: Missing expected column '{e}' in marker row: {row}", file=current_file, function=current_function)
-            debug_print(f"Finished loading custom markers from {os.path.abspath(markers_csv_path)}.", file=current_file, function=current_function)
+            debug_print(f"Finished loading {marker_count} custom markers from {os.path.abspath(markers_csv_path)}.", file=current_file, function=current_function)
         except Exception as e:
             debug_print(f"Error loading MARKERS.CSV for plotting: {e}", file=current_file, function=current_function)
     elif include_markers_from_csv and not os.path.exists(markers_csv_path):
@@ -267,8 +288,12 @@ def plot_single_scan_data(
             bordercolor="white",
             borderwidth=1,
             font=dict(size=9) # Slightly smaller font for compactness
-        )
+        ),
+        # Add collected shapes and annotations to the layout
+        shapes=shapes,
+        annotations=annotations
     )
+    debug_print("Plotly layout updated with traces, shapes, and annotations.", file=current_file, function=current_function)
 
     # If an output path is provided, save the figure
     if output_html_path:
@@ -277,6 +302,7 @@ def plot_single_scan_data(
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
             debug_print(f"Created directory for plot: {output_dir}", file=current_file, function=current_function)
+        debug_print(f"Saving plot to: {output_html_path}", file=current_file, function=current_function)
         fig.write_html(output_html_path, auto_open=False)
         debug_print(f"✅ Plot saved to: {output_html_path}", file=current_file, function=current_function)
         return fig, output_html_path
@@ -326,6 +352,7 @@ def plot_multi_trace_data(
             name='Average',
             line=dict(color='lime', width=2)
         ))
+        debug_print("Added Average Amplitude trace.", file=current_file, function=current_function)
     if 'Median Amplitude (dBm)' in aggregated_df.columns:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency (MHz)'],
@@ -334,6 +361,7 @@ def plot_multi_trace_data(
             name='Median',
             line=dict(color='yellow', width=1, dash='dot')
         ))
+        debug_print("Added Median Amplitude trace.", file=current_file, function=current_function)
     if 'Range (dB)' in aggregated_df.columns:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency (MHz)'],
@@ -342,6 +370,7 @@ def plot_multi_trace_data(
             name='Range',
             line=dict(color='orange', width=1, dash='dash')
         ))
+        debug_print("Added Range trace.", file=current_file, function=current_function)
     if 'Standard Deviation (dB)' in aggregated_df.columns:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency (MHz)'],
@@ -350,6 +379,7 @@ def plot_multi_trace_data(
             name='Std Dev',
             line=dict(color='magenta', width=1, dash='longdash')
         ))
+        debug_print("Added Standard Deviation trace.", file=current_file, function=current_function)
     if 'Variance (dB^2)' in aggregated_df.columns:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency (MHz)'],
@@ -358,6 +388,7 @@ def plot_multi_trace_data(
             name='Variance',
             line=dict(color='purple', width=1, dash='shortdot')
         ))
+        debug_print("Added Variance trace.", file=current_file, function=current_function)
     if 'PSD (dBm/Hz)' in aggregated_df.columns:
         fig.add_trace(go.Scatter(
             x=aggregated_df['Frequency (MHz)'],
@@ -366,9 +397,15 @@ def plot_multi_trace_data(
             name='PSD',
             line=dict(color='red', width=1, dash='solid')
         ))
+        debug_print("Added PSD trace.", file=current_file, function=current_function)
+
+    # Lists to collect shapes and annotations for batch updating
+    shapes = []
+    annotations = []
 
     # Add historical overlays if provided
     if historical_dfs_with_names:
+        debug_print("Adding historical overlays...", file=current_file, function=current_function)
         for hist_df, hist_name in historical_dfs_with_names:
             debug_print(f"Historical DataFrame columns received for {hist_name}: {hist_df.columns.tolist()}", file=current_file, function=current_function)
             debug_print(f"Historical DataFrame head received for {hist_name}:\n{hist_df.head()}", file=current_file, function=current_function)
@@ -386,56 +423,72 @@ def plot_multi_trace_data(
                     name=f'Historical Avg: {hist_name}',
                     line=dict(color='grey', width=1, dash='solid', opacity=0.7)
                 ))
+                debug_print(f"Added historical overlay for {hist_name}.", file=current_file, function=current_function)
+        debug_print("Finished adding historical overlays.", file=current_file, function=current_function)
+
 
     # Add TV channel markers if enabled
     if include_tv_markers:
+        debug_print("Adding TV channel markers...", file=current_file, function=current_function)
         for marker in TV_PLOT_BAND_MARKERS:
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
 
-            fig.add_shape(
-                type="rect",
-                x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                fillcolor="rgba(255, 165, 0, 0.1)",
-                line_width=0,
-                layer="below"
+            shapes.append(
+                dict(
+                    type="rect",
+                    x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
+                    fillcolor="rgba(255, 165, 0, 0.1)",
+                    line_width=0,
+                    layer="below"
+                )
             )
-            fig.add_annotation(
-                x=(start_freq + stop_freq) / 2,
-                y=y_range_max - 5,
-                text=band_name,
-                showarrow=False,
-                font=dict(color="orange", size=8),
-                bgcolor="rgba(0,0,0,0.5)",
-                bordercolor="orange",
-                borderwidth=0.5
+            annotations.append(
+                dict(
+                    x=(start_freq + stop_freq) / 2,
+                    y=y_range_max - 5,
+                    text=band_name,
+                    showarrow=False,
+                    font=dict(color="orange", size=8),
+                    bgcolor="rgba(0,0,0,0.5)",
+                    bordercolor="orange",
+                    borderwidth=0.5
+                )
             )
+        debug_print(f"Added {len(TV_PLOT_BAND_MARKERS)} TV channel markers.", file=current_file, function=current_function)
+
 
     # Add Government band markers if enabled
     if include_gov_markers:
+        debug_print("Adding Government band markers...", file=current_file, function=current_function)
         for marker in GOV_PLOT_BAND_MARKERS:
             start_freq = marker["Start MHz"]
             stop_freq = marker["Stop MHz"]
             band_name = marker["Band Name"]
 
-            fig.add_shape(
-                type="rect",
-                x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
-                fillcolor="rgba(144, 238, 144, 0.1)",
-                line_width=0,
-                layer="below"
+            shapes.append(
+                dict(
+                    type="rect",
+                    x0=start_freq, y0=y_range_min, x1=stop_freq, y1=y_range_max,
+                    fillcolor="rgba(144, 238, 144, 0.1)",
+                    line_width=0,
+                    layer="below"
+                )
             )
-            fig.add_annotation(
-                x=(start_freq + stop_freq) / 2,
-                y=y_range_max - 10,
-                text=band_name,
-                showarrow=False,
-                font=dict(color="lightgreen", size=8),
-                bgcolor="rgba(0,0,0,0.5)",
-                bordercolor="lightgreen",
-                borderwidth=0.5
+            annotations.append(
+                dict(
+                    x=(start_freq + stop_freq) / 2,
+                    y=y_range_max - 10,
+                    text=band_name,
+                    showarrow=False,
+                    font=dict(color="lightgreen", size=8),
+                    bgcolor="rgba(0,0,0,0.5)",
+                    bordercolor="lightgreen",
+                    borderwidth=0.5
+                )
             )
+        debug_print(f"Added {len(GOV_PLOT_BAND_MARKERS)} Government band markers.", file=current_file, function=current_function)
 
     fig.update_layout(
         title={
@@ -475,8 +528,12 @@ def plot_multi_trace_data(
             bordercolor="white",
             borderwidth=1,
             font=dict(size=9) # Slightly smaller font for compactness
-        )
+        ),
+        # Add collected shapes and annotations to the layout
+        shapes=shapes,
+        annotations=annotations
     )
+    debug_print("Plotly layout updated with traces, shapes, and annotations.", file=current_file, function=current_function)
 
     # If an output path is provided, save the figure
     if output_html_path:
@@ -485,6 +542,7 @@ def plot_multi_trace_data(
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
             debug_print(f"Created directory for plot: {output_dir}", file=current_file, function=current_function)
+        debug_print(f"Saving plot to: {output_html_path}", file=current_file, function=current_function)
         fig.write_html(output_html_path, auto_open=False)
         debug_print(f"✅ Plot saved to: {output_html_path}", file=current_file, function=current_function)
         return fig, output_html_path
