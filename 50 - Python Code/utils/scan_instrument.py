@@ -301,7 +301,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             else:
                 if not write_safe(inst, ":TRAC2:MODE NORM;"): return last_successful_band_index, None # Use Normal if max hold is off
 
-
+            time.sleep(0.1)
 
            
             # Add settling time for max hold values to show up, if max hold is enabled
@@ -347,7 +347,7 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             progress_message = (f"{progressbar}🔍 Span:📊{display_span_mhz:.1f} MHz--" # Formatted to 1 decimal place
                                 f"📈{display_start_freq_mhz:.3f} MHz to " # Formatted to 3 decimal places
                                 f"📉{display_stop_freq_mhz:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}\n") # Formatted to 3 decimal places
-            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message + '\r')
+            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message + '\n')
 
 
             # Read and process trace data

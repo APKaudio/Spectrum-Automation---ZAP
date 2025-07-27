@@ -14,7 +14,8 @@ from utils.frequency_bands import MHZ_TO_HZ # Assuming MHZ_TO_HZ is needed here
 from utils.instrument_control import log_visa_command, debug_print # Import debug_print
 
 # Import specific plotting functions directly from their source files
-from src.plot_logic import plot_single_scan_data # Import plot_single_scan_data directly
+# Import _open_plot_in_browser directly to avoid NameError
+from src.plot_logic import plot_single_scan_data, _open_plot_in_browser 
 from utils.averaging_utils import generate_current_cycle_average_csv_and_plot as generate_average_plot_logic # Import from averaging_utils and alias
 
 
@@ -33,192 +34,225 @@ def start_scan_thread_logic(app_instance):
     from src.config_manager import save_config # Import locally to avoid circular dependency
     save_config(app_instance)
 
+    # Disable buttons at the start of the scan
     app_instance.start_scan_button.config(state=tk.DISABLED)
+    app_instance.connect_button.config(state=tk.DISABLED)
+    app_instance.disconnect_button.config(state=tk.DISABLED)
+    app_instance.apply_button.config(state=tk.DISABLED)
+    app_instance.load_preset_button.config(state=tk.DISABLED) # Disable load preset button
+    app_instance.plot_button.config(state=tk.DISABLED) # Disable plot button during scan
+
+    # Disable query presets button
+    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
+        app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)
+
     app_instance.stop_scan_button.config(state=tk.NORMAL)
     app_instance.pause_resume_button.config(state=tk.NORMAL)
+    app_instance.pause_resume_button.config(text="Pause Scan") # Ensure text is "Pause Scan"
 
     app_instance.scanning = True
     app_instance.paused = False
     app_instance.stop_event.clear()
-    app_instance.pause_event.clear()
+    app_instance.pause_event.clear() # Ensure pause event is clear at start
 
-    app_instance.current_scan_cycle_count = 0 # Reset cycle count for a new scan session
-    app_instance.collected_scans_dataframes = [] # Clear collected dataframes for a new scan session
-
-    app_instance.after(0, app_instance._update_console_line, "Scan started in background...\n")
+    # Clear previous scan data
+    app_instance.collected_scans_dataframes = []
+    app_instance.current_scan_cycle_count = 0
 
     # Start the scan in a new thread
-    app_instance.scan_thread = threading.Thread(
-        target=run_scan_logic, # Changed target from _run_scan to run_scan_logic
-        args=(app_instance,)
-    )
-    app_instance.scan_thread.daemon = True # Allow the program to exit even if thread is running
-    app_instance.scan_thread.start()
+    scan_thread = threading.Thread(target=run_scan_logic, args=(app_instance,))
+    scan_thread.daemon = True # Allow the application to exit even if thread is running
+    scan_thread.start()
+    print("Scan initiated in background thread.")
 
 
-def run_scan_logic(app_instance): # Renamed from _run_scan to run_scan_logic
-    """
-    Internal function to run the scan process in a separate thread.
-    This function orchestrates the scanning, data collection, and plotting.
-    """
-    file = __file__
-    function = inspect.currentframe().f_code.co_name
+def run_scan_logic(app_instance):
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
 
     try:
-        # Get current settings from Tkinter variables
-        # Assuming num_scan_cycles_var will be defined in main_app.py
-        num_scan_cycles = app_instance.num_scan_cycles_var.get()
-        rbw_val = app_instance.desired_rbw_var.get()
-        cycle_wait_time_val = app_instance.desired_cycle_wait_time_var.get()
-        maxhold_time_val = app_instance.desired_max_hold_time_var.get()
-        reference_level_val = app_instance.desired_reference_level_var.get()
-        freq_shift_val = app_instance.desired_freq_shift_var.get()
-        maxhold_enabled_val = app_instance.desired_maxhold_enabled_var.get()
-        high_sensitivity_val = app_instance.desired_high_sensitivity_var.get()
-        preamp_on_val = app_instance.desired_preamp_on_var.get()
-        scan_rbw_segmentation_val = app_instance.desired_scan_rbw_segmentation_var.get()
+        num_cycles = app_instance.num_scan_cycles_var.get()
         scan_name = app_instance.scan_name_var.get()
         output_folder = app_instance.output_folder_var.get()
-        selected_bands = [band["band"] for band in app_instance.band_vars if band["var"].get()]
-        
-        # Ensure output folder exists
+
+        # Ensure output directory exists
         os.makedirs(output_folder, exist_ok=True)
 
-        # Main scan loop (e.g., for multiple cycles)
-        app_instance.after(0, app_instance._update_console_line, f"Total scan cycles configured: {num_scan_cycles}\n")
+        selected_bands_for_scan = [
+            item["band"] for item in app_instance.band_vars if item["var"].get()
+        ]
 
-        for cycle in range(1, num_scan_cycles + 1):
+        if not selected_bands_for_scan:
+            app_instance.after(0, lambda: messagebox.showwarning("No Bands Selected", "Please select at least one frequency band to scan."))
+            app_instance.scanning = False
+            return # Exit the scan thread
+
+        # Get current settings from Tkinter variables
+        scan_rbw_hz = float(app_instance.desired_rbw_var.get())
+        maxhold_time_seconds = float(app_instance.desired_max_hold_time_var.get())
+        cycle_wait_time_seconds = float(app_instance.desired_cycle_wait_time_var.get())
+        reference_level_dbm = float(app_instance.desired_reference_level_var.get())
+        freq_shift_hz = float(app_instance.desired_freq_shift_var.get())
+        maxhold_enabled = app_instance.desired_maxhold_enabled_var.get()
+        high_sensitivity = app_instance.desired_high_sensitivity_var.get()
+        preamp_on = app_instance.desired_preamp_on_var.get()
+        scan_rbw_segmentation = float(app_instance.desired_scan_rbw_segmentation_var.get())
+        default_focus_width = float(app_instance.desired_default_focus_width_var.get())
+        include_gov_markers = app_instance.include_gov_markers_var.get()
+        include_tv_markers = app_instance.include_tv_markers_var.get()
+        open_html_after_complete = app_instance.open_html_after_complete_var.get()
+        include_markers_from_csv = app_instance.include_markers_var.get() # Get state of new checkbox
+
+
+        app_instance.after(0, app_instance._update_console_line, f"Starting scan for {num_cycles} cycles...\n")
+        app_instance.after(0, app_instance._update_console_line, f"Scan Name: {scan_name}\n")
+        app_instance.after(0, app_instance._update_console_line, f"Output Folder: {output_folder}\n")
+        app_instance.after(0, app_instance._update_console_line, f"Selected Bands: {[b['Band Name'] for b in selected_bands_for_scan]}\n")
+        app_instance.after(0, app_instance._update_console_line, f"RBW: {scan_rbw_hz} Hz, Max Hold Time: {maxhold_time_seconds}s, Cycle Wait: {cycle_wait_time_seconds}s\n")
+        app_instance.after(0, app_instance._update_console_line, f"Ref Level: {reference_level_dbm} dBm, Freq Shift: {freq_shift_hz} Hz\n")
+        app_instance.after(0, app_instance._update_console_line, f"Max Hold Enabled: {maxhold_enabled}, High Sensitivity: {high_sensitivity}, Preamp ON: {preamp_on}\n")
+        app_instance.after(0, app_instance._update_console_line, f"RBW Segmentation: {scan_rbw_segmentation} Hz, Default Focus Width: {default_focus_width} Hz\n")
+        app_instance.after(0, app_instance._update_console_line, f"Include Gov Markers: {include_gov_markers}, Include TV Markers: {include_tv_markers}\n")
+        app_instance.after(0, app_instance._update_console_line, f"Open HTML After Complete: {open_html_after_complete}\n")
+        app_instance.after(0, app_instance._update_console_line, f"Include Custom Markers (MARKERS.CSV): {include_markers_from_csv}\n") # Log new setting
+
+
+        for cycle in range(num_cycles):
             if app_instance.stop_event.is_set():
-                app_instance.after(0, app_instance._update_console_line, f"Scan stopped by user after cycle {cycle-1}.\n")
+                app_instance.after(0, app_instance._update_console_line, "\nScan stopped by user.\n")
                 break
 
-            app_instance.current_scan_cycle_count = cycle
-            app_instance.after(0, app_instance._update_console_line, f"Starting scan cycle {cycle}...\n")
+            # Pause logic
+            if app_instance.paused:
+                app_instance.after(0, app_instance._update_console_line, f"\nScan paused. Waiting to resume...\n")
+                app_instance.after(0, app_instance._start_pause_button_blink)
+                app_instance.pause_event.wait() # Wait until resume is signaled
+                app_instance.after(0, app_instance._stop_pause_button_blink)
+                if app_instance.stop_event.is_set(): # Check stop event again after resume
+                    app_instance.after(0, app_instance._update_console_line, "\nScan stopped by user during pause.\n")
+                    break
+                app_instance.after(0, app_instance._update_console_line, "\nScan resumed.\n")
+                app_instance.paused = False # Reset paused flag
 
-            # Call the scan_bands function from utils.scan_instrument
-            last_successful_band_index, csv_filename_current_cycle = scan_bands(
-                app_instance,
-                app_instance.inst,
-                app_instance.stop_event,
-                app_instance.pause_event,
-                app_instance.instrument_model,
-                float(rbw_val), # Ensure these are passed as floats
-                float(cycle_wait_time_val),
-                float(maxhold_time_val),
-                float(reference_level_val),
-                float(freq_shift_val),
-                bool(maxhold_enabled_val),
-                bool(high_sensitivity_val),
-                bool(preamp_on_val),
-                float(scan_rbw_segmentation_val),
-                scan_name,
-                output_folder,
-                selected_bands,
-                cycle # Pass current cycle number
+            app_instance.current_scan_cycle_count = cycle + 1
+            app_instance.after(0, app_instance._update_console_line, f"\n--- Starting Cycle {cycle + 1}/{num_cycles} ---\n")
+
+            # Perform the scan for the selected bands
+            # scan_bands returns (last_successful_band_index, output_csv_filename)
+            last_successful_band_index, current_cycle_csv_filename = scan_bands(
+                app_instance, # app_instance_ref
+                app_instance.inst, # inst
+                app_instance.stop_event, # stop_event
+                app_instance.pause_event, # pause_event
+                app_instance.instrument_model, # instrument_model
+                scan_rbw_hz, # rbw_val
+                cycle_wait_time_seconds, # cycle_wait_time_val
+                maxhold_time_seconds, # maxhold_time_val
+                reference_level_dbm, # reference_level_val
+                freq_shift_hz, # freq_shift_val
+                maxhold_enabled, # maxhold_enabled_val
+                high_sensitivity, # high_sensitivity_val
+                preamp_on, # preamp_on_val
+                scan_rbw_segmentation, # scan_rbw_segmentation_val
+                scan_name, # scan_name
+                output_folder, # output_folder
+                selected_bands_for_scan, # selected_bands
+                app_instance.current_scan_cycle_count, # current_scan_cycle_count
+                file=current_file, # Explicitly pass as keyword
+                function=current_function # Explicitly pass as keyword
             )
 
-            if csv_filename_current_cycle:
-                # Load the CSV into a DataFrame and add to collected_scans_dataframes
+            if app_instance.stop_event.is_set():
+                app_instance.after(0, app_instance._update_console_line, "\nScan stopped by user.\n")
+                break
+
+            if current_cycle_csv_filename:
+                app_instance.after(0, app_instance._update_console_line, f"Cycle {cycle + 1} data saved to: {current_cycle_csv_filename}\n")
+                debug_print(f"Attempting to read CSV for plotting: {current_cycle_csv_filename}", file=current_file, function=current_function)
+                
+                # Load the CSV into a DataFrame for plotting and aggregation
                 try:
-                    df = pd.read_csv(csv_filename_current_cycle, header=None)
-                    df.columns = ['Frequency_MHz', 'Power_dBm']
-                    df['Frequency_MHz'] = pd.to_numeric(df['Frequency_MHz'], errors='coerce')
-                    df['Power_dBm'] = pd.to_numeric(df['Power_dBm'], errors='coerce')
-                    df.dropna(subset=['Frequency_MHz', 'Power_dBm'], inplace=True)
-                    
-                    if not df.empty:
-                        app_instance.collected_scans_dataframes.append(df)
-                        app_instance.after(0, app_instance._update_console_line, f"Cycle {cycle} data collected. Total dataframes: {len(app_instance.collected_scans_dataframes)}\n")
-                    else:
-                        app_instance.after(0, app_instance._update_console_line, f"Warning: Cycle {cycle} CSV was empty or contained no valid data after processing. Not added to collected data.\n")
+                    # Read CSV without header, so columns are 0 and 1
+                    # Explicitly name columns during read to prevent pandas from inferring headers
+                    df_to_plot = pd.read_csv(current_cycle_csv_filename, header=None, names=['Frequency (MHz)', 'Amplitude (dBm)'])
+                    debug_print(f"CSV read successfully. Initial DataFrame columns: {df_to_plot.columns.tolist()}", file=current_file, function=current_function)
+                    debug_print(f"Initial DataFrame head:\n{df_to_plot.head()}", file=current_file, function=current_function)
+
+                    app_instance.collected_scans_dataframes.append(df_to_plot)
+
+                    # Generate a single plot for the current scan cycle
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    single_scan_html_filename = os.path.join(
+                        output_folder,
+                        f"{scan_name}_Cycle{cycle + 1}_{timestamp}_SingleScan.html"
+                    )
+
+                    # Determine the path for MARKERS.CSV to be in the output folder
+                    markers_csv_path = os.path.join(output_folder, "MARKERS.CSV")
+                    debug_print(f"Checking for MARKERS.CSV at: {markers_csv_path}", file=current_file, function=current_function)
+
+
+                    fig, plot_html_path_return = plot_single_scan_data(
+                        df_to_plot,
+                        f"{scan_name} - Cycle {cycle + 1} Single Scan",
+                        single_scan_html_filename,
+                        include_tv_markers=include_tv_markers,
+                        include_gov_markers=include_gov_markers,
+                        include_markers_from_csv=include_markers_from_csv, # Pass the new variable
+                        markers_csv_path=markers_csv_path # Pass the path
+                    )
+
+                    if fig and open_html_after_complete:
+                        # Use the directly imported _open_plot_in_browser function
+                        app_instance.after(0, lambda path=plot_html_path_return: _open_plot_in_browser(path))
 
                 except Exception as e:
-                    app_instance.after(0, app_instance._update_console_line, f"Error loading CSV for cycle {cycle}: {e}\n")
-                    debug_print(f"Error loading CSV for cycle {cycle}: {e}", file=file, function=function)
-                    # Schedule messagebox to run on the main thread
-                    if app_instance.after(0, lambda: messagebox.askyesno("CSV Load Error", f"Error loading CSV for cycle {cycle}: {e}\nDo you want to continue with the next cycle?")):
-                        continue
-                    else:
-                        break # Stop scan if user chooses not to continue
-
-                # Generate and open plot for the current single scan cycle
-                output_html_path_single = os.path.join(output_folder, f"{scan_name}_Cycle{cycle}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")
-                
-                # Use the directly imported function: plot_single_scan_data
-                app_instance.after(0, lambda: plot_single_scan_data(
-                    csv_file_path=csv_filename_current_cycle, # Pass the CSV file path
-                    output_html_path=output_html_path_single,
-                    auto_open_browser=app_instance.open_html_after_complete_var.get(), # Pass auto_open_browser setting
-                    include_tv_markers=app_instance.include_tv_markers_var.get(), # Pass TV markers setting
-                    include_gov_markers=app_instance.include_gov_markers_var.get() # Pass Gov markers setting
-                ))
-
+                    app_instance.after(0, app_instance._update_console_line, f"❌ Error processing or plotting scan data for cycle {cycle + 1}: {e}\n")
+                    debug_print(f"Error in scan_logic plotting: {e}", file=current_file, function=current_function)
             else:
-                app_instance.after(0, app_instance._update_console_line, f"🚫 No CSV file generated for cycle {cycle}. Skipping plot generation for this cycle.\n")
+                app_instance.after(0, app_instance._update_console_line, f"🚫 No data collected for cycle {cycle + 1}.\n")
 
-            # Pause between cycles if not the last cycle
-            if cycle < num_scan_cycles and not app_instance.stop_event.is_set():
-                app_instance.after(0, app_instance._update_console_line, f"Waiting for {cycle_wait_time_val} seconds before next cycle...\n")
-                time.sleep(float(cycle_wait_time_val)) # Ensure float conversion for time.sleep
+            if cycle < num_cycles - 1:
+                app_instance.after(0, app_instance._update_console_line, f"Waiting for {cycle_wait_time_seconds} seconds before next cycle...\n")
+                time.sleep(cycle_wait_time_seconds)
 
-        # After all cycles, generate the averaged plot if data was collected
-        if app_instance.collected_scans_dataframes:
-            # Use the directly imported and aliased function
-            app_instance.after(0, lambda: generate_average_plot_logic(
-                app_instance.collected_scans_dataframes,
-                app_instance.scan_name_var,
-                app_instance.output_folder_var,
-                app_instance.open_html_after_complete_var,
-                app_instance.include_tv_markers_var,
-                app_instance.include_gov_markers_var
-            ))
-        else:
-            app_instance.after(0, app_instance._update_console_line, "No data collected across all cycles to generate an average plot.\n")
-
-    except pyvisa.errors.VisaIOError as e:
-        app_instance.after(0, app_instance._update_console_line, f"🛑 VISA communication error during scan: {e}\n")
-        # Schedule messagebox to run on the main thread
-        app_instance.after(0, lambda: messagebox.showerror("VISA Error", f"A VISA communication error occurred during the scan: {e}"))
-        debug_print(f"VISA Error in _run_scan: {e}", file=file, function=function)
     except Exception as e:
-        app_instance.after(0, app_instance._update_console_line, f"❌ An unexpected error occurred during scan: {e}\n")
-        # Schedule messagebox to run on the main thread
-        app_instance.after(0, lambda: messagebox.showerror("Scan Error", f"An unexpected error occurred during the scan: {e}"))
-        debug_print(f"Unexpected Error in _run_scan: {e}", file=file, function=function)
+        app_instance.after(0, app_instance._update_console_line, f"❌ An error occurred during scan: {e}\n")
+        debug_print(f"Error in run_scan_logic: {e}", file=current_file, function=current_function)
     finally:
         app_instance.scanning = False
-        app_instance.paused = False
-        app_instance.after(0, reset_scan_buttons_logic, app_instance)
-        app_instance.after(0, app_instance._update_console_line, "Scan process finished.\n")
+        app_instance.after(0, app_instance._update_console_line, "\nScan process finished.\n")
+        app_instance.after(0, lambda: reset_scan_buttons_logic(app_instance)) # Reset buttons on main thread
+        # Enable plot button if any data was collected
+        if app_instance.collected_scans_dataframes:
+            app_instance.after(0, lambda: app_instance.plot_button.config(state=tk.NORMAL))
+
+
+def stop_scan_logic(app_instance):
+    if app_instance.scanning:
+        app_instance.stop_event.set()
+        app_instance.pause_event.set() # Also set pause event to unblock if paused
+        app_instance.after(0, app_instance._update_console_line, "Stop signal sent. Finishing current operation...\n")
+    else:
+        app_instance.after(0, lambda: messagebox.showwarning("No Scan in Progress", "No scan is currently running to stop."))
 
 
 def pause_resume_scan_logic(app_instance):
     if app_instance.scanning:
         if app_instance.paused:
             app_instance.paused = False
-            app_instance.pause_event.clear()
+            app_instance.pause_event.set() # Signal to resume
             app_instance.pause_resume_button.config(text="Pause Scan")
-            app_instance.after(100, app_instance._update_console_line, "Scan Resumed.\n")
+            app_instance.after(0, app_instance._stop_pause_button_blink)
+            app_instance.after(0, app_instance._update_console_line, "Scan resume signal sent.\n")
         else:
             app_instance.paused = True
-            app_instance.pause_event.set()
+            app_instance.pause_event.clear() # Block the thread
             app_instance.pause_resume_button.config(text="Resume Scan")
-            app_instance.after(100, app_instance._update_console_line, "Scan Paused.\n")
+            app_instance.after(0, app_instance._start_pause_button_blink)
+            app_instance.after(0, app_instance._update_console_line, "Scan pause signal sent.\n")
     else:
-        # Schedule messagebox to run on the main thread
-        app_instance.after(0, lambda: messagebox.showwarning("No Scan in Progress", "No scan is currently running to pause or resume."))
-
-
-def stop_scan_logic(app_instance):
-    if app_instance.scanning:
-        app_instance.after(0, app_instance._update_console_line, "Stopping scan...\n")
-        app_instance.stop_event.set() # Signal the thread to stop
-        app_instance.pause_event.clear() # Clear pause in case it was paused
-        app_instance.paused = False # Reset paused state
-        # The thread will eventually terminate, and finally block will reset buttons
-    else:
-        # Schedule messagebox to run on the main thread
-        app_instance.after(0, lambda: messagebox.showwarning("No Scan in Progress", "No scan is currently running to stop."))
+        app_instance.after(0, lambda: messagebox.showwarning("No Scan in Progress", "No scan is currently running to pause/resume."))
 
 
 def reset_scan_buttons_logic(app_instance):

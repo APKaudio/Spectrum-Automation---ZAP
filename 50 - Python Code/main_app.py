@@ -226,46 +226,50 @@ class ScanConfigurationTab(ttk.Frame):
                         command=lambda: self.app_instance._on_setting_change(self.app_instance.include_gov_markers_var, 'last_include_gov_markers')).grid(row=13, column=0, padx=5, pady=2, sticky="w")
         ttk.Checkbutton(settings_frame, text="Include TV Markers", variable=self.app_instance.include_tv_markers_var,
                         command=lambda: self.app_instance._on_setting_change(self.app_instance.include_tv_markers_var, 'last_include_tv_markers')).grid(row=14, column=0, padx=5, pady=2, sticky="w")
+        # New: Include Markers from MARKERS.CSV
+        ttk.Checkbutton(settings_frame, text="Include Custom Markers (MARKERS.CSV)", variable=self.app_instance.include_markers_var,
+                        command=lambda: self.app_instance._on_setting_change(self.app_instance.include_markers_var, 'last_include_markers')).grid(row=15, column=0, padx=5, pady=2, sticky="w")
+
         ttk.Checkbutton(settings_frame, text="Open HTML After Complete", variable=self.app_instance.open_html_after_complete_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.open_html_after_complete_var, 'last_open_html_after_complete')).grid(row=15, column=0, padx=5, pady=2, sticky="w")
+                        command=lambda: self.app_instance._on_setting_change(self.app_instance.open_html_after_complete_var, 'last_open_html_after_complete')).grid(row=16, column=0, padx=5, pady=2, sticky="w")
         ttk.Checkbutton(settings_frame, text="General Debug Enabled", variable=self.app_instance.general_debug_enabled_var,
-                        command=self.app_instance._toggle_general_debug).grid(row=16, column=0, padx=5, pady=2, sticky="w")
+                        command=self.app_instance._toggle_general_debug).grid(row=17, column=0, padx=5, pady=2, sticky="w")
         ttk.Checkbutton(settings_frame, text="Log VISA Commands", variable=self.app_instance.log_visa_commands_enabled_var,
-                        command=self.app_instance._toggle_log_visa_commands).grid(row=17, column=0, padx=5, pady=2, sticky="w")
+                        command=self.app_instance._toggle_log_visa_commands).grid(row=18, column=0, padx=5, pady=2, sticky="w")
 
         # Reference Level Entry
-        ttk.Label(settings_frame, text="Reference Level (dBm):").grid(row=18, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Reference Level (dBm):").grid(row=19, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.reference_level_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_reference_level_var)
-        self.app_instance.reference_level_entry.grid(row=19, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.reference_level_entry.grid(row=20, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.reference_level_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_reference_level_var, 'last_reference_level_dbm'))
 
         # Frequency Shift Entry
-        ttk.Label(settings_frame, text="Frequency Shift (Hz):").grid(row=20, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Frequency Shift (Hz):").grid(row=21, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.freq_shift_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_freq_shift_var)
-        self.app_instance.freq_shift_entry.grid(row=21, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.freq_shift_entry.grid(row=22, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.freq_shift_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_freq_shift_var, 'last_freq_shift_hz'))
 
         # Scan RBW Segmentation Entry
-        ttk.Label(settings_frame, text="Scan RBW Segmentation (Hz):").grid(row=22, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Scan RBW Segmentation (Hz):").grid(row=23, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.scan_rbw_segmentation_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_scan_rbw_segmentation_var)
-        self.app_instance.scan_rbw_segmentation_entry.grid(row=23, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.scan_rbw_segmentation_entry.grid(row=24, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.scan_rbw_segmentation_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_scan_rbw_segmentation_var, 'last_scan_rbw_segmentation'))
 
         # Default Focus Width Entry
-        ttk.Label(settings_frame, text="Default Focus Width (Hz):").grid(row=24, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Default Focus Width (Hz):").grid(row=25, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.default_focus_width_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_default_focus_width_var)
-        self.app_instance.default_focus_width_entry.grid(row=25, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.default_focus_width_entry.grid(row=26, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.default_focus_width_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_default_focus_width_var, 'last_default_focus_width'))
 
         ttk.Button(settings_frame, text="Restore Default Settings",
-        command=lambda: self.app_instance._call_restore_default_settings()).grid(row=26, column=0, padx=5, pady=10, sticky="ew")
+        command=lambda: self.app_instance._call_restore_default_settings()).grid(row=27, column=0, padx=5, pady=10, sticky="ew")
         # Removed redundant "Open Report Folder" button
         # ttk.Button(settings_frame, text="Open Report Folder", command=lambda: open_report_folder_logic(self.app_instance.output_folder_var.get())).grid(row=29, column=0, padx=5, pady=2, sticky="ew")
 
         # Open Preset Folder Button - This button's command will be set after App's _create_widgets
         # to ensure self.app_instance.preset_files_tab is initialized.
         self.open_preset_folder_button = ttk.Button(settings_frame, text="Open Instrument Preset Folder")
-        self.open_preset_folder_button.grid(row=27, column=0, padx=5, pady=2, sticky="ew")
+        self.open_preset_folder_button.grid(row=28, column=0, padx=5, pady=2, sticky="ew")
 
 
         # Bottom Right: Frequency Band Selection Frame
@@ -501,6 +505,10 @@ class App(tk.Tk):
 
         self.include_tv_markers_var = tk.BooleanVar(self)
         self.setting_var_map['include_tv_markers_var'] = ('last_include_tv_markers', 'default_include_tv_markers', self.include_tv_markers_var)
+
+        # New: Include Markers from MARKERS.CSV
+        self.include_markers_var = tk.BooleanVar(self)
+        self.setting_var_map['include_markers_var'] = ('last_include_markers', 'default_include_markers', self.include_markers_var)
 
         self.open_html_after_complete_var = tk.BooleanVar(self)
         self.setting_var_map['open_html_after_complete_var'] = ('last_open_html_after_complete', 'default_open_html_after_complete', self.open_html_after_complete_var)
@@ -1099,4 +1107,3 @@ if __name__ == "__main__":
     
     app = App()
     app.mainloop()
-
