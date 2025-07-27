@@ -235,37 +235,33 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
                                f"📊 Using {expected_sweep_points} sweep points per trace for {band_name} ({instrument_model if instrument_model else 'Unknown'} detected).\n")
 
 
-        # --- Corrected Segment Calculation Logic ---
+        # --- Reverted Segment Calculation Logic to previous version ---
         full_band_span_hz = band_stop_freq_hz - band_start_freq_hz
         
         if full_band_span_hz <= 0:
-            # Handle zero or negative span (e.e.g., single frequency point)
             total_segments_in_band = 1
-            optimal_segment_span_hz = max(1.0, full_band_span_hz) # Ensure it's at least 1 Hz if zero
+            # For a single point or zero span, the segment span is just the full band span
+            optimal_segment_span_hz = full_band_span_hz
         else:
-            # Calculate the span per segment based on scan_rbw_segmentation_val and expected_sweep_points
-            # This is the span that the instrument will sweep in one go.
-            span_per_instrument_sweep = scan_rbw_segmentation_val * (expected_sweep_points - 1)
+            # Recalculate optimal_segment_span_hz to perfectly divide the band into equal segments
+            # This ensures all segments have the same span, even if it slightly deviates from scan_rbw_segmentation
+            total_segments_in_band = int(np.ceil(full_band_span_hz / (scan_rbw_segmentation_val * (expected_sweep_points - 1))))
+            if total_segments_in_band == 0: # Ensure at least one segment for non-zero spans
+                total_segments_in_band = 1
             
-            # Ensure span_per_instrument_sweep is not zero to avoid division by zero
-            if span_per_instrument_sweep <= 0:
-                span_per_instrument_sweep = 1 # Fallback to 1 Hz to prevent division by zero
-
-            # Calculate the number of segments needed to cover the full band span
-            total_segments_in_band = int(np.ceil(full_band_span_hz / span_per_instrument_sweep))
-            if total_segments_in_band == 0:
-                total_segments_in_band = 1 # At least one segment even for very small spans
-
-            # Calculate the actual optimal segment span to divide the band equally
+            # Now calculate the actual segment span to ensure equal division
             optimal_segment_span_hz = full_band_span_hz / total_segments_in_band
-        # --- End Corrected Segment Calculation Logic ---
+            # Ensure it's at least the minimum possible span for expected_sweep_points > 1
+            if expected_sweep_points > 1 and optimal_segment_span_hz < (scan_rbw_segmentation_val * (expected_sweep_points - 1)):
+                optimal_segment_span_hz = scan_rbw_segmentation_val * (expected_sweep_points - 1)
+        # --- End Reverted Segment Calculation Logic ---
 
 
         # The effective scan stop frequency for the segment loop
         # This should be the actual end of the current band, not an extended range.
-        effective_scan_stop_freq_hz = band_stop_freq_hz 
+        effective_scan_stop_freq_hz = band_start_freq_hz + (total_segments_in_band * optimal_segment_span_hz)
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
-                               f"🎯 Optimal segment span for {band_name}: {optimal_segment_span_hz / MHZ_TO_HZ:.3f} MHz.\n")
+                               f"🎯 Optimal segment span for {band_name}: {np.ceil(optimal_segment_span_hz / MHZ_TO_HZ * 10) / 10:.1f} MHz.\n") # Rounded up to 1 decimal place
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
                                f"📏 Effective scanned range for equal segments: {band_start_freq_hz/MHZ_TO_HZ:.3f} MHz to {effective_scan_stop_freq_hz/MHZ_TO_HZ:.3f} MHz.\n")
 
@@ -295,8 +291,8 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
 
             # --- Minimal Instrument Settings per segment ---
             # Only set frequency range and trace mode per segment
-            # Convert frequencies to int to ensure no decimal point is sent to the instrument
-            if not write_safe(inst, f":SENS:FREQ:STAR {int(current_segment_start_freq_hz)};:SENS:FREQ:STOP {int(segment_stop_freq_hz)};:TRAC2:MODE Blank"):
+            # Convert frequencies to int and round up using np.ceil() before sending to the instrument
+            if not write_safe(inst, f":SENS:FREQ:STAR {int(np.ceil(current_segment_start_freq_hz))};:SENS:FREQ:STOP {int(np.ceil(segment_stop_freq_hz))};:TRAC2:MODE Blank"):
                 return last_successful_band_index, None
             
             # Set trace mode (only Trace2 needs to be set to MAXH or NORM)
@@ -340,12 +336,18 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
             # Using '█' (U+2588 Full Block) and '-' (Hyphen) for better compatibility
             progressbar = '█' * filled_length + '-' * (bar_length - filled_length)
 
+            # Calculate display values, rounding up to match instrument commands
+            # Ensure optimal_segment_span_hz is divided by MHZ_TO_HZ before rounding for display
+            display_span_mhz = np.ceil(optimal_segment_span_hz / MHZ_TO_HZ * 10) / 10
+            display_start_freq_mhz = np.ceil(current_segment_start_freq_hz) / MHZ_TO_HZ
+            display_stop_freq_mhz = np.ceil(segment_stop_freq_hz) / MHZ_TO_HZ
+
             # Combined print statement as per user request, now using _update_console_line without overwrite
-            # Added '\n' to ensure a new line after the message
-            progress_message = (f"{progressbar}🔍 Span:📊{optimal_segment_span_hz/MHZ_TO_HZ:.3f} MHz--"
-                                f"📈{current_segment_start_freq_hz/MHZ_TO_HZ:.3f} MHz to "
-                                f"📉{segment_stop_freq_hz/MHZ_TO_HZ:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}\n") 
-            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message)
+            # Added '\r' to ensure the next message overwrites this line correctly
+            progress_message = (f"{progressbar}🔍 Span:📊{display_span_mhz:.1f} MHz--" # Formatted to 1 decimal place
+                                f"📈{display_start_freq_mhz:.3f} MHz to " # Formatted to 3 decimal places
+                                f"📉{display_stop_freq_mhz:.3f} MHz   ✅{segment_counter} of {total_segments_in_band}\n") # Formatted to 3 decimal places
+            app_instance_ref.after(0, app_instance_ref._update_console_line, progress_message + '\r')
 
 
             # Read and process trace data
@@ -444,4 +446,3 @@ def scan_bands(app_instance_ref, inst, stop_event, pause_event, instrument_model
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
                                f"✅ De-duplicated and filtered {len(final_sweep_data_for_plotting)} points for plotting for full scan.\n")
         return last_successful_band_index, csv_filename_current_cycle
-
