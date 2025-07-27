@@ -324,7 +324,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    print("✨ Initializing instrument with desired settings...")
+    print("✨ Initializing instrument with desired settings.")
     try:
         # Reset the instrument to a known state using *RST first
         if not write_safe(inst, "*RST"): return False
@@ -402,6 +402,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
     """
     Queries and prints the current key settings of the connected instrument.
+    Returns the center frequency and span in Hz.
 
     Inputs:
         inst (pyvisa.resources.Resource): The VISA instrument object.
@@ -410,22 +411,29 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         1. Queries various settings (center frequency, span, RBW, VBW, Ref Level).
         2. Prints the queried settings to the console.
         3. Handles errors during querying.
-    Outputs: None
+    Outputs:
+        tuple: (center_freq_hz, span_hz) if successful, (None, None) otherwise.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
     if not inst:
         print("Not connected to instrument, cannot query settings.")
-        return
+        return None, None
 
     print("\n--- Current Instrument Settings ---")
+    center_freq_hz = None
+    span_hz = None
     try:
-        center_freq_hz = query_safe(inst, ":SENSe:FREQuency:CENTer?")
-        if center_freq_hz: print(f"Center Frequency: {float(center_freq_hz) / MHZ_TO_HZ:.3f} MHz")
+        center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?")
+        if center_freq_str:
+            center_freq_hz = float(center_freq_str)
+            print(f"Center Frequency: {center_freq_hz / MHZ_TO_HZ:.3f} MHz")
 
-        span_hz = query_safe(inst, ":SENSe:FREQuency:SPAN?")
-        if span_hz: print(f"Span: {float(span_hz)} Hz")
+        span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?")
+        if span_str:
+            span_hz = float(span_str)
+            print(f"Span: {span_hz} Hz")
 
         rbw = query_safe(inst, ":SENSe:BANDwidth:RESolution?")
         if rbw: print(f"Resolution Bandwidth (RBW): {float(rbw)} Hz")
@@ -436,19 +444,12 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ):
         ref_level = query_safe(inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?")
         if ref_level: print(f"Reference Level: {float(ref_level):.2f} dBm")
 
-        # Removed the following queries as they were causing timeouts:
-        # preamp_state = query_safe(inst, ":INPut:GAIN:STATe?")
-        # if preamp_state: print(f"Preamplifier State: {'ON' if int(float(preamp_state)) == 1 else 'OFF'}")
-
-        # attenuator_auto = query_safe(inst, ":INPut:ATTenuator:AUTO?")
-        # if attenuator_auto: print(f"Attenuator Auto: {'ON' if int(float(attenuator_auto)) == 1 else 'OFF'}")
-
-        # attenuator_value = query_safe(inst, ":INPut:ATTenuator?")
-        # if attenuator_value: print(f"Attenuator Value: {float(attenuator_value):.1f} dB")
-
     except Exception as e:
         print(f"❌ Error querying current instrument settings: {e}")
-    print("-----------------------------------")
+        return None, None # Return None on error
+    finally:
+        print("-----------------------------------")
+    return center_freq_hz, span_hz
 
 def query_device_presets(inst):
     """
@@ -531,18 +532,19 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
         2. Constructs the full path to the preset file (e.g., `C:\\PRESETS\\MY_PRESET.STA`).
         3. Sends the SCPI command `:MMEMory:LOAD STA,"{preset_path}"` using `write_safe`.
         4. If loading is successful, calls `query_current_instrument_settings` to display
-           the instrument's new configuration.
+           the instrument's new configuration and returns its values.
         5. Prints status messages.
         6. Handles general `Exception` during the loading process.
     Outputs:
-        bool: True if the preset is loaded successfully; False otherwise.
+        tuple: (bool, center_freq_hz, span_hz). True if the preset is loaded successfully;
+               False otherwise. center_freq_hz and span_hz are the queried values or None.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
     if not inst:
         debug_print("Not connected to instrument, cannot load preset.", file=current_file, function=current_function)
-        return False
+        return False, None, None
 
     preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
     command = f':MMEMory:LOAD STA,"{preset_path}"'
@@ -552,26 +554,17 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
         if write_safe(inst, command):
             print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
             
-            # --- Removed explicit delays and OPC query after preset load as requested ---
-            # The *OPC? after *RST in initialize_instrument should be sufficient for initial setup.
-            # If further stability issues arise, consider adding specific delays where needed.
-            # --- End removed section ---
-
+            # Import MHZ_TO_HZ locally for this function to avoid circular dependency
+            from utils.frequency_bands import MHZ_TO_HZ 
+            
             # Query and display current instrument settings after loading preset
-            # MHZ_TO_HZ is needed here, but it's a global constant, so it needs to be imported
-            # or passed from a higher level if not imported globally.
-            # For now, assuming MHZ_TO_HZ is accessible or will be imported.
-            # If not, it will cause a NameError.
-            from utils.frequency_bands import MHZ_TO_HZ # Import locally for this function
-            print("\n--- Current Instrument Settings after Preset Load ---")
-            query_current_instrument_settings(inst, MHZ_TO_HZ) # Use the dedicated query function
-            print("--------------------------------------------------")
-            return True
+            center_freq, span = query_current_instrument_settings(inst, MHZ_TO_HZ)
+            return True, center_freq, span
         else:
             debug_print(f"Failed to load preset '{selected_preset_name}'.", file=current_file, function=current_function)
-            return False
+            return False, None, None
     except Exception as e:
         debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
         messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
-        return False
+        return False, None, None
 

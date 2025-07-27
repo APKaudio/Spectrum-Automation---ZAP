@@ -316,6 +316,8 @@ def apply_settings_to_device_logic(app_instance, file=__file__, function=inspect
 def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__, function=inspect.currentframe().f_code.co_name):
     """
     Loads a selected preset onto the connected instrument.
+    After loading, it queries the instrument's current settings and updates the
+    corresponding preset button in the GUI with frequency and span information.
     """
     debug_print(f"Loading selected preset: {selected_preset_name}", file=file, function=function)
     if not app_instance.inst:
@@ -324,12 +326,17 @@ def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__
         return False
 
     # Call the utility function from instrument_control
-    # MHZ_TO_HZ is imported globally in this file, so it's accessible.
-    success = control_load_selected_preset(app_instance.inst, selected_preset_name)
+    # control_load_selected_preset now returns (success, center_freq, span)
+    success, center_freq, span = control_load_selected_preset(app_instance.inst, selected_preset_name)
+    
     if success:
         print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
-        # After loading a preset, it's good practice to re-query settings
-        # query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ) # This is now handled inside control_load_selected_preset
+        # If center_freq and span are available, update the button info
+        if center_freq is not None and span is not None:
+            if hasattr(app_instance, 'preset_files_tab'):
+                app_instance.preset_files_tab.update_preset_button_info(selected_preset_name, center_freq, span)
+            else:
+                debug_print("PresetFilesTab instance not found on app_instance for button update.", file=file, function=function)
     else:
         print(f"❌ Failed to load preset '{selected_preset_name}'.")
         # Error message already handled by control_load_selected_preset
@@ -366,9 +373,9 @@ def query_device_presets_logic(app_instance, file=__file__, function=inspect.cur
             # Update the PresetFilesTab with the new list of presets
             if hasattr(app_instance, 'preset_files_tab'):
                 # Pass the list of presets directly to the tab's population method
-                app_instance.preset_files_tab.populate_preset_buttons(presets_from_device)
+                app_instance.preset_files_tab.populate_preset_buttons(presets_from_device, source="device")
             else:
-                debug_print("PresetFilesTab not found on app_instance.", file=file, function=function)
+                debug_print("PresetFilesTab instance not found on app_instance.", file=file, function=function)
         else:
             print("🚫 No presets found or error during query.")
             messagebox.showwarning("Preset Query", "No presets found on the device or an error occurred during query.")

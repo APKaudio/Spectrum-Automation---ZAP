@@ -970,6 +970,15 @@ if __name__ == "__main__":
               background=[('active', '!disabled', '#777777'), ('pressed', '#333333')],
               foreground=[('disabled', '#888888')])
 
+    # In main_app.py, within the style configuration (e.g., in __init__ or a dedicated style method):
+    style.configure("LargePreset.TButton",
+                    background="#555555", # Darker grey for buttons
+                    foreground="white",
+                    font=("Helvetica", 40, "bold"), # Set font size to 40
+                    padding=[30, 15, 30, 15]) # Adjust padding as needed
+    style.map("LargePreset.TButton",
+            background=[('active', '#777777')]) # Lighter grey on active
+
     # Specific button styles
     style.configure('Green.TButton', background='#4CAF50', foreground='white')
     style.map('Green.TButton', background=[('active', '!disabled', '#66BB6A'), ('pressed', '#388E3C')])
