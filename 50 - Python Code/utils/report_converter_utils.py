@@ -6,53 +6,19 @@ import os
 import re
 from bs4 import BeautifulSoup # BeautifulSoup is imported here, no need for try-except block in this file
 import pdfplumber # Import pdfplumber for PDF conversion
+import inspect # Import inspect module for debug_print
 
 # Import debug_print from instrument_control
 # This is crucial for directing messages to the main console if debug mode is enabled globally
 from utils.instrument_control import debug_print 
 
 
-# --- BeautifulSoup Installation Check (moved to main_app.py or handled by environment) ---
-# This block is typically handled at the application's entry point (e.g., main_app.py)
-# to ensure all dependencies are met before utility functions are called.
-# Keeping it here for standalone testing purposes, but it's redundant if main_app.py handles it.
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    print("BeautifulSoup4 not found. Attempting to install...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "beautifulsoup4"])
-        from bs4 import BeautifulSoup
-        print("BeautifulSoup4 installed successfully.")
-    except subprocess.CalledProcessError as e:
-        from tkinter import messagebox
-        messagebox.showerror("Installation Error", f"Error installing BeautifulSoup4: {e}\nPlease install it manually by running: pip install beautifulsoup4")
-        sys.exit(1)
-    except Exception as e:
-        from tkinter import messagebox
-        messagebox.showerror("Installation Error", f"An unexpected error occurred during BeautifulSoup4 installation: {e}")
-        sys.exit(1)
+# --- Removed BeautifulSoup Installation Check (now handled in main_app.py) ---
 
-# --- PDFPlumber Installation Check (New) ---
-try:
-    import pdfplumber
-except ImportError:
-    print("pdfplumber not found. Attempting to install...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pdfplumber"])
-        import pdfplumber
-        print("pdfplumber installed successfully.")
-    except subprocess.CalledProcessError as e:
-        from tkinter import messagebox
-        messagebox.showerror("Installation Error", f"Error installing pdfplumber: {e}\nPlease install it manually by running: pip install pdfplumber")
-        sys.exit(1)
-    except Exception as e:
-        from tkinter import messagebox
-        messagebox.showerror("Installation Error", f"An unexpected error occurred during pdfplumber installation: {e}")
-        sys.exit(1)
+# --- Removed PDFPlumber Installation Check (now handled in main_app.py) ---
 
 
-def convert_html_report_to_csv(html_content):
+def convert_html_report_to_csv(html_content, console_print_func=None):
     """
     Converts the HTML frequency coordination report into a list of dictionaries
     suitable for CSV output, handling multiple zones. This version is based on
@@ -61,6 +27,8 @@ def convert_html_report_to_csv(html_content):
 
     Inputs:
         html_content (str): The full HTML content of the report.
+        console_print_func (function, optional): A function to use for printing messages
+                                                 to the console. If None, uses standard print.
 
     Returns:
         tuple: A tuple containing:
@@ -68,7 +36,8 @@ def convert_html_report_to_csv(html_content):
                - list: A list of dictionaries, where each dictionary represents a row
                        in the CSV and keys are column headers.
     """
-    print("Starting HTML report conversion...")
+    _print = console_print_func if console_print_func else print
+    _print("Starting HTML report conversion...")
     soup = BeautifulSoup(html_content, 'html.parser')
     
     csv_headers = [
@@ -88,7 +57,7 @@ def convert_html_report_to_csv(html_content):
 
     if first_zone_p:
         main_content_container = first_zone_p.find_parent('span')
-        print(f"Found main content container based on first zone paragraph.")
+        _print(f"Found main content container based on first zone paragraph.")
     
     if not main_content_container:
         main_table = soup.find('table', class_='MainTable')
@@ -102,10 +71,10 @@ def convert_html_report_to_csv(html_content):
                         main_content_container = potential_span_wrapper
                     else:
                         main_content_container = second_tr_td
-                    print(f"Found main content container based on MainTable structure.")
+                    _print(f"Found main content container based on MainTable structure.")
     
     if not main_content_container:
-        print("Warning: Could not find the main content container. No data will be extracted.")
+        _print("Warning: Could not find the main content container. No data will be extracted.")
         return csv_headers, data_rows
 
     current_zone_type = ""
@@ -117,17 +86,17 @@ def convert_html_report_to_csv(html_content):
             zone_text = element.get_text(strip=True)
             if zone_text.startswith("Zone:"):
                 current_zone_type = zone_text.replace("Zone:", "").strip()
-                print(f"Processing Zone: {current_zone_type}")
+                _print(f"Processing Zone: {current_zone_type}")
         
         elif element.name == 'table' and 'Assignment' in element.get('class', []):
             table = element
             
             device_name_tag = table.find('th')
             current_group_name = device_name_tag.get_text(strip=True) if device_name_tag else ""
-            print(f"  Processing Group: {current_group_name}")
+            _print(f"  Processing Group: {current_group_name}")
 
             rows_in_table = table.find_all('tr')[1:] # Skip the first row as it contains the <th> (device_name)
-            print(f"    Found {len(rows_in_table)} rows in current table.")
+            _print(f"    Found {len(rows_in_table)} rows in current table.")
 
             for row in rows_in_table:
                 data_spans = row.find_all('span')
@@ -162,10 +131,10 @@ def convert_html_report_to_csv(html_content):
                                 else:
                                     # Fallback if regex doesn't match, assume MHz
                                     freq_mhz = float(channel_frequency_str) # Assume it's already in MHz
-                                    print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz.")
+                                    _print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz.")
                                     debug_print(f"      HTML Freq conversion (fallback): '{channel_frequency_str}' -> {freq_mhz} MHz", file=__file__, function=inspect.currentframe().f_code.co_name)
                             except ValueError:
-                                print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float. Setting to 'Invalid Frequency'.")
+                                _print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float. Setting to 'Invalid Frequency'.")
                                 debug_print(f"      HTML Freq conversion error: '{channel_frequency_str}'", file=__file__, function=inspect.currentframe().f_code.co_name)
                                 freq_mhz = "Invalid Frequency"
 
@@ -212,10 +181,10 @@ def convert_html_report_to_csv(html_content):
                             else:
                                 # Fallback if regex doesn't match, assume MHz
                                 freq_mhz = float(channel_frequency_str) # Assume it's already in MHz
-                                print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz.")
+                                _print(f"WARNING (HTML): No unit found for '{channel_frequency_str}'. Assuming MHz.")
                                 debug_print(f"      HTML Freq conversion (direct td, fallback): '{channel_frequency_str}' -> {freq_mhz} MHz", file=__file__, function=inspect.currentframe().f_code.co_name)
                         except ValueError:
-                            print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float. Setting to 'Invalid Frequency'.")
+                            _print(f"WARNING (HTML): Could not convert frequency '{channel_frequency_str}' to float. Setting to 'Invalid Frequency'.")
                             debug_print(f"      HTML Freq conversion error (direct td): '{channel_frequency_str}'", file=__file__, function=inspect.currentframe().f_code.co_name)
                             freq_mhz = "Invalid Frequency"
 
@@ -229,11 +198,11 @@ def convert_html_report_to_csv(html_content):
                         if band_type or channel_frequency_str or channel_name:
                             data_rows.append(row_data)
                             debug_print(f"        Added HTML row (direct td): {row_data}", file=__file__, function=inspect.currentframe().f_code.co_name)
-    print(f"Finished HTML report conversion. Extracted {len(data_rows)} rows.")
+    _print(f"Finished HTML report conversion. Extracted {len(data_rows)} rows.")
     return csv_headers, data_rows
 
 
-def generate_csv_from_shw(xml_file_path):
+def generate_csv_from_shw(xml_file_path, console_print_func=None):
     """
     Parses an SHW (XML) file and extracts frequency data, converting it
     into a standardized CSV format. This version is based on the SHOW to CSV.py
@@ -242,6 +211,8 @@ def generate_csv_from_shw(xml_file_path):
 
     Inputs:
         xml_file_path (str): The full path to the SHW (XML) file.
+        console_print_func (function, optional): A function to use for printing messages
+                                                 to the console. If None, uses standard print.
     Outputs:
         tuple: A tuple containing:
                - headers (list): A list of strings representing the CSV header row.
@@ -252,7 +223,8 @@ def generate_csv_from_shw(xml_file_path):
         xml.etree.ElementTree.ParseError: If the XML file is malformed.
         Exception: For other parsing or data extraction errors.
     """
-    print(f"Starting SHW report conversion for '{os.path.basename(xml_file_path)}'...")
+    _print = console_print_func if console_print_func else print
+    _print(f"Starting SHW report conversion for '{os.path.basename(xml_file_path)}'...")
     headers = ["ZONE", "GROUP", "DEVICE", "NAME", "FREQ"]
     csv_data = []
 
@@ -260,12 +232,12 @@ def generate_csv_from_shw(xml_file_path):
         with open(xml_file_path, 'r', encoding='utf-8') as f:
             tree = ET.parse(f)
         root = tree.getroot()
-        print("XML file parsed successfully.")
+        _print("XML file parsed successfully.")
 
         # Iterate through 'freq_entry' elements
         for i, freq_entry in enumerate(root.findall('.//freq_entry')):
             if i % 100 == 0: # Print progress every 100 entries
-                print(f"  Processing SHW entry {i}...")
+                _print(f"  Processing SHW entry {i}...")
 
             # Reverting ZONE and GROUP extraction to match SHOW to CSV.py prototype
             zone_element = freq_entry.find('compat_key/zone')
@@ -297,7 +269,7 @@ def generate_csv_from_shw(xml_file_path):
                     freq_mhz = float(freq_str) / 1000.0 
                     debug_print(f"  SHW Freq conversion: '{freq_str}' kHz -> {freq_mhz} MHz", file=__file__, function=inspect.currentframe().f_code.co_name)
                 except ValueError:
-                    print(f"WARNING (SHW): Could not convert SHW frequency value '{freq_str}' to float. Setting to 'Invalid Frequency'.")
+                    _print(f"WARNING (SHW): Could not convert SHW frequency value '{freq_str}' to float. Setting to 'Invalid Frequency'.")
                     debug_print(f"  SHW Freq conversion error: '{freq_str}'", file=__file__, function=inspect.currentframe().f_code.co_name)
                     freq_mhz = "Invalid Frequency"
 
@@ -308,20 +280,20 @@ def generate_csv_from_shw(xml_file_path):
                 "NAME": name,
                 "FREQ": freq_mhz # Store in MHz
             })
-        print(f"Finished SHW report conversion. Extracted {len(csv_data)} rows.")
+        _print(f"Finished SHW report conversion. Extracted {len(csv_data)} rows.")
         return headers, csv_data
 
     except FileNotFoundError:
-        print(f"Error: The file '{xml_file_path}' was not found.")
+        _print(f"Error: The file '{xml_file_path}' was not found.")
         raise FileNotFoundError(f"The file '{xml_file_path}' was not found.")
     except ET.ParseError as e:
-        print(f"Error: Malformed XML (SHW) file '{xml_file_path}': {e}")
+        _print(f"Error: Malformed XML (SHW) file '{xml_file_path}': {e}")
         raise ET.ParseError(f"Error parsing XML (SHW) file '{xml_file_path}': {e}")
     except Exception as e:
-        print(f"Error during SHW conversion data extraction: {e}")
+        _print(f"Error during SHW conversion data extraction: {e}")
         raise
 
-def convert_pdf_report_to_csv(pdf_file_path):
+def convert_pdf_report_to_csv(pdf_file_path, console_print_func=None):
     """
     Parses a PDF file (Sound Base format) and extracts frequency data, converting it
     into a standardized CSV format. This function maps PDF fields to the MARKERS.CSV
@@ -334,6 +306,8 @@ def convert_pdf_report_to_csv(pdf_file_path):
 
     Inputs:
         pdf_file_path (str): The full path to the PDF file.
+        console_print_func (function, optional): A function to use for printing messages
+                                                 to the console. If None, uses standard print.
     Outputs:
         tuple: A tuple containing:
                - headers (list): A list of strings representing the CSV header row.
@@ -343,17 +317,18 @@ def convert_pdf_report_to_csv(pdf_file_path):
         FileNotFoundError: If the specified PDF file does not exist.
         Exception: For other parsing or data extraction errors.
     """
-    print(f"Starting PDF report conversion for '{os.path.basename(pdf_file_path)}'...")
+    _print = console_print_func if console_print_func else print
+    _print(f"Starting PDF report conversion for '{os.path.basename(pdf_file_path)}'...")
     headers = ["ZONE", "GROUP", "DEVICE", "NAME", "FREQ"]
     csv_data = []
 
     try:
         with pdfplumber.open(pdf_file_path) as pdf:
             last_known_group = "Uncategorized" # Default group if not found
-            print(f"Opened PDF with {len(pdf.pages)} pages.")
+            _print(f"Opened PDF with {len(pdf.pages)} pages.")
 
             for page_num, page in enumerate(pdf.pages):
-                print(f"  Processing Page {page_num + 1}...")
+                _print(f"  Processing Page {page_num + 1}...")
                 # Extract text for group headers
                 lines = page.extract_text().splitlines()
                 lines = [line.strip() for line in lines if line.strip()]
@@ -362,7 +337,7 @@ def convert_pdf_report_to_csv(pdf_file_path):
                                  if re.match(r".+\(\d+ frequencies\)", line)]
 
                 tables = page.extract_tables()
-                print(f"    Found {len(tables)} tables on Page {page_num + 1}.")
+                _print(f"    Found {len(tables)} tables on Page {page_num + 1}.")
 
                 group_index = 0
                 for table_num, table in enumerate(tables):
@@ -371,7 +346,7 @@ def convert_pdf_report_to_csv(pdf_file_path):
                         group_index += 1
 
                     current_zone = last_known_group # PDF Group -> CSV ZONE
-                    print(f"      Processing Table {table_num + 1} for Zone: {current_zone}")
+                    _print(f"      Processing Table {table_num + 1} for Zone: {current_zone}")
 
                     for row_num, row in enumerate(table):
                         if not row or all(cell is None or cell.strip() == "" for cell in row):
@@ -411,7 +386,7 @@ def convert_pdf_report_to_csv(pdf_file_path):
                             freq_mhz_csv = float(frequency_pdf_str)
                             debug_print(f"          PDF Freq conversion: '{frequency_pdf_str}' -> {freq_mhz_csv} MHz", file=__file__, function=inspect.currentframe().f_code.co_name)
                         except ValueError:
-                            print(f"WARNING (PDF): Could not convert PDF frequency value '{frequency_pdf_str}' to float (MHz). Setting to 'Invalid Frequency'.")
+                            _print(f"WARNING (PDF): Could not convert PDF frequency value '{frequency_pdf_str}' to float (MHz). Setting to 'Invalid Frequency'.")
                             debug_print(f"          PDF Freq conversion error: '{frequency_pdf_str}'", file=__file__, function=inspect.currentframe().f_code.co_name)
                             freq_mhz_csv = "Invalid Frequency"
 
@@ -423,12 +398,12 @@ def convert_pdf_report_to_csv(pdf_file_path):
                             "FREQ": freq_mhz_csv
                         })
                         debug_print(f"          Added PDF row: {csv_data[-1]}", file=__file__, function=inspect.currentframe().f_code.co_name)
-        print(f"Finished PDF report conversion. Extracted {len(csv_data)} rows.")
+        _print(f"Finished PDF report conversion. Extracted {len(csv_data)} rows.")
         return headers, csv_data
 
     except FileNotFoundError:
-        print(f"Error: The file '{pdf_file_path}' was not found.")
+        _print(f"Error: The file '{pdf_file_path}' was not found.")
         raise FileNotFoundError(f"The file '{pdf_file_path}' was not found.")
     except Exception as e:
-        print(f"Error during PDF conversion data extraction: {e}")
+        _print(f"Error during PDF conversion data extraction: {e}")
         raise
