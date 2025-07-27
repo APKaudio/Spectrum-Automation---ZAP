@@ -1,18 +1,18 @@
 <show source="DESKTOP-AUGB7DV" appl_version="7.4.0.87" date="Thu Jul 24 2025" time="18:39:32" version="1.0">
     <show_properties version="1.0">
         <show_info>
-            <name>CBC - Toronto Broadcast Center</name>
-            <customer>CBC</customer>
+            <name>STATION </name>
+            <customer>STATION</customer>
         </show_info>
         <point_of_contact_info>
             <name>Anthony P. Kuzub</name>
             <address>9F300</address>
             <phone/>
-            <email>Anthony.Kuzub@CBC.ca</email>
+            <email>Anthony.Kuzub@STATION.ca</email>
             <remember_poc>true</remember_poc>
         </point_of_contact_info>
         <venue_info>
-            <name>CBC - Toronto Broadcast Center</name>
+            <name>STATION - Toronto Broadcast Center</name>
             <address>250 Front St W</address>
             <phone/>
             <email/>
@@ -43,7 +43,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -140,7 +140,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -237,7 +237,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -334,7 +334,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -431,7 +431,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -528,7 +528,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[Shure]]></channel_name>
                 <color type="3">4283979864</color>
@@ -827,7 +827,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -1109,7 +1109,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -1391,7 +1391,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -5488,7 +5488,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[IFB 1]]></channel_name>
                 <color type="3">4283979864</color>
@@ -5585,7 +5585,7 @@
             <custom_group_channel5 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel5>
             <custom_group_channel6 type="12">000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</custom_group_channel6>
             <power_lock type="1">false</power_lock>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <channel number="1">
                 <channel_name type="10"><![CDATA[IFB 3]]></channel_name>
                 <color type="3">4283979864</color>
@@ -5690,7 +5690,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -5972,7 +5972,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -6254,7 +6254,7 @@
             <front_panel_lock type="1">false</front_panel_lock>
             <power_lock type="1">false</power_lock>
             <dc_power type="3">1</dc_power>
-            <zone type="12">10 CBC AXIENT MICS</zone>
+            <zone type="12">10 STATION AXIENT MICS</zone>
             <fan_mode type="3">0</fan_mode>
             <world_clock_set_rate type="3">48000</world_clock_set_rate>
             <world_clock_ext_rate type="3">0</world_clock_ext_rate>
@@ -7831,7 +7831,7 @@
         </device>
         <zones version="1.1">
             <zone ordinal="11" color="#da2d7f">06.ST.38.WEATHER CENTER</zone>
-            <zone ordinal="23" color="#aa00ff">CBC ENG</zone>
+            <zone ordinal="23" color="#aa00ff">STATION ENG</zone>
             <zone ordinal="6" color="#6692fc">04.ST.53.FLOOR.B.FISHBOWL</zone>
             <zone ordinal="19" color="#69aa00">10.ST.41.ROGERS.IFB16.20</zone>
             <zone ordinal="0" color="#6692fc">Default</zone>
@@ -7839,7 +7839,7 @@
             <zone ordinal="21" color="#00aa00">10.SYS.1.GOULD MICS</zone>
             <zone ordinal="8" color="#00aa7f">04.WB13.ST.F.LOCAL NEWS</zone>
             <zone ordinal="1" color="#7863ed">00.TechStores</zone>
-            <zone ordinal="13" color="#69aa00">10 CBC AXIENT MICS</zone>
+            <zone ordinal="13" color="#69aa00">10 STATION AXIENT MICS</zone>
             <zone ordinal="22" color="#fdaf2a">10.SYS.2 SENN.MOBILE MICS</zone>
             <zone ordinal="24" color="#da2d7f">COMTEK IFBs</zone>
             <zone ordinal="16" color="#7863ed">10.ST.41.ROGERS.IFB.J8E</zone>
@@ -7929,7 +7929,7 @@
                     </to>
                 </from>
                 <from zone="00.TechStores">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -7989,7 +7989,7 @@
                     </to>
                 </from>
                 <from zone="00.TechStores">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8079,7 +8079,7 @@
                     </to>
                 </from>
                 <from zone="01.ST.GLENN GOULD">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8139,7 +8139,7 @@
                     </to>
                 </from>
                 <from zone="01.ST.GLENN GOULD">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8229,7 +8229,7 @@
                     </to>
                 </from>
                 <from zone="01.STUDIO.55.FLOOR.K">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8289,7 +8289,7 @@
                     </to>
                 </from>
                 <from zone="01.STUDIO.55.FLOOR.K">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8379,7 +8379,7 @@
                     </to>
                 </from>
                 <from zone="01.STUDIO.ATRIUM">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8439,7 +8439,7 @@
                     </to>
                 </from>
                 <from zone="01.STUDIO.ATRIUM">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8529,7 +8529,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.50.FLOOR.A.NEWSNET">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8589,7 +8589,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.50.FLOOR.A.NEWSNET">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8679,7 +8679,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.53.FLOOR.B.FISHBOWL">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8739,7 +8739,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.53.FLOOR.B.FISHBOWL">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8829,7 +8829,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.55.FLOOR.D.NATIONAL">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8889,7 +8889,7 @@
                     </to>
                 </from>
                 <from zone="04.ST.55.FLOOR.D.NATIONAL">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -8979,7 +8979,7 @@
                     </to>
                 </from>
                 <from zone="04.WB13.ST.F.LOCAL NEWS">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9039,7 +9039,7 @@
                     </to>
                 </from>
                 <from zone="04.WB13.ST.F.LOCAL NEWS">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9129,7 +9129,7 @@
                     </to>
                 </from>
                 <from zone="05.ST.54.FLOOR.E.SRC NEWS">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9189,7 +9189,7 @@
                     </to>
                 </from>
                 <from zone="05.ST.54.FLOOR.E.SRC NEWS">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9279,7 +9279,7 @@
                     </to>
                 </from>
                 <from zone="06.ST.211.RADIO RECORDING">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9339,7 +9339,7 @@
                     </to>
                 </from>
                 <from zone="06.ST.211.RADIO RECORDING">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9429,7 +9429,7 @@
                     </to>
                 </from>
                 <from zone="06.ST.38.WEATHER CENTER">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9489,7 +9489,7 @@
                     </to>
                 </from>
                 <from zone="06.ST.38.WEATHER CENTER">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9579,7 +9579,7 @@
                     </to>
                 </from>
                 <from zone="09.CONF.DIGITAL SERVICES">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9639,7 +9639,7 @@
                     </to>
                 </from>
                 <from zone="09.CONF.DIGITAL SERVICES">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9656,151 +9656,151 @@
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="00.TechStores">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="01.ST.GLENN GOULD">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="01.STUDIO.55.FLOOR.K">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="01.STUDIO.ATRIUM">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="04.ST.50.FLOOR.A.NEWSNET">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="04.ST.53.FLOOR.B.FISHBOWL">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="04.ST.55.FLOOR.D.NATIONAL">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="04.WB13.ST.F.LOCAL NEWS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="05.ST.54.FLOOR.E.SRC NEWS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="06.ST.211.RADIO RECORDING">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="06.ST.38.WEATHER CENTER">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="09.CONF.DIGITAL SERVICES">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
-                    <to zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>1</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.CONF.ARTIST LOUNGE">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.ENG.20">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.IFB.J8E">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.IFB14.20">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.IFB15.20">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.IFB16.20">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.ST.41.ROGERS.MICS.20">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.SYS.1.GOULD MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="10.SYS.2 SENN.MOBILE MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
-                    <to zone="CBC ENG">
+                <from zone="10 STATION AXIENT MICS">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="COMTEK IFBs">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="10 CBC AXIENT MICS">
+                <from zone="10 STATION AXIENT MICS">
                     <to zone="Default">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
@@ -9879,7 +9879,7 @@
                     </to>
                 </from>
                 <from zone="10.CONF.ARTIST LOUNGE">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -9939,7 +9939,7 @@
                     </to>
                 </from>
                 <from zone="10.CONF.ARTIST LOUNGE">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10029,7 +10029,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.ENG.20">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10089,7 +10089,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.ENG.20">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10179,7 +10179,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB.J8E">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10239,7 +10239,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB.J8E">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10329,7 +10329,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB14.20">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10389,7 +10389,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB14.20">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10479,7 +10479,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB15.20">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10539,7 +10539,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB15.20">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10629,7 +10629,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB16.20">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10689,7 +10689,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.IFB16.20">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10779,7 +10779,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.MICS.20">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10839,7 +10839,7 @@
                     </to>
                 </from>
                 <from zone="10.ST.41.ROGERS.MICS.20">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10929,7 +10929,7 @@
                     </to>
                 </from>
                 <from zone="10.SYS.1.GOULD MICS">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -10989,7 +10989,7 @@
                     </to>
                 </from>
                 <from zone="10.SYS.1.GOULD MICS">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11079,7 +11079,7 @@
                     </to>
                 </from>
                 <from zone="10.SYS.2 SENN.MOBILE MICS">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11139,7 +11139,7 @@
                     </to>
                 </from>
                 <from zone="10.SYS.2 SENN.MOBILE MICS">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11156,151 +11156,151 @@
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="00.TechStores">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="01.ST.GLENN GOULD">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="01.STUDIO.55.FLOOR.K">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="01.STUDIO.ATRIUM">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="04.ST.50.FLOOR.A.NEWSNET">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="04.ST.53.FLOOR.B.FISHBOWL">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="04.ST.55.FLOOR.D.NATIONAL">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="04.WB13.ST.F.LOCAL NEWS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="05.ST.54.FLOOR.E.SRC NEWS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="06.ST.211.RADIO RECORDING">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="06.ST.38.WEATHER CENTER">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="09.CONF.DIGITAL SERVICES">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
-                    <to zone="10 CBC AXIENT MICS">
+                <from zone="STATION ENG">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.CONF.ARTIST LOUNGE">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.ENG.20">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.IFB.J8E">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.IFB14.20">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.IFB15.20">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.IFB16.20">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.ST.41.ROGERS.MICS.20">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.SYS.1.GOULD MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="10.SYS.2 SENN.MOBILE MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
-                    <to zone="CBC ENG">
+                <from zone="STATION ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>1</ch-ch>
                         <ch-imd>1</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="COMTEK IFBs">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
                 </from>
-                <from zone="CBC ENG">
+                <from zone="STATION ENG">
                     <to zone="Default">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
@@ -11379,7 +11379,7 @@
                     </to>
                 </from>
                 <from zone="COMTEK IFBs">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11439,7 +11439,7 @@
                     </to>
                 </from>
                 <from zone="COMTEK IFBs">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>1</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11529,7 +11529,7 @@
                     </to>
                 </from>
                 <from zone="Default">
-                    <to zone="10 CBC AXIENT MICS">
+                    <to zone="10 STATION AXIENT MICS">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11589,7 +11589,7 @@
                     </to>
                 </from>
                 <from zone="Default">
-                    <to zone="CBC ENG">
+                    <to zone="STATION ENG">
                         <ch-ch>0</ch-ch>
                         <ch-imd>0</ch-imd>
                     </to>
@@ -11652,7 +11652,7 @@
                 <id coordination_include="false" active_channel="true">0CE196CD-888C-4B59-81B8-21BC3B284B08</id>
                 <id coordination_include="false" active_channel="true">36B4E8E6-1496-4F9E-84BB-9C147755121F</id>
                 <id coordination_include="false" active_channel="true">756963C1-72A9-40FB-9E8A-483EA652E4BC</id>
-                <id coordination_include="false" active_channel="true">47B91CBC-BD20-4D35-A89E-BFFD8B682292</id>
+                <id coordination_include="false" active_channel="true">47B91STATION-BD20-4D35-A89E-BFFD8B682292</id>
                 <id coordination_include="false" active_channel="true">62369A5D-D2EE-4066-8025-08897C9E968C</id>
                 <id coordination_include="false" active_channel="true">A3841E94-F6BC-457F-9604-9F5AD50F76C9-0</id>
                 <id coordination_include="false" active_channel="true">A3841E94-F6BC-457F-9604-9F5AD50F76C9-1</id>
@@ -12615,7 +12615,7 @@
                         <end>602000</end>
                     </frequency>
                     <source>User defined</source>
-                    <notes>CBC MICROPHONES</notes>
+                    <notes>STATION MICROPHONES</notes>
                     <exclude>1</exclude>
                 </range>
                 <range>
@@ -12624,7 +12624,7 @@
                         <end>530000</end>
                     </frequency>
                     <source>User defined</source>
-                    <notes>CBC IEMS</notes>
+                    <notes>STATION IEMS</notes>
                     <exclude>1</exclude>
                 </range>
                 <range>
@@ -12730,7 +12730,7 @@
         <mic_channels count="253" units="khz">
             <freq_entry id="76fe54d8-6bac-4b6e-a59b-bc115d81f57d" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12755,7 +12755,7 @@
             </freq_entry>
             <freq_entry id="810fb827-4093-4872-ab0d-c89552dfe56f" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12780,7 +12780,7 @@
             </freq_entry>
             <freq_entry id="aa679039-d914-4b62-a60f-8b1bdfd5cf58" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12805,7 +12805,7 @@
             </freq_entry>
             <freq_entry id="dec3701f-caa6-4d13-af0e-e517e9ad4639" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12830,7 +12830,7 @@
             </freq_entry>
             <freq_entry id="cea3bc1b-99f1-49bc-9fe3-7ac73f4ae131" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12855,7 +12855,7 @@
             </freq_entry>
             <freq_entry id="b0f8eb22-7705-47e8-8003-a8f3ed9915f8" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -12880,7 +12880,7 @@
             </freq_entry>
             <freq_entry id="b24f2f48-e86e-4888-8eec-d5fc49e0c20a" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -13156,7 +13156,7 @@
             </freq_entry>
             <freq_entry id="5e4fd208-7a00-4a16-97c4-886c864600f1" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13181,7 +13181,7 @@
             </freq_entry>
             <freq_entry id="57493c21-db20-4597-a9f4-e94765b94702" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13206,7 +13206,7 @@
             </freq_entry>
             <freq_entry id="3bed44b4-c105-4a8f-b210-ab3fbeb76f94" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13231,7 +13231,7 @@
             </freq_entry>
             <freq_entry id="cdc7e331-4379-4598-8764-0075df41c8a7" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13256,7 +13256,7 @@
             </freq_entry>
             <freq_entry id="45cb9e4f-b2f3-4add-8917-59cf74e1cf3f" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13281,7 +13281,7 @@
             </freq_entry>
             <freq_entry id="350f7169-ad7d-4e84-8514-fae11c30440d" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13306,7 +13306,7 @@
             </freq_entry>
             <freq_entry id="025542cf-80d5-443d-8c54-e226543f6e86" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13331,7 +13331,7 @@
             </freq_entry>
             <freq_entry id="003221f4-f4ed-4e89-8be7-77c80389490f" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13356,7 +13356,7 @@
             </freq_entry>
             <freq_entry id="a443369f-adc0-4db8-89ac-da6db2bb53f0" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -13381,7 +13381,7 @@
             </freq_entry>
             <freq_entry id="79ccd701-c751-4fbe-b148-ab79cb46470e" tag="" color="#585858">
                 <compat_key>
-                    <zone>CBC ENG</zone>
+                    <zone>STATION ENG</zone>
                     <series>Sony - DWR-S03DN 1mW</series>
                     <band>TV14-36</band>
                     <mode/>
@@ -14397,7 +14397,7 @@
                     <dev_type>Unknown</dev_type>
                 </dev_category>
             </freq_entry>
-            <freq_entry id="47B91CBC-BD20-4D35-A89E-BFFD8B682292" tag="" color="#ffdc4f">
+            <freq_entry id="47B91STATION-BD20-4D35-A89E-BFFD8B682292" tag="" color="#ffdc4f">
                 <compat_key>
                     <zone>10.ST.41.ROGERS.ENG.20</zone>
                     <series>Sony - DWR-S02DN</series>
@@ -14419,7 +14419,7 @@
                 <diversity div_mode="0" div_partner_id="-1"/>
                 <model>DWR-S02DN</model>
                 <manufacturer>Sony</manufacturer>
-                <source_id>47B91CBC-BD20-4D35-A89E-BFFD8B682292</source_id>
+                <source_id>47B91STATION-BD20-4D35-A89E-BFFD8B682292</source_id>
                 <source_name>DSQENG-6</source_name>
                 <dev_category>
                     <dev_type>Other</dev_type>
@@ -25124,7 +25124,7 @@
             </freq_entry>
             <freq_entry id="DD211D8D-0000-11DD-A000-000EDDCCCCCC-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -25187,7 +25187,7 @@
             </freq_entry>
             <freq_entry id="DD211D8D-0000-11DD-A000-000EDDCCCCCC-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -25250,7 +25250,7 @@
             </freq_entry>
             <freq_entry id="063a52ec-2a52-4aa1-b8e7-82f26bde24e5" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -25275,7 +25275,7 @@
             </freq_entry>
             <freq_entry id="DD2110AF-0000-11DD-A000-000EDDCCCCCC-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -26364,7 +26364,7 @@
             </freq_entry>
             <freq_entry id="DD4D1672-0000-11DD-A000-000EDDCCCCCC-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26424,7 +26424,7 @@
             </freq_entry>
             <freq_entry id="DD4D15A3-0000-11DD-A000-000EDDCCCCCC-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26484,7 +26484,7 @@
             </freq_entry>
             <freq_entry id="DD4D15A3-0000-11DD-A000-000EDDCCCCCC-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26544,7 +26544,7 @@
             </freq_entry>
             <freq_entry id="DD4D15A3-0000-11DD-A000-000EDDCCCCCC-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26604,7 +26604,7 @@
             </freq_entry>
             <freq_entry id="DD4D15A3-0000-11DD-A000-000EDDCCCCCC-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26664,7 +26664,7 @@
             </freq_entry>
             <freq_entry id="DD4D1672-0000-11DD-A000-000EDDCCCCCC-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26724,7 +26724,7 @@
             </freq_entry>
             <freq_entry id="DD4D1672-0000-11DD-A000-000EDDCCCCCC-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26784,7 +26784,7 @@
             </freq_entry>
             <freq_entry id="DD4D15D2-0000-11DD-A000-000EDDCCCCCC-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26844,7 +26844,7 @@
             </freq_entry>
             <freq_entry id="DD4D1672-0000-11DD-A000-000EDDCCCCCC-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26904,7 +26904,7 @@
             </freq_entry>
             <freq_entry id="DD4D15D2-0000-11DD-A000-000EDDCCCCCC-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -26964,7 +26964,7 @@
             </freq_entry>
             <freq_entry id="DD4D15D2-0000-11DD-A000-000EDDCCCCCC-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27024,7 +27024,7 @@
             </freq_entry>
             <freq_entry id="DD4D15D2-0000-11DD-A000-000EDDCCCCCC-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27084,7 +27084,7 @@
             </freq_entry>
             <freq_entry id="8CCE4FF3-DE31-49BC-8991-AD032955CC2C-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27132,7 +27132,7 @@
             </freq_entry>
             <freq_entry id="96F131AA-2A82-4140-91D4-E77946E33DAE-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27180,7 +27180,7 @@
             </freq_entry>
             <freq_entry id="C3ACF6A0-1CC4-4609-9388-F1AAE896A829-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27228,7 +27228,7 @@
             </freq_entry>
             <freq_entry id="C3ACF6A0-1CC4-4609-9388-F1AAE896A829-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27276,7 +27276,7 @@
             </freq_entry>
             <freq_entry id="96F131AA-2A82-4140-91D4-E77946E33DAE-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27324,7 +27324,7 @@
             </freq_entry>
             <freq_entry id="8CCE4FF3-DE31-49BC-8991-AD032955CC2C-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27372,7 +27372,7 @@
             </freq_entry>
             <freq_entry id="8CCE4FF3-DE31-49BC-8991-AD032955CC2C-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27420,7 +27420,7 @@
             </freq_entry>
             <freq_entry id="C3ACF6A0-1CC4-4609-9388-F1AAE896A829-3" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27468,7 +27468,7 @@
             </freq_entry>
             <freq_entry id="8CCE4FF3-DE31-49BC-8991-AD032955CC2C-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27516,7 +27516,7 @@
             </freq_entry>
             <freq_entry id="C3ACF6A0-1CC4-4609-9388-F1AAE896A829-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27564,7 +27564,7 @@
             </freq_entry>
             <freq_entry id="96F131AA-2A82-4140-91D4-E77946E33DAE-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27612,7 +27612,7 @@
             </freq_entry>
             <freq_entry id="96F131AA-2A82-4140-91D4-E77946E33DAE-2" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>AD</series>
                     <band>G57</band>
                     <mode>Standard</mode>
@@ -27660,7 +27660,7 @@
             </freq_entry>
             <freq_entry id="66638BCF-DB3F-4AB5-8FE2-1A44836A266C-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -27705,7 +27705,7 @@
             </freq_entry>
             <freq_entry id="AAC66C06-DF91-4C2E-8D19-28CB08D4295B-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -27750,7 +27750,7 @@
             </freq_entry>
             <freq_entry id="F61AA782-FB53-4E56-96CD-C415F4F78E00-0" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -27795,7 +27795,7 @@
             </freq_entry>
             <freq_entry id="F61AA782-FB53-4E56-96CD-C415F4F78E00-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -27840,7 +27840,7 @@
             </freq_entry>
             <freq_entry id="AAC66C06-DF91-4C2E-8D19-28CB08D4295B-1" tag="" color="#585858">
                 <compat_key>
-                    <zone>10 CBC AXIENT MICS</zone>
+                    <zone>10 STATION AXIENT MICS</zone>
                     <series>PSM1000</series>
                     <band>G10</band>
                     <mode/>
@@ -29244,7 +29244,7 @@
                 <band>G57</band>
                 <series>AD</series>
                 <tx_profile>Standard</tx_profile>
-                <zone>10 CBC AXIENT MICS</zone>
+                <zone>10 STATION AXIENT MICS</zone>
                 <incl_group>00000000-0000-0000-0000-000000000000</incl_group>
                 <compat_profile id="dedca352-6d01-9faa-912c-3d3218191a92" imd_source="1" synthesizable="1" version="0.0.0.1" name="Standard">
                     <spacing freq_units="KHz">
@@ -29266,7 +29266,7 @@
                 <band>G10</band>
                 <series>PSM1000</series>
                 <tx_profile/>
-                <zone>10 CBC AXIENT MICS</zone>
+                <zone>10 STATION AXIENT MICS</zone>
                 <incl_group>00000000-0000-0000-0000-000000000000</incl_group>
                 <compat_profile id="469f457d-70fd-c79b-8e55-11d7138f27eb" imd_source="1" synthesizable="1" version="0.0.0.1" name="Standard">
                     <spacing freq_units="KHz">
@@ -29533,7 +29533,7 @@
                 <band>TV14-36</band>
                 <series>Sony - DWR-S03DN 1mW</series>
                 <tx_profile/>
-                <zone>CBC ENG</zone>
+                <zone>STATION ENG</zone>
                 <incl_group>00000000-0000-0000-0000-000000000000</incl_group>
                 <compat_profile id="8a0784fd-a80c-d45e-04e5-1d6d2deb356f" imd_source="1" synthesizable="0" version="0.0.0.1" name="Standard">
                     <spacing freq_units="KHz">
