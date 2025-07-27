@@ -324,11 +324,12 @@ def load_selected_preset_logic(app_instance, selected_preset_name, file=__file__
         return False
 
     # Call the utility function from instrument_control
+    # MHZ_TO_HZ is imported globally in this file, so it's accessible.
     success = control_load_selected_preset(app_instance.inst, selected_preset_name)
     if success:
         print(f"✅ Preset '{selected_preset_name}' loaded successfully.")
         # After loading a preset, it's good practice to re-query settings
-        query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ)
+        # query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ) # This is now handled inside control_load_selected_preset
     else:
         print(f"❌ Failed to load preset '{selected_preset_name}'.")
         # Error message already handled by control_load_selected_preset
@@ -351,18 +352,21 @@ def query_device_presets_logic(app_instance, file=__file__, function=inspect.cur
         print("ℹ️ N9340B does not support querying device presets.")
         # Clear any existing preset buttons if the model doesn't support it
         if hasattr(app_instance, 'preset_files_tab'):
-            app_instance.preset_files_tab.clear_preset_buttons()
+            app_instance.preset_files_tab.clear_preset_buttons() # Ensure this method exists
         return
 
     print("Querying device presets. This may take a moment...")
     try:
-        presets = control_query_device_presets(app_instance.inst)
-        if presets is not None:
-            print(f"✅ Found {len(presets)} presets on device.")
-            debug_print(f"Device presets found: {presets}", file=file, function=function)
+        # Call the control function which returns the list of preset names
+        presets_from_device = control_query_device_presets(app_instance.inst)
+        
+        if presets_from_device is not None:
+            print(f"✅ Found {len(presets_from_device)} presets on device.")
+            debug_print(f"Device presets found: {presets_from_device}", file=file, function=function)
             # Update the PresetFilesTab with the new list of presets
             if hasattr(app_instance, 'preset_files_tab'):
-                app_instance.preset_files_tab.populate_preset_buttons(presets)
+                # Pass the list of presets directly to the tab's population method
+                app_instance.preset_files_tab.populate_preset_buttons(presets_from_device)
             else:
                 debug_print("PresetFilesTab not found on app_instance.", file=file, function=function)
         else:
@@ -455,3 +459,4 @@ def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_n
         messagebox.showerror("Error", f"An unexpected error occurred while setting marker/trace modes: {e}")
         debug_print(f"An unexpected error occurred while setting marker/trace modes: {e}", file=file, function=function)
         return False
+

@@ -229,7 +229,7 @@ class PresetFilesTab(ttk.Frame):
         self.selected_preset = None # To store the currently selected preset name
 
         self._create_widgets()
-        self._populate_preset_list() # Populate on initialization
+        self._populate_local_preset_list() # Populate from local directory on initialization
 
     def _create_widgets(self):
         """
@@ -282,12 +282,14 @@ class PresetFilesTab(ttk.Frame):
         else: # Windows
             self.preset_canvas.yview_scroll(-1 * int(event.delta/120), "units")
 
-    def _populate_preset_list(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _populate_local_preset_list(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Populates the list of .sta preset files from the C:\\PRESETS directory
-        and creates buttons for each.
+        (on the local machine) and creates buttons for each.
+        This is typically for initial display or if the user wants to see local files.
         """
-        preset_dir = "C:\\PRESETS" # Hardcoded directory as per original code
+        debug_print("Populating local preset list from C:\\PRESETS\\...", file=file, function=function)
+        preset_dir = "C:\\PRESETS" # Hardcoded local path
         self.preset_files = []
 
         # Clear existing buttons
@@ -295,8 +297,9 @@ class PresetFilesTab(ttk.Frame):
             widget.destroy()
 
         if not os.path.exists(preset_dir):
-            debug_print(f"Preset directory not found: {preset_dir}", file=file, function=function)
-            ttk.Label(self.inner_buttons_frame, text=f"Preset directory not found: {preset_dir}").pack(padx=10, pady=10)
+            debug_print(f"Local preset directory not found: {preset_dir}", file=file, function=function)
+            ttk.Label(self.inner_buttons_frame, text=f"Local preset directory not found: {preset_dir}",
+                      background="#333333", foreground="white").pack(padx=10, pady=10)
             return
 
         try:
@@ -304,25 +307,50 @@ class PresetFilesTab(ttk.Frame):
                 if filename.lower().endswith(".sta"):
                     self.preset_files.append(os.path.splitext(filename)[0]) # Store name without extension
             self.preset_files.sort() # Sort alphabetically
-            debug_print(f"Found {len(self.preset_files)} preset files.", file=file, function=function)
+            debug_print(f"Found {len(self.preset_files)} local preset files.", file=file, function=function)
 
         except Exception as e:
-            debug_print(f"Error listing preset files: {e}", file=file, function=function)
-            ttk.Label(self.inner_buttons_frame, text=f"Error loading presets: {e}").pack(padx=10, pady=10)
+            debug_print(f"Error listing local preset files: {e}", file=file, function=function)
+            ttk.Label(self.inner_buttons_frame, text=f"Error loading local presets: {e}",
+                      background="#333333", foreground="white").pack(padx=10, pady=10)
             return
 
         if not self.preset_files:
-            ttk.Label(self.inner_buttons_frame, text="No .sta preset files found in C:\\PRESETS.").pack(padx=10, pady=10)
+            ttk.Label(self.inner_buttons_frame, text="No .sta preset files found in C:\\PRESETS (local).",
+                      background="#333333", foreground="white").pack(padx=10, pady=10)
+            return
+        
+        # Call the generic populate_preset_buttons with the local files
+        self.populate_preset_buttons(self.preset_files)
+        debug_print("Local preset buttons populated.", file=file, function=function)
+
+
+    def populate_preset_buttons(self, presets_list, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Populates the display with clickable buttons for each preset in the given list.
+        This method is used for both local and device-queried presets.
+
+        Inputs:
+            presets_list (list): A list of preset names (strings) to display as buttons.
+        """
+        debug_print(f"Populating preset buttons with {len(presets_list)} items...", file=file, function=function)
+        # Clear existing buttons
+        for widget in self.inner_buttons_frame.winfo_children():
+            widget.destroy()
+
+        if not presets_list:
+            ttk.Label(self.inner_buttons_frame, text="No presets found.",
+                      background="#333333", foreground="white").pack(padx=10, pady=10)
+            self.inner_buttons_frame.update_idletasks()
+            self.preset_canvas.config(scrollregion=self.preset_canvas.bbox("all"))
             return
 
-        for i, preset_name in enumerate(self.preset_files):
-            # Use ttk.Button for consistent styling
+        for i, preset_name in enumerate(sorted(presets_list)): # Always sort for consistent display
             button = ttk.Button(self.inner_buttons_frame, text=preset_name, 
                                 command=lambda name=preset_name: self._on_preset_button_click(name),
-                                style='GreyText.TButton') # Apply a consistent style
-            button.pack(fill=tk.X, padx=5, pady=2) # Pack to fill horizontally
+                                style='GreyText.TButton')
+            button.pack(fill=tk.X, padx=5, pady=2)
 
-        # Update scroll region after adding buttons
         self.inner_buttons_frame.update_idletasks()
         self.preset_canvas.config(scrollregion=self.preset_canvas.bbox("all"))
         debug_print("Preset buttons populated and scroll region updated.", file=file, function=function)
@@ -352,26 +380,30 @@ class PresetFilesTab(ttk.Frame):
     def _query_presets_from_device(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Queries the connected instrument for available presets and updates the display.
+        This now calls the logic in instrument_logic.py which will then call
+        this tab's populate_preset_buttons with the instrument's presets.
         """
-        if self.app_instance and self.app_instance.inst:
-            debug_print("Querying presets from device...", file=file, function=function)
-            # This calls the logic function from instrument_logic.py
-            query_device_presets_logic(self.app_instance)
-            # The populate_resources_logic (or a similar refresh) should update the dropdown
-            # For presets, it might involve a different mechanism if the device itself lists them.
-            # For now, assuming query_device_presets_logic updates self.app_instance.instrument_list
-            # or a similar structure that _populate_preset_list can use.
-            # If query_device_presets_logic updates a different list, this tab needs to be informed
-            # and call _populate_preset_list with that data.
-            # As per current design, _populate_preset_list reads from C:\PRESETS, not directly from device query.
-            # So, this button should ideally trigger a refresh of the local file list if the device
-            # somehow syncs with the local directory, or if the device itself returns a list of presets.
-            # Given the current `load_selected_preset` uses `C:\PRESETS`, this button should likely refresh that.
-            self._populate_preset_list() # Re-populate from local directory after query attempt
-            print("Finished querying presets from device (local list refreshed).")
-        else:
-            debug_print("Cannot query presets: Instrument not connected.", file=file, function=function)
-            messagebox.showwarning("Not Connected", "Please connect to an instrument first to query presets.")
+        debug_print("Initiating query for presets from device...", file=file, function=function)
+        # The query_device_presets_logic function in instrument_logic.py
+        # now handles calling this tab's populate_preset_buttons directly.
+        query_device_presets_logic(self.app_instance)
+        print("Finished querying presets from device.")
+
+    def clear_preset_buttons(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+        """
+        Clears all preset buttons from the display.
+        """
+        debug_print("Clearing preset buttons...", file=file, function=function)
+        for widget in self.inner_buttons_frame.winfo_children():
+            widget.destroy()
+        self.inner_buttons_frame.update_idletasks()
+        self.preset_canvas.config(scrollregion=self.preset_canvas.bbox("all"))
+        self.selected_preset = None # Clear selected preset
+        if self.app_instance and hasattr(self.app_instance, 'load_preset_button'):
+            self.app_instance.load_preset_button.config(state=tk.DISABLED)
+        ttk.Label(self.inner_buttons_frame, text="No presets displayed.",
+                      background="#333333", foreground="white").pack(padx=10, pady=10)
+
 
     def _on_tab_selected(self, event):
         """
@@ -380,7 +412,11 @@ class PresetFilesTab(ttk.Frame):
         debug_print("PresetFilesTab selected.", file=__file__, function=inspect.currentframe().f_code.co_name)
         if self.app_instance and self.app_instance.inst:
             self.query_presets_button.config(state=tk.NORMAL)
-            # Optionally, refresh the preset list every time the tab is selected
-            self._populate_preset_list()
+            # When the tab is selected, we should ideally show the *local* presets by default
+            # or the last queried device presets. For now, let's stick to local.
+            self._populate_local_preset_list() 
         else:
             self.query_presets_button.config(state=tk.DISABLED)
+            # Clear buttons if no instrument is connected
+            self.clear_preset_buttons()
+

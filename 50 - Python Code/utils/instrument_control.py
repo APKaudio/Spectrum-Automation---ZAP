@@ -456,7 +456,6 @@ def query_device_presets(inst):
     internal "C:\\PRESETS\\" directory. This allows the GUI to display available
     presets for loading.
 
-
     Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
     Process:
@@ -466,7 +465,7 @@ def query_device_presets(inst):
         4. Filters for files with the "STA" type (state files) and ending with ".STA".
         5. Sorts the found preset names alphabetically.
         6. Prints the number of found presets or a message if none are found.
-        7. Handles `pyvisa.errors.VisaIOError` and general `Exception` during the query/parsing.
+        7. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
     Outputs:
         list: A sorted list of `.STA` preset file names (e.g., `['MY_PRESET.STA', 'DEFAULT.STA']`).
               Returns an empty list on failure or if no presets are found.
@@ -475,10 +474,10 @@ def query_device_presets(inst):
     current_file = __file__
 
     if not inst:
-        print("Not connected to instrument, cannot query device presets.")
+        debug_print("Not connected to instrument, cannot query device presets.", file=current_file, function=current_function)
         return []
 
-    print("\nQuerying device preset files from C:\\PRESETS\\...")
+    debug_print("Querying device preset files from C:\\PRESETS\\...", file=current_file, function=current_function)
     preset_files = []
     try:
         response = query_safe(inst, ':MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
@@ -509,15 +508,15 @@ def query_device_presets(inst):
             debug_print("No '.STA' preset files found in C:\\PRESETS\\.", file=current_file, function=current_function)
         return sorted(preset_files) # Return sorted list
     except pyvisa.errors.VisaIOError as e:
-        print(f"🛑 VISA Error querying device presets: {e}")
+        debug_print(f"🛑 VISA Error querying device presets: {e}", file=current_file, function=current_function)
         messagebox.showerror("VISA Error", f"Error querying device presets: {e}")
         return []
     except Exception as e:
-        print(f"❌ An unexpected error occurred while querying presets: {e}")
+        debug_print(f"❌ An unexpected error occurred while querying presets: {e}", file=current_file, function=current_function)
         messagebox.showerror("Error", f"An unexpected error occurred while querying presets: {e}")
         return []
 
-def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
+def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it's not used here
     """
     Loads the selected preset file onto the instrument.
     This function sends the SCPI command to instruct the spectrum analyzer
@@ -527,7 +526,6 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
     Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
         selected_preset_name (str): The name of the preset file to load (e.g., "MY_PRESET.STA").
-        MHZ_TO_HZ (int): Conversion factor from MHz to Hz, passed to `query_current_instrument_settings`.
     Process:
         1. Checks if `inst` is connected.
         2. Constructs the full path to the preset file (e.g., `C:\\PRESETS\\MY_PRESET.STA`).
@@ -560,6 +558,11 @@ def load_selected_preset(inst, selected_preset_name, MHZ_TO_HZ):
             # --- End removed section ---
 
             # Query and display current instrument settings after loading preset
+            # MHZ_TO_HZ is needed here, but it's a global constant, so it needs to be imported
+            # or passed from a higher level if not imported globally.
+            # For now, assuming MHZ_TO_HZ is accessible or will be imported.
+            # If not, it will cause a NameError.
+            from utils.frequency_bands import MHZ_TO_HZ # Import locally for this function
             print("\n--- Current Instrument Settings after Preset Load ---")
             query_current_instrument_settings(inst, MHZ_TO_HZ) # Use the dedicated query function
             print("--------------------------------------------------")
