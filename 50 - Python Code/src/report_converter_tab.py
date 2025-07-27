@@ -1,6 +1,7 @@
 # src/report_converter_tab.py
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, filedialog, ttk
+# from tkinter import messagebox, scrolledtext, filedialog, ttk # Removed messagebox
+from tkinter import scrolledtext, filedialog, ttk # Keep other imports
 import os
 import csv
 import xml.etree.ElementTree as ET
@@ -38,155 +39,131 @@ class ReportConverterTab(ttk.Frame):
         """
         Creates and arranges the widgets for the Report Converter tab.
         """
-        # Configure grid for responsiveness
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1) # Row for message area should expand
+        self.grid_rowconfigure(0, weight=0) # File selection
+        self.grid_rowconfigure(1, weight=1) # Console output
 
-        # Frame for buttons
-        button_frame = ttk.Frame(self)
-        button_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        button_frame.grid_columnconfigure(0, weight=1)
-        button_frame.grid_columnconfigure(1, weight=1)
-        button_frame.grid_columnconfigure(2, weight=1)
+        # File Selection Frame
+        file_selection_frame = ttk.LabelFrame(self, text="Select Report File to Convert")
+        file_selection_frame.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        file_selection_frame.grid_columnconfigure(0, weight=1)
 
+        self.file_path_var = tk.StringVar()
+        self.file_path_entry = ttk.Entry(file_selection_frame, textvariable=self.file_path_var, state='readonly')
+        self.file_path_entry.grid(row=0, column=0, padx=5, pady=2, sticky="ew")
 
-        # Convert HTML to CSV Button
-        ttk.Button(button_frame, text="Convert HTML to CSV", command=self._convert_html_to_csv, style='Blue.TButton').grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ttk.Button(file_selection_frame, text="Browse", command=self._browse_file, style='GreyText.TButton').grid(row=0, column=1, padx=5, pady=2)
+        ttk.Button(file_selection_frame, text="Convert to CSV", command=self._start_conversion_thread, style='Accent.TButton').grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
-        # Convert SHW to CSV Button
-        ttk.Button(button_frame, text="Convert SHW to CSV", command=self._convert_shw_to_csv, style='Blue.TButton').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        # Console output for conversion process
+        self.console_text = scrolledtext.ScrolledText(self, wrap="word", height=10, bg="#1a1a1a", fg="#cccccc", insertbackground="white")
+        self.console_text.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
-        # Convert Soundbase PDF to CSV Button
-        ttk.Button(button_frame, text="Convert Soundbase PDF to CSV", command=self._convert_pdf_to_csv, style='Blue.TButton').grid(row=0, column=2, padx=5, pady=5, sticky="ew")
-
-
-        # Message/Output Area
-        self.message_text = scrolledtext.ScrolledText(self, wrap="word", height=10, bg="#2b2b2b", fg="#cccccc", insertbackground="white")
-        self.message_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
-
-    def _convert_html_to_csv(self):
+    def _browse_file(self):
         """
-        Prompts user for an HTML file, converts it to CSV, and saves it.
+        Opens a file dialog to select a report file (HTML, SHW, or PDF).
         """
         file_path = filedialog.askopenfilename(
-            title="Select HTML Report File",
-            filetypes=[("HTML files", "*.html"), ("All files", "*.*")]
+            filetypes=[("Report Files", "*.html *.shw *.pdf"),
+                       ("HTML Files", "*.html"),
+                       ("SHW (XML) Files", "*.shw"),
+                       ("PDF Files", "*.pdf"),
+                       ("All Files", "*.*")]
         )
+        if file_path:
+            self.file_path_var.set(file_path)
+            debug_print(f"Selected file for conversion: {file_path}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+    def _start_conversion_thread(self):
+        """
+        Starts the file conversion process in a separate thread to keep the GUI responsive.
+        """
+        file_path = self.file_path_var.get()
         if not file_path:
-            # Direct output to the tab's console
-            self.app_instance.after(0, self._update_message_text, "HTML conversion cancelled.")
+            print("🚫 Please select a file to convert first.")
+            # tk.messagebox.showwarning("No File Selected", "Please select a file to convert first.") # Removed messagebox
             return
 
-        # Run conversion in a separate thread to keep GUI responsive
-        conversion_thread = threading.Thread(target=self._convert_and_display, args=(file_path, "HTML"))
+        print(f"\nStarting conversion for: {os.path.basename(file_path)}...")
+        debug_print(f"Starting conversion for: {os.path.basename(file_path)}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+        # Disable conversion button during process
+        self.master.master.master.children['!button'].config(state=tk.DISABLED) # Access the convert button via its parent hierarchy
+        # This is a bit brittle, a direct reference to the convert button would be better if it were an instance variable.
+        # For now, assuming the button is always the second child of file_selection_frame.
+        
+        # Redirect stdout/stderr for this tab's console
+        self.old_stdout = sys.stdout
+        self.old_stderr = sys.stderr
+        sys.stdout = TextRedirector(self.console_text, "stdout")
+        sys.stderr = TextRedirector(self.console_text, "stderr")
+
+        conversion_thread = threading.Thread(target=self._convert_file_logic, args=(file_path,))
+        conversion_thread.daemon = True
         conversion_thread.start()
 
-    def _convert_shw_to_csv(self):
+    def _convert_file_logic(self, file_path):
         """
-        Prompts user for an SHW (XML) file, converts it to CSV, and saves it.
+        Contains the actual file conversion logic, running in a separate thread.
         """
-        file_path = filedialog.askopenfilename(
-            title="Select SHW Report File",
-            filetypes=[("SHW files", "*.shw"), ("XML files", "*.xml"), ("All files", "*.*")]
-        )
-        if not file_path:
-            # Direct output to the tab's console
-            self.app_instance.after(0, self._update_message_text, "SHW conversion cancelled.")
-            return
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        
+        file_name = os.path.basename(file_path)
+        output_folder = self.app_instance.output_folder_var.get()
+        if not output_folder:
+            output_folder = os.path.dirname(file_path) # Default to source directory if not set
+            print(f"⚠️ Output directory not set. Using source directory: {output_folder}")
+            debug_print(f"Output directory not set. Using source directory: {output_folder}", file=current_file, function=current_function)
 
-        # Run conversion in a separate thread to keep GUI responsive
-        conversion_thread = threading.Thread(target=self._convert_and_display, args=(file_path, "SHW"))
-        conversion_thread.start()
+        os.makedirs(output_folder, exist_ok=True) # Ensure output directory exists
 
-    def _convert_pdf_to_csv(self):
-        """
-        Prompts user for a Soundbase PDF file, converts it to CSV, and saves it.
-        """
-        file_path = filedialog.askopenfilename(
-            title="Select Soundbase PDF Report File",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
-        )
-        if not file_path:
-            # Direct output to the tab's console
-            self.app_instance.after(0, self._update_message_text, "PDF conversion cancelled.")
-            return
+        base_name = os.path.splitext(file_name)[0]
+        output_csv_file = os.path.join(output_folder, f"{base_name}_extracted.csv")
+        markers_csv_file = os.path.join(output_folder, "MARKERS.CSV") # Consistent markers file
 
-        # Run conversion in a separate thread to keep GUI responsive
-        conversion_thread = threading.Thread(target=self._convert_and_display, args=(file_path, "PDF"))
-        conversion_thread.start()
-
-    def _update_message_text(self, message):
-        """
-        Appends a message to the scrolled text widget in the Report Converter tab.
-        """
-        self.message_text.config(state=tk.NORMAL)
-        self.message_text.insert(tk.END, message + "\n")
-        self.message_text.see(tk.END) # Scroll to the end
-        self.message_text.config(state=tk.DISABLED)
-
-    def _convert_and_display(self, file_path, file_type, file=__file__, function=inspect.currentframe().f_code.co_name):
-        debug_print(f"Starting conversion for {file_path} (type: {file_type})...", file=file, function=function)
+        headers = []
+        rows = []
         error_message = None
-        output_csv_file = ""
-
-        # Temporarily redirect stdout and stderr to the conversion console
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        sys.stdout = TextRedirector(self.message_text, "stdout")
-        sys.stderr = TextRedirector(self.message_text, "stderr")
 
         try:
-            # Clear previous messages in the conversion console
-            self.message_text.config(state=tk.NORMAL)
-            self.message_text.delete(1.0, tk.END)
-            self.message_text.config(state=tk.DISABLED)
-
-            # This message will now go to the tab's console
-            print(f"Processing '{os.path.basename(file_path)}'...") 
-
-            file_name = os.path.basename(file_path)
-            headers = []
-            rows = []
-
-            if file_type == "HTML":
+            if file_path.lower().endswith(".html"):
+                print("Detected HTML file. Extracting data...")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
-                headers, rows = convert_html_report_to_csv(html_content)
-            elif file_type == "SHW":
-                headers, rows = generate_csv_from_shw(file_path)
-            elif file_type == "PDF":
-                headers, rows = convert_pdf_report_to_csv(file_path)
-            
-            if headers and rows:
-                output_folder = self.app_instance.output_folder_var.get()
-                if not output_folder or not os.path.isdir(output_folder):
-                    error_message = "Invalid Output Folder. Please set a valid output directory in the Scan Configuration tab."
-                    print(f"❌ Conversion failed: {error_message}") # This will go to the tab's console
-                    # Removed messagebox.showwarning
-                    return # Exit early if output folder is invalid
+                headers, rows = convert_html_report_to_csv(html_content, console_print_func=print)
+            elif file_path.lower().endswith(".shw"):
+                print("Detected SHW (XML) file. Extracting data...")
+                headers, rows = generate_csv_from_shw(file_path, console_print_func=print)
+            elif file_path.lower().endswith(".pdf"):
+                print("Detected PDF file. Extracting data...")
+                headers, rows = convert_pdf_report_to_csv(file_path, console_print_func=print)
+            else:
+                error_message = "Unsupported file type. Please select an HTML, SHW, or PDF file."
+                print(f"❌ {error_message}")
+                # tk.messagebox.showerror("Unsupported File Type", error_message) # Removed messagebox
+                return
 
-                output_csv_filename = "MARKERS.CSV"
-                self.output_csv_path = os.path.join(output_folder, output_csv_filename)
-                
-                with open(self.output_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            if headers and rows:
+                # Save extracted data to the main output CSV
+                with open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
                     writer = csv.DictWriter(csvfile, fieldnames=headers)
                     writer.writeheader()
                     writer.writerows(rows)
-                
-                print(f"\n✅ Successfully converted '{file_name}' to '{os.path.basename(self.output_csv_path)}'")
-                
-                # Display MARKERS.CSV file contents in the tab's console
-                print(f"\n--- Contents of {os.path.basename(self.output_csv_path)} ---")
-                try:
-                    with open(self.output_csv_path, 'r', encoding='utf-8') as f:
-                        csv_content = f.read()
-                        print(csv_content)
-                    print(f"--- End of {os.path.basename(self.output_csv_path)} ---")
-                except Exception as e:
-                    print(f"❌ Error reading {os.path.basename(self.output_csv_path)}: {e}")
+                print(f"✅ Conversion complete. Data saved to: {output_csv_file}")
+                debug_print(f"Conversion complete. Data saved to: {output_csv_file}", file=current_file, function=current_function)
+                self.output_csv_path = output_csv_file # Store for potential future use
 
-                # Call the method on the main App instance to update the Markers Display tab
-                if hasattr(self.app_instance, 'markers_display_tab'):
+                # Also save to MARKERS.CSV
+                with open(markers_csv_file, 'w', newline='', encoding='utf-8') as markers_file:
+                    writer = csv.DictWriter(markers_file, fieldnames=headers)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                print(f"✅ Markers also saved to: {markers_csv_file}")
+                debug_print(f"Markers also saved to: {markers_csv_file}", file=current_file, function=current_function)
+
+                # Update the MarkersDisplayTab if it exists
+                if hasattr(self.app_instance, 'markers_display_tab') and self.app_instance.markers_display_tab:
                     self.app_instance.markers_display_tab.update_markers_data(headers, rows)
                 else:
                     debug_print("MarkersDisplayTab instance not found on app_instance.", file=__file__, function=inspect.currentframe().f_code.co_name)
@@ -210,9 +187,18 @@ class ReportConverterTab(ttk.Frame):
         
         finally:
             # Restore stdout and stderr
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
+            sys.stdout = self.old_stdout
+            sys.stderr = self.old_stderr
             if error_message:
                 # This debug_print will now go to the main console
-                debug_print(f"Conversion failed for {file_name}: {error_message}", file=file, function=function)
+                debug_print(f"Conversion failed for {file_name}: {error_message}", file=current_file, function=current_function)
+                # Schedule a messagebox on the main thread if an error occurred
+                self.app_instance.after(0, lambda: tk.messagebox.showerror("Conversion Error", f"Conversion failed for {file_name}.\nSee console for details."))
+            else:
+                self.app_instance.after(0, lambda: tk.messagebox.showinfo("Conversion Complete", f"Successfully converted {file_name} to CSV."))
+
+
+            # Re-enable conversion button
+            self.master.master.master.children['!button'].config(state=tk.NORMAL) # Access the convert button via its parent hierarchy
+
 

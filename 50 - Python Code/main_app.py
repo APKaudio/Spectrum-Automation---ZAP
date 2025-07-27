@@ -43,15 +43,14 @@ from src.scan_logic import (
 # Removed the unnecessary imports for slider update functions from src.settings_logic
 
 
-import src.plot_logic as plot_logic_module
+# import src.plot_logic as plot_logic_module # No longer needed here, moved to plotting_tab
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
 from utils.instrument_control import set_debug_mode, debug_print, set_log_visa_commands_mode
 
 from src.report_converter_tab import ReportConverterTab
 from src.instrument_preset_tab import PresetFilesTab
-
-
 from src.marker_logic import MarkersDisplayTab
+from src.plotting_tab import PlottingTab # NEW: Import the new plotting tab
 
 
 # --- Dependency Check and Installation ---
@@ -121,14 +120,18 @@ class ScanConfigurationTab(ttk.Frame):
         self.grid_rowconfigure(1, weight=1)
 
         # Top Left: Instrument Connection Frame (changed from Top Right)
-        instrument_frame = ttk.LabelFrame(self, text="Instrument Connection")
+        instrument_frame = ttk.LabelFrame(self, text="Instrument Connection", style='Dark.TLabelframe')
         instrument_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew") # Changed column to 0
         instrument_frame.grid_columnconfigure(0, weight=1) # Make dropdown expandable
 
         ttk.Label(instrument_frame, text="VISA Resource:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
 
-        self.app_instance.resource_dropdown = ttk.OptionMenu(instrument_frame, self.app_instance.resource_var, "", *self.app_instance.instrument_list)
+        # Use a custom style for the OptionMenu to ensure dark background
+        self.app_instance.resource_dropdown = ttk.OptionMenu(instrument_frame, self.app_instance.resource_var, "", *self.app_instance.instrument_list, style='Dark.TMenubutton')
         self.app_instance.resource_dropdown.grid(row=1, column=0, padx=5, pady=2, sticky="ew")
+        # Ensure the dropdown menu itself is dark
+        self.app_instance.nametowidget(self.app_instance.resource_dropdown['menu']).config(bg='#2b2b2b', fg='#cccccc')
+
 
         self.app_instance.connect_button = ttk.Button(instrument_frame, text="Connect", command=lambda: connect_instrument_logic(self.app_instance), state=tk.DISABLED, style='GreyText.TButton')
         self.app_instance.connect_button.grid(row=2, column=0, padx=5, pady=2, sticky="ew")
@@ -145,55 +148,54 @@ class ScanConfigurationTab(ttk.Frame):
         self.app_instance.load_preset_button = ttk.Button(instrument_frame, text="Load Selected Preset", command=lambda: load_selected_preset_logic(self.app_instance, self.app_instance.preset_files_tab.get_selected_preset()), state=tk.DISABLED, style='Accent.TButton')
         self.app_instance.load_preset_button.grid(row=5, column=0, padx=5, pady=2, sticky="ew")
 
+        # NEW: Debug checkboxes moved to Instrument Connection Frame
+        ttk.Checkbutton(instrument_frame, text="General Debug Enabled", variable=self.app_instance.general_debug_enabled_var,
+                        command=self.app_instance._toggle_general_debug, style='TCheckbutton').grid(row=6, column=0, padx=5, pady=2, sticky="w")
+        ttk.Checkbutton(instrument_frame, text="Log VISA Commands", variable=self.app_instance.log_visa_commands_enabled_var,
+                        command=self.app_instance._toggle_log_visa_commands, style='TCheckbutton').grid(row=7, column=0, padx=5, pady=2, sticky="w")
+
 
         # Top Right: Scan Control Frame (changed from Top Left)
-        scan_control_frame = ttk.LabelFrame(self, text="Scan Control")
+        scan_control_frame = ttk.LabelFrame(self, text="Scan Control", style='Dark.TLabelframe')
         scan_control_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew") # Changed column to 1
         scan_control_frame.grid_columnconfigure(0, weight=1)
 
-        self.app_instance.start_scan_button = ttk.Button(scan_control_frame, text="Start Scan", command=lambda: start_scan_thread_logic(self.app_instance), state=tk.DISABLED, style='Green.TButton')
-        self.app_instance.start_scan_button.grid(row=0, column=0, padx=5, pady=2, sticky="ew")
+        # Removed start/stop/pause buttons from here, they are now in the new control panel
 
         # In Scan Control Frame
-        ttk.Label(scan_control_frame, text="Number of Scan Cycles:").grid(row=9, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(scan_control_frame, text="Number of Scan Cycles:").grid(row=0, column=0, padx=5, pady=2, sticky="w") # Adjusted row
         self.app_instance.num_scan_cycles_entry = ttk.Entry(scan_control_frame, textvariable=self.app_instance.num_scan_cycles_var)
-        self.app_instance.num_scan_cycles_entry.grid(row=10, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.num_scan_cycles_entry.grid(row=1, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         self.app_instance.num_scan_cycles_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.num_scan_cycles_var, 'last_num_scan_cycles'))
 
-        self.app_instance.stop_scan_button = ttk.Button(scan_control_frame, text="Stop Scan", command=lambda: stop_scan_logic(self.app_instance), state=tk.NORMAL, style='Red.TButton') # Changed to NORMAL for testing
-        self.app_instance.stop_scan_button.grid(row=1, column=0, padx=5, pady=2, sticky="ew")
-
-        self.app_instance.pause_resume_button = ttk.Button(scan_control_frame, text="Pause Scan", command=lambda: pause_resume_scan_logic(self.app_instance), state=tk.NORMAL, style='Orange.TButton') # Changed to NORMAL for testing
-        self.app_instance.pause_resume_button.grid(row=2, column=0, padx=5, pady=2, sticky="ew")
-        self.app_instance.pause_blink_id = None # For blinking effect
-
-        self.app_instance.plot_button = ttk.Button(scan_control_frame, text="Generate Average Plot", command=lambda: generate_average_plot_logic(self.app_instance), state=tk.DISABLED, style='Blue.TButton')
-        self.app_instance.plot_button.grid(row=3, column=0, padx=5, pady=2, sticky="ew")
+        # Removed plot_button from here, it's now in PlottingTab
+        # self.app_instance.plot_button = ttk.Button(scan_control_frame, text="Generate Average Plot", command=lambda: generate_average_plot_logic(self.app_instance), state=tk.DISABLED, style='Blue.TButton')
+        # self.app_instance.plot_button.grid(row=3, column=0, padx=5, pady=2, sticky="ew")
 
         # Scan Name and Directory
-        ttk.Label(scan_control_frame, text="Scan Name:").grid(row=4, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(scan_control_frame, text="Scan Name:").grid(row=2, column=0, padx=5, pady=2, sticky="w") # Adjusted row
         self.app_instance.scan_name_entry = ttk.Entry(scan_control_frame, textvariable=self.app_instance.scan_name_var)
-        self.app_instance.scan_name_entry.grid(row=5, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.scan_name_entry.grid(row=3, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
 
-        ttk.Label(scan_control_frame, text="Output Directory:").grid(row=6, column=0, padx=5, pady=2, sticky="w")
-        output_dir_frame = ttk.Frame(scan_control_frame)
-        output_dir_frame.grid(row=7, column=0, padx=5, pady=2, sticky="ew")
+        ttk.Label(scan_control_frame, text="Output Directory:").grid(row=4, column=0, padx=5, pady=2, sticky="w") # Adjusted row
+        output_dir_frame = ttk.Frame(scan_control_frame, style='Dark.TFrame')
+        output_dir_frame.grid(row=5, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         output_dir_frame.grid_columnconfigure(0, weight=1)
         self.app_instance.output_folder_entry = ttk.Entry(output_dir_frame, textvariable=self.app_instance.output_folder_var)
         self.app_instance.output_folder_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(output_dir_frame, text="Browse", command=self.app_instance._browse_output_folder).grid(row=0, column=1, sticky="e")
 
-        ttk.Button(scan_control_frame, text="Open Output Folder", command=lambda: self.app_instance._call_open_output_folder()).grid(row=8, column=0, padx=5, pady=2, sticky="ew")
+        ttk.Button(scan_control_frame, text="Open Output Folder", command=lambda: self.app_instance._call_open_output_folder()).grid(row=6, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
 
         # Bottom Left: Settings Frame
-        settings_frame = ttk.LabelFrame(self, text="Settings")
+        settings_frame = ttk.LabelFrame(self, text="Settings", style='Dark.TLabelframe')
         settings_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         settings_frame.grid_columnconfigure(0, weight=1)
 
         # Sliders for RBW, Max Hold Time, Cycle Wait Time
         ttk.Label(settings_frame, text="Scan RBW (Hz):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.rbw_slider = ttk.Scale(settings_frame, from_=0, to=len(self.app_instance._get_rbw_options()) - 1,
-                                    orient="horizontal", command=self.app_instance.update_scan_rbw_from_slider_index_logic)
+                                    orient="horizontal", command=self.app_instance.update_scan_rbw_from_slider_index_logic, style='Dark.Horizontal.TScale')
         self.app_instance.rbw_slider.grid(row=1, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.rbw_value_label = ttk.Label(settings_frame, textvariable=self.app_instance.desired_rbw_var)
         self.app_instance.rbw_value_label.grid(row=2, column=0, padx=5, pady=2, sticky="w")
@@ -203,82 +205,75 @@ class ScanConfigurationTab(ttk.Frame):
 
         ttk.Label(settings_frame, text="Max Hold Time (s):").grid(row=4, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.max_hold_time_slider = ttk.Scale(settings_frame, from_=0, to=len(self.app_instance._get_max_hold_time_options()) - 1,
-                                              orient="horizontal", command=self.app_instance.update_max_hold_time_from_slider_index_logic)
+                                              orient="horizontal", command=self.app_instance.update_max_hold_time_from_slider_index_logic, style='Dark.Horizontal.TScale')
         self.app_instance.max_hold_time_slider.grid(row=5, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.max_hold_time_label = ttk.Label(settings_frame, textvariable=self.app_instance.desired_max_hold_time_var)
         self.app_instance.max_hold_time_label.grid(row=6, column=0, padx=5, pady=2, sticky="w")
 
         ttk.Label(settings_frame, text="Cycle Wait Time (s):").grid(row=7, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.cycle_wait_time_slider = ttk.Scale(settings_frame, from_=0, to=len(self.app_instance._get_cycle_wait_time_options()) - 1,
-                                                orient="horizontal", command=self.app_instance.update_cycle_wait_time_from_slider_index_logic)
+                                                orient="horizontal", command=self.app_instance.update_cycle_wait_time_from_slider_index_logic, style='Dark.Horizontal.TScale')
         self.app_instance.cycle_wait_time_slider.grid(row=8, column=0, padx=5, pady=2, sticky="ew")
         self.app_instance.cycle_wait_time_label = ttk.Label(settings_frame, textvariable=self.app_instance.desired_cycle_wait_time_var)
         self.app_instance.cycle_wait_time_label.grid(row=9, column=0, padx=5, pady=2, sticky="w")
 
         # Other settings (checkboxes, entries)
         ttk.Checkbutton(settings_frame, text="Max Hold Enabled", variable=self.app_instance.desired_maxhold_enabled_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_maxhold_enabled_var, 'last_maxhold_enabled')).grid(row=10, column=0, padx=5, pady=2, sticky="w")
+                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_maxhold_enabled_var, 'last_maxhold_enabled'), style='TCheckbutton').grid(row=10, column=0, padx=5, pady=2, sticky="w")
         ttk.Checkbutton(settings_frame, text="High Sensitivity", variable=self.app_instance.desired_high_sensitivity_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_high_sensitivity_var, 'last_high_sensitivity')).grid(row=11, column=0, padx=5, pady=2, sticky="w")
+                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_high_sensitivity_var, 'last_high_sensitivity'), style='TCheckbutton').grid(row=11, column=0, padx=5, pady=2, sticky="w")
         ttk.Checkbutton(settings_frame, text="Preamplifier ON", variable=self.app_instance.desired_preamp_on_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_preamp_on_var, 'last_preamp_on')).grid(row=12, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(settings_frame, text="Include Gov Markers", variable=self.app_instance.include_gov_markers_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.include_gov_markers_var, 'last_include_gov_markers')).grid(row=13, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(settings_frame, text="Include TV Markers", variable=self.app_instance.include_tv_markers_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.include_tv_markers_var, 'last_include_tv_markers')).grid(row=14, column=0, padx=5, pady=2, sticky="w")
-        # New: Include Markers from MARKERS.CSV
-        ttk.Checkbutton(settings_frame, text="Include Custom Markers (MARKERS.CSV)", variable=self.app_instance.include_markers_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.include_markers_var, 'last_include_markers')).grid(row=15, column=0, padx=5, pady=2, sticky="w")
-
-        ttk.Checkbutton(settings_frame, text="Open HTML After Complete", variable=self.app_instance.open_html_after_complete_var,
-                        command=lambda: self.app_instance._on_setting_change(self.app_instance.open_html_after_complete_var, 'last_open_html_after_complete')).grid(row=16, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(settings_frame, text="General Debug Enabled", variable=self.app_instance.general_debug_enabled_var,
-                        command=self.app_instance._toggle_general_debug).grid(row=17, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(settings_frame, text="Log VISA Commands", variable=self.app_instance.log_visa_commands_enabled_var,
-                        command=self.app_instance._toggle_log_visa_commands).grid(row=18, column=0, padx=5, pady=2, sticky="w")
+                        command=lambda: self.app_instance._on_setting_change(self.app_instance.desired_preamp_on_var, 'last_preamp_on'), style='TCheckbutton').grid(row=12, column=0, padx=5, pady=2, sticky="w")
+        
+        # Removed plotting checkboxes from here, they are now in PlottingTab
+        
+        # Removed Open HTML After Complete from here, it's now in PlottingTab
+        
+        # Removed debug checkboxes from here, they are now in Instrument Connection Frame
+        # ttk.Checkbutton(settings_frame, text="General Debug Enabled", variable=self.app_instance.general_debug_enabled_var,
+        #                 command=self.app_instance._toggle_general_debug).grid(row=13, column=0, padx=5, pady=2, sticky="w") # Adjusted row
+        # ttk.Checkbutton(settings_frame, text="Log VISA Commands", variable=self.app_instance.log_visa_commands_enabled_var,
+        #                 command=self.app_instance._toggle_log_visa_commands).grid(row=14, column=0, padx=5, pady=2, sticky="w") # Adjusted row
 
         # Reference Level Entry
-        ttk.Label(settings_frame, text="Reference Level (dBm):").grid(row=19, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Reference Level (dBm):").grid(row=13, column=0, padx=5, pady=2, sticky="w") # Adjusted row
         self.app_instance.reference_level_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_reference_level_var)
-        self.app_instance.reference_level_entry.grid(row=20, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.reference_level_entry.grid(row=14, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         self.app_instance.reference_level_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_reference_level_var, 'last_reference_level_dbm'))
 
         # Frequency Shift Entry
-        ttk.Label(settings_frame, text="Frequency Shift (Hz):").grid(row=21, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Frequency Shift (Hz):").grid(row=15, column=0, padx=5, pady=2, sticky="w") # Adjusted row
         self.app_instance.freq_shift_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_freq_shift_var)
-        self.app_instance.freq_shift_entry.grid(row=22, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.freq_shift_entry.grid(row=16, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         self.app_instance.freq_shift_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_freq_shift_var, 'last_freq_shift_hz'))
 
         # Scan RBW Segmentation Entry
-        ttk.Label(settings_frame, text="Scan RBW Segmentation (Hz):").grid(row=23, column=0, padx=5, pady=2, sticky="w")
         self.app_instance.scan_rbw_segmentation_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_scan_rbw_segmentation_var)
-        self.app_instance.scan_rbw_segmentation_entry.grid(row=24, column=0, padx=5, pady=2, sticky="ew")
+        ttk.Label(settings_frame, text="Scan RBW Segmentation (Hz):").grid(row=17, column=0, padx=5, pady=2, sticky="w") # Adjusted row
+        self.app_instance.scan_rbw_segmentation_entry.grid(row=18, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         self.app_instance.scan_rbw_segmentation_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_scan_rbw_segmentation_var, 'last_scan_rbw_segmentation'))
 
         # Default Focus Width Entry
-        ttk.Label(settings_frame, text="Default Focus Width (Hz):").grid(row=25, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Default Focus Width (Hz):").grid(row=19, column=0, padx=5, pady=2, sticky="w") # Adjusted row
         self.app_instance.default_focus_width_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.desired_default_focus_width_var)
-        self.app_instance.default_focus_width_entry.grid(row=26, column=0, padx=5, pady=2, sticky="ew")
+        self.app_instance.default_focus_width_entry.grid(row=20, column=0, padx=5, pady=2, sticky="ew") # Adjusted row
         self.app_instance.default_focus_width_entry.bind("<FocusOut>", lambda e: self.app_instance._on_setting_change(self.app_instance.desired_default_focus_width_var, 'last_default_focus_width'))
 
         ttk.Button(settings_frame, text="Restore Default Settings",
-        command=lambda: self.app_instance._call_restore_default_settings()).grid(row=27, column=0, padx=5, pady=10, sticky="ew")
-        # Removed redundant "Open Report Folder" button
-        # ttk.Button(settings_frame, text="Open Report Folder", command=lambda: open_report_folder_logic(self.app_instance.output_folder_var.get())).grid(row=29, column=0, padx=5, pady=2, sticky="ew")
-
-        # Open Preset Folder Button - This button's command will be set after App's _create_widgets
-        # to ensure self.app_instance.preset_files_tab is initialized.
-        self.open_preset_folder_button = ttk.Button(settings_frame, text="Open Instrument Preset Folder")
-        self.open_preset_folder_button.grid(row=28, column=0, padx=5, pady=2, sticky="ew")
+        command=lambda: self.app_instance._call_restore_default_settings()).grid(row=21, column=0, padx=5, pady=10, sticky="ew") # Adjusted row
+        
+        # Removed "Open Instrument Preset Folder" button as requested
+        # self.open_preset_folder_button = ttk.Button(settings_frame, text="Open Instrument Preset Folder")
+        # self.open_preset_folder_button.grid(row=28, column=0, padx=5, pady=2, sticky="ew")
 
 
         # Bottom Right: Frequency Band Selection Frame
-        band_selection_frame = ttk.LabelFrame(self, text="Frequency Bands to Scan")
+        band_selection_frame = ttk.LabelFrame(self, text="Frequency Bands to Scan", style='Dark.TLabelframe')
         band_selection_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
         band_selection_frame.grid_columnconfigure(0, weight=1)
 
         # Use a canvas with a scrollbar for the band checkboxes
-        band_canvas = tk.Canvas(band_selection_frame, borderwidth=0, highlightthickness=0, bg='#333333')
+        band_canvas = tk.Canvas(band_selection_frame, borderwidth=0, highlightthickness=0, bg='#1e1e1e') # Dark mode bg
         band_canvas.grid(row=0, column=0, sticky="nsew")
         band_selection_frame.grid_rowconfigure(0, weight=1)
 
@@ -302,7 +297,7 @@ class ScanConfigurationTab(ttk.Frame):
             display_text = f"{band_name} ({start_freq:.3f} - {stop_freq:.3f} MHz)"
             var = band_item["var"]
             chk = ttk.Checkbutton(self.app_instance.inner_band_frame, text=display_text, variable=var,
-                                  command=self.app_instance._on_band_checkbox_change)
+                                  command=self.app_instance._on_band_checkbox_change, style='TCheckbutton')
             chk.grid(row=i, column=0, sticky="w", padx=5, pady=1)
 
 
@@ -326,7 +321,8 @@ class App(tk.Tk):
             from src.settings_logic import restore_default_settings_logic
             restore_default_settings_logic(self)
         except ImportError as e:
-            messagebox.showerror("Import Error", f"Failed to load restore settings module: {e}")
+            # Schedule messagebox to run on the main thread
+            self._show_error_message("Import Error", f"Failed to load restore settings module: {e}")
             debug_print(f"Error importing restore_default_settings_logic: {e}", file=__file__, function=inspect.currentframe().f_code.co_name)
 
     def _call_open_output_folder(self):
@@ -335,7 +331,7 @@ class App(tk.Tk):
         """
         output_folder_path = self.output_folder_var.get()
         if not output_folder_path:
-            messagebox.showwarning("No Output Folder", "Please set an output directory first.")
+            self._show_warning_message("No Output Folder", "Please set an output directory first.")
             return
 
         if not os.path.isdir(output_folder_path):
@@ -343,19 +339,19 @@ class App(tk.Tk):
                 os.makedirs(output_folder_path, exist_ok=True)
                 print(f"Created output folder: {output_folder_path}")
             except Exception as e:
-                messagebox.showerror("Folder Creation Error", f"Failed to create output folder: {e}")
+                self._show_error_message("Folder Creation Error", f"Failed to create output folder: {e}")
                 return
 
         try:
             if sys.platform == "win32":
-                os.startfile(output_folder_path)
+                subprocess.Popen(['explorer', output_folder_path]) # Use explorer for Windows
             elif sys.platform == "darwin": # macOS
                 subprocess.Popen(["open", output_folder_path])
             else: # Linux
                 subprocess.Popen(["xdg-open", output_folder_path])
             print(f"Opened output folder: {output_folder_path}")
         except Exception as e:
-            messagebox.showerror("Error", f"Could not open output folder: {e}")
+            self._show_error_message("Error", f"Could not open output folder: {e}")
 
 
     def __init__(self):
@@ -365,6 +361,9 @@ class App(tk.Tk):
         super().__init__()
         self.title("RF Spectrum Analyzer Controller")
         
+        # Set overall window background
+        self.config(bg='#1e1e1e')
+
         # --- FIX: Handle icon loading gracefully ---
         try:
             # Construct the absolute path to the icon
@@ -428,7 +427,8 @@ class App(tk.Tk):
             self.rm = pyvisa.ResourceManager()
             populate_resources_logic(self) # Populate resources on startup (dropdown options)
         except Exception as e:
-            messagebox.showerror("PyVISA Error", f"Failed to initialize PyVISA Resource Manager: {e}\n"
+            # Schedule messagebox to run on the main thread
+            self._show_error_message("PyVISA Error", f"Failed to initialize PyVISA Resource Manager: {e}\n"
                                                   "Please ensure PyVISA and a VISA backend (like NI-VISA or Keysight VISA) are installed correctly.")
             print(f"❌ PyVISA Resource Manager initialization failed: {e}")
             self.connect_button.config(state=tk.DISABLED)
@@ -499,7 +499,7 @@ class App(tk.Tk):
         self.desired_default_focus_width_var = tk.StringVar(self)
         self.setting_var_map['desired_default_focus_width_var'] = ('last_default_focus_width', 'default_default_focus_width', self.desired_default_focus_width_var)
 
-        # Plotting and Reporting
+        # Plotting and Reporting (These remain in App as they are shared state)
         self.include_gov_markers_var = tk.BooleanVar(self)
         self.setting_var_map['include_gov_markers_var'] = ('last_include_gov_markers', 'default_include_gov_markers', self.include_gov_markers_var)
 
@@ -583,21 +583,41 @@ class App(tk.Tk):
         Creates and arranges all GUI widgets.
         """
         # --- Main Frame (to hold everything) ---
-        self.main_frame = ttk.Frame(self, padding="10 10 10 10")
+        self.main_frame = ttk.Frame(self, padding="10 10 10 10", style='Dark.TFrame')
         self.main_frame.grid(row=0, column=0, sticky="nsew")
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Configure main_frame grid for responsiveness: 1 row, 2 columns
-        self.main_frame.grid_rowconfigure(0, weight=1) # Main content row
+        # Configure main_frame grid for responsiveness: 2 rows, 2 columns
+        self.main_frame.grid_rowconfigure(0, weight=0) # Top row for control panel (fixed height)
+        self.main_frame.grid_rowconfigure(1, weight=1) # Bottom row for Notebook and Console
         self.main_frame.grid_columnconfigure(0, weight=1) # Left half for Notebook
         self.main_frame.grid_columnconfigure(1, weight=1) # Right half for Console
 
 
+        # --- NEW: Control Panel Frame above Console ---
+        self.control_panel_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
+        self.control_panel_frame.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=(0, 5))
+        self.control_panel_frame.grid_columnconfigure(0, weight=1)
+        self.control_panel_frame.grid_columnconfigure(1, weight=1)
+        self.control_panel_frame.grid_columnconfigure(2, weight=1)
+
+        # Move Start Scan, Pause Scan, Stop Scan buttons here
+        self.start_scan_button = ttk.Button(self.control_panel_frame, text="Start Scan", command=lambda: start_scan_thread_logic(self), state=tk.DISABLED, style='Green.TButton')
+        self.start_scan_button.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+
+        self.pause_resume_button = ttk.Button(self.control_panel_frame, text="Pause Scan", command=lambda: pause_resume_scan_logic(self), state=tk.DISABLED, style='Orange.TButton')
+        self.pause_resume_button.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        self.pause_blink_id = None # For blinking effect
+
+        self.stop_scan_button = ttk.Button(self.control_panel_frame, text="Stop Scan", command=lambda: stop_scan_logic(self), state=tk.DISABLED, style='Red.TButton')
+        self.stop_scan_button.grid(row=0, column=2, padx=2, pady=2, sticky="ew")
+
+
         # --- Main Notebook (Tabs for Scan Configuration, Markers, Report Converter, etc.) ---
-        self.notebook = ttk.Notebook(self.main_frame)
-        # Place notebook in the left column of the main_frame
-        self.notebook.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=0)
+        self.notebook = ttk.Notebook(self.main_frame, style='Dark.TNotebook')
+        # Place notebook in the left column of the main_frame, below the control panel
+        self.notebook.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=0)
         
         # Add Scan Configuration Tab as the first tab
         self.scan_config_tab = ScanConfigurationTab(self.notebook, app_instance=self)
@@ -615,22 +635,27 @@ class App(tk.Tk):
         self.preset_files_tab = PresetFilesTab(self.notebook, app_instance=self)
         self.notebook.add(self.preset_files_tab, text="Instrument Presets")
         
+        # NEW: Plotting Tab
+        self.plotting_tab = PlottingTab(self.notebook, app_instance=self)
+        self.notebook.add(self.plotting_tab, text="Plotting")
+
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
 
         # --- Console Output Area ---
         # Create console_text directly and place it in the right column of the main_frame
-        self.console_text = scrolledtext.ScrolledText(self.main_frame, wrap="word", height=10, bg="#2b2b2b", fg="#cccccc", insertbackground="white")
-        self.console_text.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=0)
+        # It should be in the second row (index 1) of the main_frame
+        self.console_text = scrolledtext.ScrolledText(self.main_frame, wrap="word", height=10, bg="#1a1a1a", fg="#cccccc", insertbackground="white")
+        self.console_text.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=0)
 
         # Set initial slider positions based on loaded config values
         # This call needs to be after all widgets (including those in ScanConfigurationTab) are created.
         # It's currently at the end of App.__init__, which is correct.
         self._set_initial_slider_positions() # This is called in __init__ after _create_widgets()
 
-        # Set the command for the "Open Instrument Preset Folder" button here,
-        # after self.preset_files_tab has been initialized.
-        self.scan_config_tab.open_preset_folder_button.config(command=self.preset_files_tab._open_preset_folder)
+        # Removed the command setting for the "Open Instrument Preset Folder" button
+        # as the button itself is removed from ScanConfigurationTab.
+        # self.scan_config_tab.open_preset_folder_button.config(command=self.preset_files_tab._open_preset_folder)
 
 
     def _set_initial_slider_positions(self):
@@ -762,15 +787,17 @@ class App(tk.Tk):
         # Get the default style for Entry and Checkbutton
         default_entry_style_name = 'TEntry'
         default_checkbutton_style_name = 'TCheckbutton'
-        default_scale_style_name = 'TScale'
+        default_scale_style_name = 'Dark.Horizontal.TScale' # Use the custom dark style
 
-        # Apply default style to Entry widgets
+        # Apply default style to Entry widgets (now directly attributes of App)
         self.reference_level_entry.config(style=default_entry_style_name)
         self.freq_shift_entry.config(style=default_entry_style_name)
         self.scan_name_entry.config(style=default_entry_style_name)
         self.output_folder_entry.config(style=default_entry_style_name)
         self.scan_rbw_segmentation_entry.config(style=default_entry_style_name)
         self.default_focus_width_entry.config(style=default_entry_style_name)
+        self.num_scan_cycles_entry.config(style=default_entry_style_name)
+
 
         # Apply default style to Checkbutton widgets
         # This is more complex as we don't have direct references to all of them
@@ -782,7 +809,7 @@ class App(tk.Tk):
         # self.maxhold_chk.config(style=default_checkbutton_style_name)
         # For now, rely on global theme.
 
-        # Apply default style to Scale widgets
+        # Apply default style to Scale widgets (now directly attributes of App)
         self.rbw_slider.config(style=default_scale_style_name)
         self.max_hold_time_slider.config(style=default_scale_style_name)
         self.cycle_wait_time_slider.config(style=default_scale_style_name)
@@ -834,6 +861,17 @@ class App(tk.Tk):
             # Simply write the message. TextRedirector's write method will handle
             # appending it and adding a newline.
             sys.stdout.write(message)
+
+    # --- Centralized messagebox display methods ---
+    def _show_info_message(self, title, message):
+        self.after(0, lambda: messagebox.showinfo(title, message))
+
+    def _show_warning_message(self, title, message):
+        self.after(0, lambda: messagebox.showwarning(title, message))
+
+    def _show_error_message(self, title, message):
+        self.after(0, lambda: messagebox.showerror(title, message))
+    # --- End centralized messagebox display methods ---
 
 
     def _start_connect_button_blink(self):
@@ -965,13 +1003,18 @@ class App(tk.Tk):
         self.stop_event.clear()
         self.pause_event.clear()
 
+        # Update button states, now that they are class attributes of App
         self.connect_button.config(state=tk.NORMAL)
         self.disconnect_button.config(state=tk.DISABLED)
         self.start_scan_button.config(state=tk.DISABLED)
         self.stop_scan_button.config(state=tk.DISABLED)
         self.pause_resume_button.config(text="Pause Scan", state=tk.DISABLED)
         self.apply_button.config(state=tk.DISABLED)
-        self.plot_button.config(state=tk.DISABLED) # Disable plot button on disconnect
+        
+        # Update reference to plotting_tab's plot_button
+        if hasattr(self, 'plotting_tab') and hasattr(self.plotting_tab, 'plot_button'):
+            self.plotting_tab.plot_button.config(state=tk.DISABLED) 
+        
         self.load_preset_button.config(state=tk.DISABLED) # Disable load preset button
 
         # Disable query presets button
@@ -1015,95 +1058,144 @@ if __name__ == "__main__":
     style = ttk.Style()
     style.theme_use('clam') # 'clam', 'alt', 'default', 'classic'
 
-    # Configure custom styles
-    style.configure('TFrame', background='#333333')
-    style.configure('TLabel', background='#333333', foreground='white')
-    style.configure('TLabelFrame', background='#333333', foreground='white', bordercolor='#555555')
-    style.configure('TEntry', fieldbackground='#444444', foreground='white', bordercolor='#555555')
-    style.map('TEntry', fieldbackground=[('focus', '#555555')])
-    style.configure('TButton', background='#555555', foreground='white', font=('Inter', 10, 'bold'), borderwidth=1, relief="raised")
+    # Configure overall window and frame backgrounds
+    style.configure('TFrame', background='#1e1e1e') # Dark background for all ttk.Frames
+    style.configure('Dark.TFrame', background='#1e1e1e') # Explicit style for dark frames
+
+    style.configure('TLabel', background='#1e1e1e', foreground='#cccccc') # Light grey text
+    style.configure('TLabelFrame', background='#1e1e1e', foreground='#cccccc', bordercolor='#3a3a3a') # Darker border
+    style.configure('TLabelFrame.Label', background='#1e1e1e', foreground='#cccccc') # Ensure label matches
+    style.configure('Dark.TLabelframe', background='#1e1e1e', foreground='#cccccc', bordercolor='#3a3a3a')
+    style.configure('Dark.TLabelframe.Label', background='#1e1e1e', foreground='#cccccc')
+
+
+    style.configure('TEntry', fieldbackground='#2b2b2b', foreground='white', bordercolor='#3a3a3a') # Darker field, light text
+    style.map('TEntry', fieldbackground=[('focus', '#3a3a3a')]) # Slightly lighter on focus
+
+    # TCheckbutton styling
+    style.configure('TCheckbutton', background='#1e1e1e', foreground='#cccccc', indicatorbackground='#2b2b2b', indicatorforeground='#cccccc')
+    style.map('TCheckbutton',
+              background=[('active', '#1e1e1e'), ('selected', '#1e1e1e')], # Keep background consistent on active/selected
+              foreground=[('active', 'white')], # Text color on hover
+              indicatorbackground=[('selected', '#007bff')], # Blue checkmark when selected
+              indicatorforeground=[('selected', 'white')] # Checkmark color
+             )
+
+    # TScale (Slider) styling
+    style.configure('TScale', background='#1e1e1e', troughcolor='#3a3a3a', sliderrelief='flat')
+    style.map('TScale',
+              background=[('active', '#1e1e1e')],
+              troughcolor=[('active', '#4a4a4a')]
+             )
+    style.configure('Dark.Horizontal.TScale', background='#1e1e1e', troughcolor='#3a3a3a', sliderrelief='flat')
+    style.map('Dark.Horizontal.TScale',
+              background=[('active', '#1e1e1e')],
+              troughcolor=[('active', '#4a4a4a')]
+             )
+
+    # TButton styles (adjusted for dark mode)
+    style.configure('TButton', background='#4a4a4a', foreground='white', font=('Inter', 10, 'bold'), borderwidth=1, relief="raised") # Light grey buttons, white text
     style.map('TButton',
-              background=[('active', '!disabled', '#777777'), ('pressed', '#333333')],
-              foreground=[('disabled', '#888888')])
+              background=[('active', '!disabled', '#606060'), ('pressed', '#303030')], # Lighter on active, darker on pressed
+              foreground=[('disabled', '#888888')]) # Disabled text color
 
-    # Specific button styles
-    style.configure('Green.TButton', background='#4CAF50', foreground='white')
-    style.map('Green.TButton', background=[('active', '!disabled', '#66BB6A'), ('pressed', '#388E3C')])
+    # Specific button styles (adjusted for dark mode)
+    style.configure('Green.TButton', background='#28a745', foreground='white') # Darker green
+    style.map('Green.TButton', background=[('active', '!disabled', '#2ecc71'), ('pressed', '#1e8449')])
 
-    style.configure('Red.TButton', background='#F44336', foreground='white')
-    style.map('Red.TButton', background=[('active', '!disabled', '#E57373'), ('pressed', '#D32F2F')])
+    style.configure('Red.TButton', background='#dc3545', foreground='white') # Darker red
+    style.map('Red.TButton', background=[('active', '!disabled', '#e74c3c'), ('pressed', '#c0392b')])
 
-    style.configure('Orange.TButton', background='#FF9800', foreground='white')
-    style.map('Orange.TButton', background=[('active', '!disabled', '#FFB74D'), ('pressed', '#F57C00')])
+    style.configure('Orange.TButton', background='#fd7e14', foreground='white') # Darker orange
+    style.map('Orange.TButton', background=[('active', '!disabled', '#f39c12'), ('pressed', '#e67e22')])
 
-    style.configure('Blue.TButton', background='#2196F3', foreground='white')
-    style.map('Blue.TButton', background=[('active', '!disabled', '#64B5F6'), ('pressed', '#1976D2')])
+    style.configure('Blue.TButton', background='#007bff', foreground='white') # Darker blue
+    style.map('Blue.TButton', background=[('active', '!disabled', '#3498db'), ('pressed', '#2980b9')])
 
-    style.configure('Accent.TButton', background='#00BCD4', foreground='white') # Cyan-like accent
+    style.configure('Accent.TButton', background='#17a2b8', foreground='white') # Darker cyan
     style.map('Accent.TButton', background=[('active', '!disabled', '#4DD0E1'), ('pressed', '#0097A7')])
 
-    style.configure('GreyText.TButton', background='#607D8B', foreground='white') # Greyish for general buttons
-    style.map('GreyText.TButton', background=[('active', '!disabled', '#90A4AE'), ('pressed', '#455A64')])
+    style.configure('GreyText.TButton', background='#6c757d', foreground='white') # Darker grey for general buttons
+    style.map('GreyText.TButton', background=[('active', '!disabled', '#7f8c8d'), ('pressed', '#5f6a70')])
 
-    # Style for canvas background within themed frames
-    style.configure('Dark.TFrame', background='#333333')
+    # TNotebook (Tabs) styling
+    style.configure('TNotebook', background='#1e1e1e', borderwidth=0)
+    style.configure('TNotebook.Tab', background='#2b2b2b', foreground='#cccccc', lightcolor='#2b2b2b', darkcolor='#2b2b2b', borderwidth=1, relief='raised')
+    style.map('TNotebook.Tab',
+              background=[('selected', '#1e1e1e'), ('active', '#3a3a3a')], # Selected tab is darker, active (hover) is slightly lighter
+              foreground=[('selected', 'white'), ('active', 'white')],
+              expand=[('selected', [1,1,1,0])] # Expand selected tab slightly
+             )
 
-    # MarkersDisplayTab related styles
-    style.configure("Markers.TFrame", background="#000000") # Dark background for the main frame
-    style.configure("Markers.TLabel", background="#000000", foreground="white")
-    style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="white")
-    style.configure("Markers.Treeview", background="#4a4a4a", foreground="white", fieldbackground="#4a4a4a")
-    style.map("Markers.Treeview", background=[("selected", "#0078D7")], foreground=[("selected", "white")])
+    # TMenubutton (for OptionMenu dropdown) styling
+    style.configure('TMenubutton', background='#2b2b2b', foreground='#cccccc', bordercolor='#3a3a3a', relief='flat')
+    style.map('TMenubutton',
+              background=[('active', '#3a3a3a')],
+              foreground=[('active', 'white')]
+             )
+    style.configure('Dark.TMenubutton', background='#2b2b2b', foreground='#cccccc', bordercolor='#3a3a3a', relief='flat')
+    style.map('Dark.TMenubutton',
+              background=[('active', '#3a3a3a')],
+              foreground=[('active', 'white')]
+             )
+
+
+    # MarkersDisplayTab related styles (adjusted for dark mode)
+    style.configure("Markers.TFrame", background="#1a1a1a") # Very dark background for the main frame
+    style.configure("Markers.TLabel", background="#1a1a1a", foreground="#cccccc")
+    style.configure("Markers.Treeview.Heading", background="#3a3a3a", foreground="#cccccc")
+    style.configure("Markers.Treeview", background="#2b2b2b", foreground="#cccccc", fieldbackground="#2b2b2b")
+    style.map("Markers.Treeview", background=[("selected", "#0056b3")], foreground=[("selected", "white")]) # Darker blue highlight
     
     # Default style for span buttons (unselected state)
     style.configure("Markers.TButton", 
-                    background="#555555", # Darker grey for span buttons (default unselected)
+                    background="#4a4a4a", # Darker grey for span buttons (default unselected)
                     foreground="white",   # White text
                     font=("Helvetica", 14, "normal"), # Normal font
                     padding=[15, 15, 15, 15]) # More padding
     style.map("Markers.TButton", 
-              background=[('active', '#777777')]) # Lighter grey on active for unselected
+              background=[('active', '#606060')]) # Lighter grey on active for unselected
 
     # Style for selected span buttons (orange background, red bold text)
     style.configure("SelectedSpan.TButton",
-                    background="#F4902C", # Orange background
-                    foreground="red",     # Red text
+                    background="#fd7e14", # Orange background (consistent with Orange.TButton)
+                    foreground="white",     # White text for better contrast on dark orange
                     font=("Helvetica", 14, "bold"), # Bold font
                     padding=[15, 15, 15, 15])
     style.map("SelectedSpan.TButton",
-              background=[('active', '#FFB050'), ('pressed', '#E06C00')]) # Lighter orange on active, darker on pressed
+              background=[('active', '#f39c12'), ('pressed', '#e67e22')]) # Lighter orange on active, darker on pressed
 
     style.configure("Markers.Inner.Treeview",
-                    background="#333333", # Darker grey
-                    foreground="white",
-                    fieldbackground="#333333", # Darker grey
+                    background="#2b2b2b", # Darker grey
+                    foreground="#cccccc",
+                    fieldbackground="#2b2b2b", # Darker grey
                     bordercolor="black",
-                    lightcolor="#333333", # Darker grey
-                    darkcolor="#333333") # Darker grey
+                    lightcolor="#2b2b2b", # Darker grey
+                    darkcolor="#2b2b2b") # Darker grey
     style.map("Markers.Inner.Treeview",
-              background=[("selected", "#0078D7")], # Reverted to blue highlight for treeview
+              background=[("selected", "#0056b3")], # Darker blue highlight for treeview
               foreground=[("selected", "white")])
     
     # Configure the base TLabelFrame style and its label part
-    style.configure("TLabelFrame", background="#333333", foreground="white")
-    style.configure("TLabelFrame.Label", background="#333333", foreground="white")
+    style.configure("TLabelFrame", background="#1e1e1e", foreground="#cccccc") # Consistent dark background and light text
+    style.configure("TLabelFrame.Label", background="#1e1e1e", foreground="#cccccc") # Ensure label matches
     
     # Add the new style for selected preset buttons (already correct)
     style.configure("LargePreset.TButton",
-                    background="#555555", # Darker grey for buttons
+                    background="#4a4a4a", # Darker grey for buttons
                     foreground="white",
                     font=("Helvetica", 40, "bold"), # Set font size to 40
                     padding=[30, 15, 30, 15]) # Adjust padding as needed
     style.map("LargePreset.TButton",
-            background=[('active', '#777777')]) # Lighter grey on active
+            background=[('active', '#606060')]) # Lighter grey on active
 
     style.configure("SelectedPreset.TButton",
-                    background="#2196F3", # A nice blue color
+                    background="#007bff", # A nice blue color (consistent with Blue.TButton)
                     foreground="white",
                     font=("Helvetica", 40, "bold"), # Keep the 40-point font
                     padding=[30, 15, 30, 15])
     style.map("SelectedPreset.TButton",
-              background=[('active', '#64B5F6'), ('pressed', '#1976D2')])
+              background=[('active', '#3498db'), ('pressed', '#2980b9')])
     
     app = App()
     app.mainloop()

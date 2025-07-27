@@ -17,7 +17,7 @@
 #
 import pyvisa
 import time
-from tkinter import messagebox # Corrected import: directly import messagebox
+# from tkinter import messagebox # Corrected import: directly import messagebox - REMOVED
 import inspect # Import inspect module
 import os # Import os module to fix NameError
 from datetime import datetime # Import datetime for timestamp
@@ -34,531 +34,408 @@ def set_debug_mode(mode):
     Inputs:
         mode (bool): True to enable debug mode, False to disable.
     Process:
-        1. Updates the global `DEBUG_MODE` variable.
-        2. Prints the new debug mode status using `debug_print`.
+        1. Updates the global DEBUG_MODE variable.
     Outputs: None
     """
     global DEBUG_MODE
     DEBUG_MODE = mode
-    debug_print(f"Debug Mode set to: {DEBUG_MODE}", file=__file__, function=inspect.currentframe().f_code.co_name)
+    # print(f"Debug Mode set to: {DEBUG_MODE}") # This can cause recursion if debug_print uses print
 
 def set_log_visa_commands_mode(mode):
     """
-    Sets the global flag for logging VISA commands.
+    Sets the global VISA command logging flag. When enabled,
+    all VISA commands sent and received are logged.
 
     Inputs:
-        mode (bool): True to enable VISA command logging, False to disable.
+        mode (bool): True to enable logging, False to disable.
+    Process:
+        1. Updates the global LOG_VISA_COMMANDS variable.
     Outputs: None
     """
     global LOG_VISA_COMMANDS
     LOG_VISA_COMMANDS = mode
-    debug_print(f"Log VISA Commands mode set to: {LOG_VISA_COMMANDS}", file=__file__, function=inspect.currentframe().f_code.co_name)
+    # print(f"VISA Command Logging set to: {LOG_VISA_COMMANDS}") # This can cause recursion if debug_print uses print
 
 
 def debug_print(message, file=None, function=None):
     """
-    Prints a debug message to the console only if DEBUG_MODE is enabled.
-    Includes the file name and function name where the call originated.
-    Now includes a timestamp formatted as MM.SS.
+    Prints a debug message to stdout if DEBUG_MODE is True.
+    Includes timestamp, originating file, and function for better traceability.
 
     Inputs:
-        message (str): The message string to print.
-        file (str, optional): The path to the file where the debug_print call originated.
-                              Defaults to None.
-        function (str, optional): The name of the function where the debug_print call originated.
-                                  Defaults to None.
+        message (str): The debug message to print.
+        file (str, optional): The __file__ of the calling module.
+        function (str, optional): The name of the calling function.
+    Process:
+        1. Checks if DEBUG_MODE is enabled.
+        2. Formats the message with timestamp, file, and function info.
+        3. Prints the formatted message to stdout.
     Outputs: None
     """
     if DEBUG_MODE:
-        timestamp = datetime.now().strftime("%M.%S") # Format as MM.SS
-        if file and function:
-            # Extract just the filename from the full path
-            filename = os.path.basename(file)
-            print(f"🚫🐛 {timestamp} [{filename}:{function}] {message}")
-        else:
-            print(f"�🐛 {timestamp} {message}")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # Milliseconds
+        file_info = os.path.basename(file) if file else "N/A"
+        function_info = function if function else "N/A"
+        print(f"[DEBUG] [{timestamp}] [{file_info}:{function_info}] {message}")
+
 
 def log_visa_command(direction, command_or_response, file=None, function=None):
     """
-    Logs VISA commands sent to and responses received from the instrument
-    if LOG_VISA_COMMANDS is enabled. Includes the file and function name.
-    Now includes a timestamp formatted as MM.SS.
+    Logs VISA commands sent to or responses received from the instrument if LOG_VISA_COMMANDS is True.
+    Includes direction (SENT/RECV), timestamp, originating file, and function.
 
     Inputs:
-        direction (str): "SENT" for commands sent, "RECV" for responses received.
-        command_or_response (str): The actual SCPI command string or instrument response.
-        file (str, optional): The path to the file where the log_visa_command call originated.
-                              Defaults to None.
-        function (str, optional): The name of the function where the log_visa_command call originated.
-                                  Defaults to None.
+        direction (str): "SENT" or "RECV" to indicate command direction.
+        command_or_response (str): The actual VISA command string or response.
+        file (str, optional): The __file__ of the calling module.
+        function (str, optional): The name of the calling function.
+    Process:
+        1. Checks if LOG_VISA_COMMANDS is enabled.
+        2. Formats the log message with direction, timestamp, file, and function info.
+        3. Prints the formatted message to stdout.
     Outputs: None
     """
-    if DEBUG_MODE and LOG_VISA_COMMANDS: # Only log if both general debug and VISA logging are enabled
-        timestamp = datetime.now().strftime("%M.%S") # Format as MM.SS
-        if file and function:
-            filename = os.path.basename(file)
-            print(f"VISA {direction}: {timestamp} [{filename}:{function}] {command_or_response.strip()}")
-        else:
-            print(f"VISA {direction}: {timestamp} {command_or_response.strip()}")
+    if LOG_VISA_COMMANDS:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # Milliseconds
+        file_info = os.path.basename(file) if file else "N/A"
+        function_info = function if function else "N/A"
+        print(f"[VISA_LOG] [{direction}] [{timestamp}] [{file_info}:{function_info}] {command_or_response.strip()}")
+
 
 def query_safe(inst, command, delay=0.1):
     """
-    Safely queries the instrument and returns the response.
-    Includes error handling and debug logging.
+    Safely sends a query command to the instrument and returns the response.
+    Includes error handling and logging.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
         command (str): The SCPI query command to send.
-        delay (float, optional): Time in seconds to wait after sending the command. Defaults to 0.1.
+        delay (float): Optional delay in seconds after sending the command.
     Process:
-        1. Calls `log_visa_command` to log the sent command.
-        2. Attempts to query the instrument using `inst.query()`.
-        3. Calls `log_visa_command` to log the received response.
-        4. Introduces a `time.sleep` for stability.
-        5. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
-        6. Displays an error messagebox on failure.
+        1. Logs the sent command.
+        2. Sends the query command to the instrument.
+        3. Waits for a specified delay.
+        4. Reads the response from the instrument.
+        5. Logs the received response.
+        6. Returns the stripped response string.
     Outputs:
-        str: The instrument's response if successful, an empty string otherwise.
+        str: The stripped response from the instrument, or None if an error occurs.
+    Raises:
+        pyvisa.errors.VisaIOError: If a VISA communication error occurs.
+        Exception: For other unexpected errors.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
-    if not inst:
-        debug_print("Not connected to instrument, cannot query.", file=current_file, function=current_function)
-        return ""
     try:
         log_visa_command("SENT", command, file=current_file, function=current_function)
-        response = inst.query(command).strip()
-        log_visa_command("RECV", response, file=current_file, function=current_function)
+        response = inst.query(command)
         time.sleep(delay) # Small delay for stability
-        return response
+        log_visa_command("RECV", response, file=current_file, function=current_function)
+        return response.strip()
     except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA IO Error", f"Error querying instrument: {e}\nCommand: {command}")
-        print(f"❌ VISA IO Error during query: {e}")
-        return ""
+        print(f"❌ VISA IO Error during query '{command}': {e}")
+        debug_print(f"VISA IO Error during query '{command}': {e}", file=current_file, function=current_function)
+        # messagebox.showerror("VISA Error", f"Failed to query instrument: {e}") # Removed messagebox
+        raise # Re-raise to allow higher-level error handling
     except Exception as e:
-        messagebox.showerror("Instrument Error", f"An unexpected error occurred during query: {e}\nCommand: {command}")
-        print(f"❌ Unexpected error during query: {e}")
-        return ""
+        print(f"❌ An unexpected error occurred during query '{command}': {e}")
+        debug_print(f"Unexpected error during query '{command}': {e}", file=current_file, function=current_function)
+        # messagebox.showerror("Error", f"An unexpected error occurred during query: {e}") # Removed messagebox
+        raise # Re-raise to allow higher-level error handling
+
 
 def write_safe(inst, command, delay=0.1):
     """
-    Safely writes a command to the instrument.
-    Includes error handling and debug logging.
+    Safely sends a write command to the instrument. Includes error handling and logging.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
-        command (str): The SCPI command to send.
-        delay (float, optional): Time in seconds to wait after sending the command. Defaults to 0.1.
-    Process:
-        1. Calls `log_visa_command` to log the sent command.
-        2. Attempts to write to the instrument using `inst.write()`.
-        3. Introduces a `time.sleep` for stability.
-        4. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
-        5. Displays an error messagebox on failure.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
+        command (str): The SCPI write command to send.
+        delay (float): Optional delay in seconds after sending the command.
     Outputs:
         bool: True if the command was written successfully, False otherwise.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
-    if not inst:
-        debug_print("Not connected to instrument, cannot write.", file=current_file, function=current_function)
-        return False
     try:
         log_visa_command("SENT", command, file=current_file, function=current_function)
         inst.write(command)
         time.sleep(delay) # Small delay for stability
         return True
     except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA IO Error", f"Error writing to instrument: {e}\nCommand: {command}")
-        print(f"❌ VISA IO Error during write: {e}")
+        print(f"❌ VISA IO Error during write '{command}': {e}")
+        debug_print(f"VISA IO Error during write '{command}': {e}", file=current_file, function=current_function)
+        # messagebox.showerror("VISA Error", f"Failed to write to instrument: {e}") # Removed messagebox
         return False
     except Exception as e:
-        messagebox.showerror("Instrument Error", f"An unexpected error occurred during write: {e}\nCommand: {command}")
-        print(f"❌ Unexpected error during write: {e}")
+        print(f"❌ An unexpected error occurred during write '{command}': {e}")
+        debug_print(f"Unexpected error during write '{command}': {e}", file=current_file, function=current_function)
+        # messagebox.showerror("Error", f"An unexpected error occurred during write: {e}") # Removed messagebox
         return False
+
 
 def list_visa_resources(rm):
     """
-    Lists available VISA resources (instruments).
+    Lists all available VISA resources.
 
     Inputs:
-        rm (pyvisa.ResourceManager): The PyVISA resource manager instance.
-    Process:
-        1. Attempts to list resources using `rm.list_resources()`.
-        2. Handles `pyvisa.errors.VisaIOError` if no backend is found or other VISA issues.
-        3. Displays an error messagebox on failure.
+        rm (pyvisa.ResourceManager): The PyVISA Resource Manager instance.
     Outputs:
         list: A list of available VISA resource strings.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
     try:
         resources = rm.list_resources()
         debug_print(f"Found VISA resources: {resources}", file=current_file, function=current_function)
         return list(resources)
-    except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("VISA Error", f"Could not list VISA resources. Is NI-VISA or Keysight VISA installed?\nError: {e}")
-        print(f"❌ VISA Error listing resources: {e}")
-        return []
     except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred while listing resources: {e}")
-        print(f"❌ Unexpected error listing resources: {e}")
+        print(f"❌ Error listing VISA resources: {e}")
+        debug_print(f"Error listing VISA resources: {e}", file=current_file, function=current_function)
+        # messagebox.showerror("VISA Error", f"Failed to list VISA resources: {e}") # Removed messagebox
         return []
+
 
 def connect_to_instrument(rm, resource_name):
     """
-    Connects to a specific VISA instrument.
+    Connects to a specified VISA instrument and queries its identification.
 
     Inputs:
-        rm (pyvisa.ResourceManager): The PyVISA resource manager instance.
-        resource_name (str): The full VISA resource string of the instrument.
-    Process:
-        1. Attempts to open the instrument resource.
-        2. Queries the instrument's identification string (`*IDN?`).
-        3. Extracts the instrument model from the IDN string.
-        4. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
-        5. Displays an error messagebox on failure.
+        rm (pyvisa.ResourceManager): The PyVISA Resource Manager instance.
+        resource_name (str): The VISA resource string (e.g., 'TCPIP0::192.168.1.100::inst0::INSTR').
     Outputs:
-        tuple: (instrument_object, instrument_model_string) if successful, (None, None) otherwise.
+        tuple: (instrument_object, instrument_model_string) on success, (None, None) on failure.
     """
-    inst = None
-    instrument_model = None
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
+    inst = None
+    instrument_model = None
     try:
         inst = rm.open_resource(resource_name)
-        inst.timeout = 5000 # Set a timeout (5 seconds)
-        print(f"✅ Connected to {resource_name}")
+        inst.timeout = 5000 # Set a timeout (milliseconds)
+        inst.read_termination = '\n' # Set termination character
+        inst.write_termination = '\n'
         
         # Query instrument identification
         idn = query_safe(inst, "*IDN?")
         if idn:
+            print(f"Connected to: {idn}")
+            debug_print(f"Connected to: {idn}", file=current_file, function=current_function)
+            # Extract model from IDN string (example for Keysight/Agilent)
             parts = idn.split(',')
             if len(parts) > 1:
-                instrument_model = parts[1].strip()
+                instrument_model = parts[1].strip() # Model is usually the second part
+                print(f"Instrument Model: {instrument_model}")
                 debug_print(f"Instrument Model: {instrument_model}", file=current_file, function=current_function)
             else:
                 instrument_model = "Unknown Model"
-                debug_print(f"Instrument IDN: {idn} (Model not parsed)", file=current_file, function=current_function)
+                print("Could not determine instrument model from IDN.")
+                debug_print("Could not determine instrument model from IDN.", file=current_file, function=current_function)
+            return inst, instrument_model
         else:
-            instrument_model = "Unknown Model"
-            debug_print("Could not query instrument IDN.", file=current_file, function=current_function)
-        
-        return inst, instrument_model
-    except pyvisa.errors.VisaIOError as e:
-        messagebox.showerror("Connection Error", f"Could not connect to {resource_name}: {e}")
-        print(f"❌ Connection Error: {e}")
-        if inst:
+            print("❌ Failed to query instrument IDN.")
+            debug_print("Failed to query instrument IDN.", file=current_file, function=current_function)
             inst.close()
+            return None, None
+    except pyvisa.errors.VisaIOError as e:
+        print(f"❌ VISA IO Error connecting to {resource_name}: {e}")
+        debug_print(f"VISA IO Error connecting to {resource_name}: {e}", file=current_file, function=current_function)
+        # messagebox.showerror("VISA Connection Error", f"Failed to connect to {resource_name}: {e}") # Removed messagebox
+        if inst: inst.close()
         return None, None
     except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred during connection: {e}")
-        print(f"❌ Unexpected error during connection: {e}")
-        if inst:
-            inst.close()
+        print(f"❌ An unexpected error occurred connecting to {resource_name}: {e}")
+        debug_print(f"Unexpected error connecting to {resource_name}: {e}", file=current_file, function=current_function)
+        # messagebox.showerror("Connection Error", f"An unexpected error occurred: {e}") # Removed messagebox
+        if inst: inst.close()
         return None, None
+
 
 def disconnect_instrument(inst):
     """
-    Disconnects from the given VISA instrument.
+    Closes the connection to the instrument.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object to disconnect.
-    Process:
-        1. Checks if the instrument object is valid.
-        2. Attempts to close the instrument connection.
-        3. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
-        4. Displays an error messagebox on failure.
-    Outputs:
-        bool: True if disconnected successfully, False otherwise.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
     if inst:
         try:
             inst.close()
-            print("✅ Instrument disconnected.")
-            return True
-        except pyvisa.errors.VisaIOError as e:
-            messagebox.showerror("Disconnect Error", f"Error disconnecting instrument: {e}")
-            print(f"❌ Disconnect Error: {e}")
-            return False
+            debug_print("Instrument connection closed.", file=current_file, function=current_function)
         except Exception as e:
-            messagebox.showerror("Error", f"An unexpected error occurred during disconnection: {e}")
-            print(f"❌ Unexpected error during disconnection: {e}")
-            return False
-    return True # Already disconnected or no instrument to begin with
+            print(f"❌ Error closing instrument connection: {e}")
+            debug_print(f"Error closing instrument connection: {e}", file=current_file, function=current_function)
+            # messagebox.showerror("Disconnection Error", f"Error closing instrument connection: {e}") # Removed messagebox
 
-def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val, model_match):
+
+def initialize_instrument(inst, ref_level_dbm, rbw_hz, maxhold_enabled, high_sensitivity, preamp_on, instrument_model):
     """
-    Initializes the spectrum analyzer with basic settings such as reference level,
-    preamplifier state, high sensitivity mode, and trace configurations.
-    This function sets up the instrument for a scan.
+    Initializes the spectrum analyzer with basic settings.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The connected VISA instrument object.
-        ref_level_dbm (float): The desired reference level in dBm.
-        high_sensitivity_on (bool): True to enable high sensitivity mode, False otherwise.
-        preamp_on (bool): True to turn the preamplifier ON, False otherwise.
-        rbw_config_val (float): The Resolution Bandwidth (RBW) value to configure on the instrument in Hz.
-                                 (Note: This parameter is currently not directly used for setting RBW in this function
-                                 but is passed for consistency with the GUI's intent. RBW for scanning is set in `scan_bands`.)
-        vbw_config_val (float): The Video Bandwidth (VBW) value to configure on the instrument in Hz.
-                                 (Note: This parameter is currently not directly used for setting VBW in this function
-                                 but is passed for consistency with the GUI's intent. VBW for scanning is set in `scan_bands`.)
-        model_match (str): The detected model of the instrument (e.g., "N9340B", "N9342CN").
-                           Used for model-specific SCPI commands.
-    Process:
-        1. **Reset**: Sends `*RST` to reset the instrument to a known state, then waits for operation completion.
-        2. **Reference Level**: Sets the display reference level.
-        3. **Preamplifier/High Sensitivity**: Configures the preamplifier and high sensitivity mode based on `preamp_on`
-           and `high_sensitivity_on` flags. This involves setting attenuation and gain.
-        4. **Trace Modes**: Configures Trace 1 to 'WRITe', Trace 2 to 'MAXHold', and Trace 3 to 'MINHold'.
-        5. **Display Scale**: Sets the Y-axis display scale to 'LOGarithmic'.
-        6. **Sweep Time**: Sets sweep time to 'AUTO'.
-        7. **Data Format**: Sets the trace data format to 'ASCII' for data transfer, with a model-specific command.
-        8. Prints status messages for each configuration step.
-        9. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
+        ref_level_dbm (float): Reference level in dBm.
+        rbw_hz (float): Resolution Bandwidth in Hz.
+        maxhold_enabled (bool): True to enable Max Hold, False otherwise.
+        high_sensitivity (bool): True to enable high sensitivity (N9340B specific).
+        preamp_on (bool): True to turn preamplifier on (N9340B specific).
+        instrument_model (str): The detected model of the instrument.
     Outputs:
-        bool: True if initialization is successful; False on failure.
+        bool: True if initialization was successful, False otherwise.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    print("✨ Initializing instrument with desired settings.")
     try:
-        # Reset the instrument to a known state using *RST first
+        # Reset instrument to known state
         if not write_safe(inst, "*RST"): return False
-        if not query_safe(inst, "*OPC?"): return False # Wait for operation to complete
-        time.sleep(1) # Give it a moment after reset
-    # Set trace mode to MAXHold (if applicable)
-        if write_safe(inst, ":TRAC2:MODE MAXHold"):
-            debug_print("Sent: :TRAC2:MODE MAXHold", file=current_file, function=current_function)
+        debug_print("Sent: *RST", file=current_file, function=current_function)
+
+        # Set Reference Level
+        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return False
+        debug_print(f"Sent: :DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", file=current_file, function=current_function)
+
+        # Set RBW
+        if not write_safe(inst, f":SENSe:BANDwidth:RESolution {rbw_hz}"): return False
+        debug_print(f"Sent: :SENSe:BANDwidth:RESolution {rbw_hz}", file=current_file, function=current_function)
+
+        # Set VBW (RBW / 3)
+        vbw_hz = rbw_hz / 3
+        if not write_safe(inst, f":SENSe:BANDwidth:VIDeo {vbw_hz}"): return False
+        debug_print(f"Sent: :SENSe:BANDwidth:VIDeo {vbw_hz}", file=current_file, function=current_function)
+
+        # Set Max Hold
+        max_hold_state = "ON" if maxhold_enabled else "OFF"
+        if not write_safe(inst, f":DISPlay:WINDow:TRACe:MODE {max_hold_state}"): return False
+        debug_print(f"Sent: :DISPlay:WINDow:TRACe:MODE {max_hold_state}", file=current_file, function=current_function)
+
+        # Set High Sensitivity (N9340B specific)
+        if instrument_model == "N9340B": # Use the passed instrument_model
+            high_sensitivity_state = "ON" if high_sensitivity else "OFF"
+            if not write_safe(inst, f":SENSe:POWer:RF:HSENse {high_sensitivity_state}"): return False
+            debug_print(f"Sent: :SENSe:POWer:RF:HSENse {high_sensitivity_state}", file=current_file, function=current_function)
         else:
-            debug_print("Failed to set :TRAC2:MODE MAXHold", file=current_file, function=current_function)
+            debug_print("Instrument is not N9340B, skipping High Sensitivity setting during init.", file=current_file, function=current_function)
 
-        # Set continuous initiation ON
-        if write_safe(inst, ":INITiate:CONTinuous ON"):
-            debug_print("Sent: :INITiate:CONTinuous ON", file=current_file, function=current_function)
+        # Set Preamplifier (N9340B specific)
+        if instrument_model == "N9340B": # Use the passed instrument_model
+            preamp_state = "ON" if preamp_on else "OFF"
+            if not write_safe(inst, f":SENSe:POWer:RF:GAIN:STATe {preamp_state}"): return False
+            debug_print(f"Sent: :SENSe:POWer:RF:GAIN:STATe {preamp_state}", file=current_file, function=current_function)
         else:
-            debug_print("Failed to set :INITiate:CONTinuous ON", file=current_file, function=current_function)
+            debug_print("Instrument is not N9340B, skipping Preamplifier setting during init.", file=current_file, function=current_function)
 
+        # Set Trace Type to Clear Write
+        if not write_safe(inst, ":DISPlay:WINDow:TRACe:TYPE CWRite"): return False
+        debug_print("Sent: :DISPlay:WINDow:TRACe:TYPE CWRite", file=current_file, function=current_function)
 
-        # Set reference level
-        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}"): return False
-        print(f"✅ Set reference level to {ref_level_dbm} dBm.")
-
-        # Set preamplifier
-        if preamp_on:
-            if not write_safe(inst, ":POWer:ATTenuation:AUTO ON"): return False
-            if not write_safe(inst, ":POWer:GAIN ON"): return False
-            print("✅ Preamplifier ON.")
-            # Note: The original code re-set RLEVel here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return False
-            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
-        else:
-            if not write_safe(inst, ":POWer:GAIN OFF"): return False
-            print("✅ Preamplifier OFF.")
-
-        # Set high sensitivity (preamplifier)
-        if high_sensitivity_on:
-            # Note: The original code set RLEVel to -50 here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50"): return False
-            if not write_safe(inst, ":POWer:ATTenuation 0"): return False
-            if not write_safe(inst, ":POWer:GAIN 1"): return False
-            if not write_safe(inst, ":POWer:HSENsitive ON"): return False
-            print("✅ High sensitivity turned ON.")
-        else:
-            if not write_safe(inst, ":POWer:HSENsitive OFF"): return False
-            if not write_safe(inst, ":POWer:ATTenuation 10"): return False
-            # Note: The original code re-set RLEVel here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"): return False
-            print(f"✅ Set reference level to {ref_level_dbm} dBm.")
-            print("✅ High sensitivity turned OFF.")
-        
-        # Configure Trace Modes
-        if not write_safe(inst, ":TRAC1:MODE WRITe"): return False
-        print(f"✅ Trace 1 sent to write")
-
-        if not write_safe(inst, ":TRAC2:MODE MAXHold"): return False
-        print(f"✅ Trace 2 sent to MAX HOLD")
-
-        if not write_safe(inst, ":TRAC3:MODE MINHold"): return False
-        print(f"✅ Trace 3 sent to Min Hold")
-        
-        # Display scale is always LOGarithmic
-        if not write_safe(inst, ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic"): return False
-        print("✅ Display scale set to LOGarithmic (always).")
-        
-        # Set VBW and Sweep Time to AUTO
-        if not write_safe(inst, ":SENSe:BANDwidth:VIDeo:AUTO ON"): return False
+        # Set Sweep Time to Auto
         if not write_safe(inst, ":SENSe:SWEep:TIME:AUTO ON"): return False
-        print("✅ VBW and Sweep time set to AUTO.")
+        debug_print("Sent: :SENSe:SWEep:TIME:AUTO ON", file=current_file, function=current_function)
 
-        # Set trace data format
-        if model_match == "N9340B":
-            if not write_safe(inst, ":TRACe:FORMat:DATA ASCii"): return False
-        else:
-            if not write_safe(inst, ":FORMat:DATA ASCii"): return False
-        print("✅ Set trace data format to ASCII for data transfer.")
-      
-        print("🎉 Instrument initialized successfully with desired settings.")
+        # Set data format to ASCII
+        if not write_safe(inst, ":FORMat:TRACe:DATA ASCii"): return False
+        debug_print("Sent: :FORMat:TRACe:DATA ASCii", file=current_file, function=current_function)
+
         return True
-    except pyvisa.errors.VisaIOError as e:
-        print(f"🛑 Failed to initialize instrument with desired settings: {e}")
-        return False
     except Exception as e:
-        print(f"❌ An unexpected error occurred during instrument initialization: {e}")
-        messagebox.showerror("❌Initialization Error", f"An unexpected error occurred during initialization: {e}")
+        print(f"❌ Error during instrument initialization: {e}")
+        debug_print(f"Error during instrument initialization: {e}", file=current_file, function=current_function)
+        # messagebox.showerror("Initialization Error", f"Failed to initialize instrument: {e}") # Removed messagebox
         return False
+
 
 def query_current_instrument_settings(inst, MHZ_TO_HZ):
     """
-    Queries and prints the current key settings of the connected instrument.
-    Returns the center frequency, span, and RBW in Hz.
+    Queries the instrument for its current center frequency, span, and RBW.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The VISA instrument object.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
         MHZ_TO_HZ (int): Conversion factor from MHz to Hz.
-    Process:
-        1. Queries various settings (center frequency, span, RBW, VBW, Ref Level).
-        2. Prints the queried settings to the console.
-        3. Handles errors during querying.
     Outputs:
-        tuple: (center_freq_hz, span_hz, rbw_hz) if successful, (None, None, None) otherwise.
+        tuple: (center_freq_hz, span_hz, rbw_hz) or (None, None, None) on error.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-
-    if not inst:
-        print("Not connected to instrument, cannot query settings.")
-        return None, None, None
-    
-    debug_print("\n--- Current Instrument Settings ---", file=current_file, function=current_function)
-    center_freq_hz = None
-    span_hz = None
-    rbw_hz = None # Initialize rbw_hz
-
+    center_freq, span, rbw = None, None, None
     try:
         center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?")
-        if center_freq_str:
-            center_freq_hz = float(center_freq_str)
-            debug_print(f"Center Frequency: {center_freq_hz / MHZ_TO_HZ:.3f} MHz", file=current_file, function=current_function)
-
         span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?")
-        if span_str:
-            span_hz = float(span_str)
-            debug_print(f"Span: {span_hz} Hz", file=current_file, function=current_function)
+        rbw_str = query_safe(inst, ":SENSe:BANDwidth:RESolution?")
 
-        rbw_str = query_safe(inst, ":SENSe:BANDwidth:RESolution?") # Query RBW
-        if rbw_str:
-            rbw_hz = float(rbw_str)
-            debug_print(f"Resolution Bandwidth (RBW): {rbw_hz} Hz", file=current_file, function=current_function) # Print RBW
+        center_freq = float(center_freq_str) if center_freq_str else None
+        span = float(span_str) if span_str else None
+        rbw = float(rbw_str) if rbw_str else None
 
-        vbw = query_safe(inst, ":SENSe:BANDwidth:VIDeo?")
-        if vbw: debug_print(f"Video Bandwidth (VBW): {float(vbw)} Hz", file=current_file, function=current_function)
-
-        ref_level = query_safe(inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?")
-        if ref_level: debug_print(f"Reference Level: {float(ref_level):.2f} dBm", file=current_file, function=current_function)
-
+        if center_freq is not None and span is not None and rbw is not None:
+            print(f"Current Instrument Settings: Center Freq={center_freq / MHZ_TO_HZ:.3f} MHz, Span={span / MHZ_TO_HZ:.3f} MHz, RBW={rbw:.0f} Hz")
+            debug_print(f"Current Instrument Settings: Center Freq={center_freq / MHZ_TO_HZ:.3f} MHz, Span={span / MHZ_TO_HZ:.3f} MHz, RBW={rbw:.0f} Hz", file=current_file, function=current_function)
+        else:
+            print("❌ Could not query all current instrument settings.")
+            debug_print("Could not query all current instrument settings.", file=current_file, function=current_function)
+        return center_freq, span, rbw
     except Exception as e:
-        debug_print(f"❌ Error querying current instrument settings: {e}", file=current_file, function=current_function)
-        return None, None, None # Return None on error for all values
-    finally:
-        debug_print("-----------------------------------", file=current_file, function=current_function)
-    return center_freq_hz, span_hz, rbw_hz # Return RBW as well
+        print(f"❌ Error querying current instrument settings: {e}")
+        debug_print(f"Error querying current instrument settings: {e}", file=current_file, function=current_function)
+        return None, None, None
 
-def query_device_presets(inst):
+
+def query_device_presets(inst, instrument_model):
     """
-    Queries the connected instrument for a list of preset files stored in its
-    internal "C:\\PRESETS\\" directory. This allows the GUI to display available
-    presets for loading.
+    Queries the instrument for available preset files (.sta).
+    This is specific to certain instrument models (e.g., N9342CN).
 
     Inputs:
-        inst (pyvisa.resources.Resource): The connected VISA instrument object.
-    Process:
-        1. Checks if `inst` is connected.
-        2. Sends the SCPI command `:MMEMory:CATalog? "C:\\\\PRESETS\\\\"` to list directory contents.
-        3. Parses the comma-separated response string to extract file names and types.
-        4. Filters for files with the "STA" type (state files) and ending with ".STA".
-        5. Sorts the found preset names alphabetically.
-        6. Prints the number of found presets or a message if none are found.
-        7. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
+        instrument_model (str): The detected model of the instrument.
     Outputs:
-        list: A sorted list of `.STA` preset file names (e.g., `['MY_PRESET.STA', 'DEFAULT.STA']`).
-              Returns an empty list on failure or if no presets are found.
+        list: A list of preset filenames (e.g., ['PRESET1.STA', 'MONITOR.STA']), or None if not supported/error.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
-    if not inst:
-        debug_print("Not connected to instrument, cannot query device presets.", file=current_file, function=current_function)
-        return []
+    if instrument_model not in ["N9342CN", "N9340B"]: # Add other models if they support this
+        print(f"ℹ️ Instrument model {instrument_model} does not support direct preset querying.")
+        debug_print(f"Instrument model {instrument_model} does not support direct preset querying.", file=current_file, function=current_function)
+        return None
 
-    debug_print("Querying device preset files from C:\\PRESETS\\...", file=current_file, function=current_function)
-    preset_files = []
+    presets = []
     try:
-        response = query_safe(inst, ':MMEMory:CATalog? "C:\\\\PRESETS\\\\"')
+        # Query directory listing of C:\PRESETS
+        # Command might vary by instrument. This is a common one for Agilent/Keysight.
+        dir_listing = query_safe(inst, ':MMEMory:CATalog? "C:\\PRESETS\\*.STA"')
+        debug_print(f"Preset directory listing raw response: {dir_listing}", file=current_file, function=current_function)
 
-        if response is None:
-            debug_print("No response received for preset catalog query.", file=current_file, function=current_function)
-            return []
-
-        parts = response.split(',')
-        if len(parts) < 3:
-            debug_print(f"Unexpected response format for preset catalog: {response}", file=current_file, function=current_function)
-            return []
-
-        # The actual item listings start after the first 3 parts
-        for i in range(3, len(parts), 4):
-            if i + 3 < len(parts):
-                name = parts[i].strip().strip('"') # Strip quotes
-                item_type = parts[i+1].strip().strip('"') # Strip quotes
-                if item_type.upper() == "STA" and name.upper().endswith(".STA"):
-                    preset_files.append(name)
-            else:
-                debug_print(f"Warning: Incomplete item entry found at index {i} in preset catalog response.", file=current_file, function=current_function)
-                break
-
-        if preset_files:
-            debug_print(f"Found {len(preset_files)} '.STA' preset files.", file=current_file, function=current_function)
-        else:
-            debug_print("No '.STA' preset files found in C:\\PRESETS\\.", file=current_file, function=current_function)
-        return sorted(preset_files) # Return sorted list
+        if dir_listing:
+            # Parse the response. It might be a comma-separated list of quoted strings.
+            # Example: '"C:\PRESETS\PRESET1.STA","C:\PRESETS\MONITOR.STA"'
+            # We need to extract just the filename.
+            # Use regex to find quoted strings and extract the filename part
+            # This regex looks for "C:\PRESETS\<filename>" and captures <filename>
+            matches = re.findall(r'"C:\\\\PRESETS\\\\([a-zA-Z0-9_.-]+\.STA)"', dir_listing, re.IGNORECASE)
+            presets = [match.upper() for match in matches] # Convert to uppercase for consistency
+            debug_print(f"Parsed device presets: {presets}", file=current_file, function=current_function)
+        return presets
     except pyvisa.errors.VisaIOError as e:
-        debug_print(f"🛑 VISA Error querying device presets: {e}", file=current_file, function=current_function)
-        messagebox.showerror("VISA Error", f"Error querying device presets: {e}")
-        return []
+        print(f"❌ VISA error querying device presets: {e}")
+        debug_print(f"VISA error querying device presets: {e}", file=current_file, function=current_function)
+        return None
     except Exception as e:
-        debug_print(f"❌ An unexpected error occurred while querying presets: {e}", file=current_file, function=current_function)
-        messagebox.showerror("Error", f"An unexpected error occurred while querying presets: {e}")
-        return []
+        print(f"❌ An unexpected error occurred while querying device presets: {e}")
+        debug_print(f"Unexpected error querying device presets: {e}", file=current_file, function=current_function)
+        return None
 
-def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it's not used here
+
+def load_selected_preset(inst, selected_preset_name):
     """
-    Loads the selected preset file onto the instrument.
-    This function sends the SCPI command to instruct the spectrum analyzer
-    to load a previously saved state file (`.STA`). After loading, it
-    queries and prints the instrument's current settings to confirm the change.
+    Loads a specified preset file (.sta) onto the instrument.
 
     Inputs:
-        inst (pyvisa.resources.Resource): The connected VISA instrument object.
-        selected_preset_name (str): The name of the preset file to load (e.g., "MY_PRESET.STA").
-    Process:
-        1. Checks if `inst` is connected.
-        2. Constructs the full path to the preset file (e.g., `C:\\PRESETS\\MY_PRESET.STA`).
-        3. Sends the SCPI command `:MMEMory:LOAD STA,"{preset_path}"` using `write_safe`.
-        4. If loading is successful, calls `query_current_instrument_settings` to display
-           the instrument's new configuration and returns its values.
-        5. Prints status messages.
-        6. Handles general `Exception` during the loading process.
+        inst (pyvisa.resources.MessageBasedResource): The PyVISA instrument object.
+        selected_preset_name (str): The name of the preset file (e.g., 'MYPRESET.STA').
     Outputs:
-        tuple: (bool, center_freq_hz, span_hz, rbw_hz). True if the preset is loaded successfully;
-               False otherwise. center_freq_hz, span_hz, and rbw_hz are the queried values or None.
+        tuple: (bool, center_freq_hz, span_hz, rbw_hz) indicating success and queried values or None.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
@@ -567,6 +444,9 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
         debug_print("Not connected to instrument, cannot load preset.", file=current_file, function=current_function)
         return False, None, None, None
 
+    # Ensure the path is correctly formatted for the instrument.
+    # Instruments typically expect backslashes and quotes escaped.
+    # Example: C:\PRESETS\MYPRESET.STA -> "C:\\PRESETS\\MYPRESET.STA"
     preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
     command = f':MMEMory:LOAD STA,"{preset_path}"'
     
@@ -586,5 +466,6 @@ def load_selected_preset(inst, selected_preset_name): # Removed MHZ_TO_HZ as it'
             return False, None, None, None
     except Exception as e:
         debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function)
-        messagebox.showerror("❌Preset Load Error", f"An unexpected error occurred while loading preset: {e}")
+        # messagebox.showerror("Preset Load Error", f"An unexpected error occurred while loading preset: {e}") # Removed messagebox
         return False, None, None, None
+

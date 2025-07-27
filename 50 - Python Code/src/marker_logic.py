@@ -1,6 +1,7 @@
 # src/marker_logic.py
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, filedialog, ttk
+# from tkinter import messagebox, scrolledtext, filedialog, ttk # Removed messagebox
+from tkinter import scrolledtext, filedialog, ttk # Keep other imports
 import os
 import csv
 import inspect
@@ -33,384 +34,351 @@ class MarkersDisplayTab(ttk.Frame):
         Process:
             1. Calls the parent `ttk.Frame` constructor.
             2. Stores `headers`, `rows`, and `app_instance`.
-            3. Configures the frame's style and layout.
-            4. Calls `create_widgets()` to build the GUI elements.
-        Outputs: None (modifies GUI state)
+            3. Initializes `self.tree` (Treeview widget) and `self.device_buttons_frame`.
+            4. Calls `_create_widgets` to set up the GUI.
+            5. Calls `update_markers_data` to populate the initial display if data is provided.
+            6. Initializes `current_span_hz` for span control.
+            7. Initializes `self.current_selected_span_button` to track the active span button.
+        Outputs: None
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Initializing MarkersDisplayTab...", file=current_file, function=current_function)
-
         super().__init__(master, **kwargs)
+        self.app_instance = app_instance
         self.headers = headers if headers is not None else []
-        self.rows = rows if rows is not None else [] # Store full rows data
-        self.app_instance = app_instance # Store reference to the main app instance
+        self.rows = rows if rows is not None else []
+        self.current_span_hz = 10000000 # Default span 10 MHz
+        self.current_selected_span_button = None # To track the currently selected span button
 
-        # Apply style to the main frame (this style is now defined globally in main_app.py)
-        self.config(style="Markers.TFrame") 
-        self.last_selected_span_button = None # To keep track of the last selected span button
-        self.current_span_hz = None # To store the currently active span value in Hz
+        self._create_widgets()
 
-        self.create_widgets()
+        if self.headers and self.rows:
+            self.update_markers_data(self.headers, self.rows)
 
-
-    def create_widgets(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _create_widgets(self):
         """
-        Creates the widgets for the Markers Display tab, including the treeview
-        for zones/groups and the frame for device buttons.
+        Creates and arranges the widgets for the Markers Display tab.
         """
-        debug_print("Creating MarkersDisplayTab widgets...", file=file, function=function)
-        # Main frame for the split layout
-        main_split_frame = ttk.Frame(self, style="Markers.TFrame") # Use ttk.Frame
-        # Changed to grid layout to accommodate span control frame at the bottom
-        main_split_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
-        self.grid_rowconfigure(0, weight=1) # Allow main_split_frame to expand
-        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1) # Treeview column
+        self.grid_columnconfigure(1, weight=1) # Device buttons column
+        self.grid_rowconfigure(0, weight=1) # Main content row
+        self.grid_rowconfigure(1, weight=0) # Span control buttons row
 
-        main_split_frame.grid_columnconfigure(0, weight=1) # Left half
-        main_split_frame.grid_columnconfigure(1, weight=1) # Right half
-        main_split_frame.grid_rowconfigure(0, weight=1) # Top row for treeview and device buttons
-        main_split_frame.grid_rowconfigure(1, weight=0) # Bottom row for span controls (fixed height)
-
-        # Left Half: Treeview for Zones and Groups
-        tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5)) 
-        tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
+        # Left Pane: Treeview for Zones & Groups
+        tree_frame = ttk.LabelFrame(self, text="Zones & Groups")
+        tree_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-        self.zone_group_tree = ttk.Treeview(tree_frame, show="tree", style="Markers.Inner.Treeview") # Apply the new style
-        self.zone_group_tree.pack(fill=tk.BOTH, expand=True)
+        self.tree = ttk.Treeview(tree_frame, style="Markers.Treeview", selectmode="browse")
+        self.tree.grid(row=0, column=0, sticky="nsew")
 
-        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.zone_group_tree.yview)
-        tree_scrollbar.pack(side=tk.RIGHT, fill="y")
-        self.zone_group_tree.configure(yscrollcommand=tree_scrollbar.set)
-        
-        # Bind selection event to update device buttons
-        self.zone_group_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        tree_scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        tree_scrollbar_y.grid(row=0, column=1, sticky="ns")
+        self.tree.config(yscrollcommand=tree_scrollbar_y.set)
 
-        # Right Half: Buttons for Devices
-        buttons_frame = ttk.LabelFrame(main_split_frame, text="Devices", padding=(5,5,5,5)) 
-        buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
-        
-        # Use a canvas with a scrollbar for buttons if there are many
-        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#333333", highlightbackground="#333333") # tk.Canvas as ttk.Canvas doesn't exist
-        self.buttons_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        tree_scrollbar_x.grid(row=1, column=0, sticky="ew")
+        self.tree.config(xscrollcommand=tree_scrollbar_x.set)
 
-        buttons_scrollbar = ttk.Scrollbar(buttons_frame, orient="vertical", command=self.buttons_canvas.yview)
-        buttons_scrollbar.pack(side=tk.RIGHT, fill="y")
+        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
-        self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
-        self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
+        # Right Pane: Frame for Device Buttons (scrollable)
+        device_buttons_outer_frame = ttk.LabelFrame(self, text="Devices")
+        device_buttons_outer_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        device_buttons_outer_frame.grid_rowconfigure(0, weight=1)
+        device_buttons_outer_frame.grid_columnconfigure(0, weight=1)
 
-        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") 
-        self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
+        self.device_canvas = tk.Canvas(device_buttons_outer_frame, borderwidth=0, highlightthickness=0, bg='#1e1e1e')
+        self.device_canvas.grid(row=0, column=0, sticky="nsew")
 
-        # Configure columns for the grid layout within inner_buttons_frame
-        # Changed to 2 columns for buttons to make them wider
-        self.inner_buttons_frame.grid_columnconfigure(0, weight=1)
-        self.inner_buttons_frame.grid_columnconfigure(1, weight=1) 
+        device_scrollbar = ttk.Scrollbar(device_buttons_outer_frame, orient="vertical", command=self.device_canvas.yview)
+        device_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.device_canvas.config(yscrollcommand=device_scrollbar.set)
 
-        # Now call _populate_zone_group_tree after inner_buttons_frame is initialized
-        self._populate_zone_group_tree() 
+        self.device_buttons_frame = ttk.Frame(self.device_canvas, style='Dark.TFrame')
+        self.device_canvas.create_window((0, 0), window=self.device_buttons_frame, anchor="nw")
 
-        # Initially populate with an empty list to clear any previous buttons
-        self._populate_device_buttons([]) 
+        self.device_buttons_frame.bind("<Configure>", lambda e: self.device_canvas.config(scrollregion=self.device_canvas.bbox("all")))
+        self.device_canvas.bind('<Enter>', self._bind_device_mouse_wheel)
+        self.device_canvas.bind('<Leave>', self._unbind_device_mouse_wheel)
 
-        # --- New: Span Control Buttons Frame (Bottom of main_split_frame) ---
-        span_control_frame = ttk.Frame(main_split_frame, height=50, style="Markers.TFrame") # Fixed height
-        span_control_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        span_control_frame.grid_propagate(False) # Prevent frame from resizing to fit contents
+        # Bottom Pane: Span Control Buttons
+        span_control_frame = ttk.LabelFrame(self, text="Span Control")
+        span_control_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        span_control_frame.grid_columnconfigure(0, weight=1)
+        span_control_frame.grid_columnconfigure(1, weight=1)
+        span_control_frame.grid_columnconfigure(2, weight=1)
+        span_control_frame.grid_columnconfigure(3, weight=1)
+        span_control_frame.grid_columnconfigure(4, weight=1)
 
-        # Configure columns for the buttons within span_control_frame
-        for i in range(5): # 5 buttons
-            span_control_frame.grid_columnconfigure(i, weight=1)
+        # Define span options (in Hz)
+        span_options = [
+            (10000, "10 KHz"),
+            (100000, "100 KHz"),
+            (1000000, "1 MHz"),
+            (10000000, "10 MHz"), # Default
+            (100000000, "100 MHz")
+        ]
 
-        # Define span values in Hz
-        self.span_options = {
-            "Ultra Wide": 10_000_000, # 10 MHz
-            "Wide": 5_000_000,     # 5 MHz
-            "Normal": 1_000_000,   # 1 MHz
-            "Tight": 500_000,      # 500 KHz
-            "Microscope": 250_000  # 250 KHz
-        }
+        for i, (span_hz, text) in enumerate(span_options):
+            btn = ttk.Button(span_control_frame, text=text,
+                             command=lambda s=span_hz: self._on_span_button_click(s, btn, text),
+                             style='Markers.TButton')
+            btn.grid(row=0, column=i, padx=2, pady=2, sticky="ew")
+            if span_hz == self.current_span_hz:
+                self.current_selected_span_button = btn
+                btn.config(style='SelectedSpan.TButton') # Apply selected style
 
-        # Create buttons
-        self.span_buttons = {}
-        col = 0
-        for text, span_hz in self.span_options.items():
-            btn = ttk.Button(span_control_frame, text=text, style="Markers.TButton", # Default style
-                             command=lambda s=span_hz, b=None, txt=text: self._on_span_button_click(s, b, txt)) # Pass button and text
-            btn.grid(row=0, column=col, padx=2, pady=2, sticky="nsew")
-            self.span_buttons[text] = btn
-            col += 1
-        
-        # Set "Normal" as the initially selected button and span
-        self._on_span_button_click(self.span_options["Normal"], self.span_buttons["Normal"], "Normal")
-        # --- End New ---
+    def _bind_device_mouse_wheel(self, event):
+        """Binds mouse wheel events for the device buttons canvas."""
+        event.widget.bind_all("<MouseWheel>", self._on_device_mouse_wheel)
+        event.widget.bind_all("<Button-4>", self._on_device_mouse_wheel) # For Linux
+        event.widget.bind_all("<Button-5>", self._on_device_mouse_wheel) # For Linux
 
+    def _unbind_device_mouse_wheel(self, event):
+        """Unbinds mouse wheel events for the device buttons canvas."""
+        event.widget.unbind_all("<MouseWheel>")
+        event.widget.unbind_all("<Button-4>")
+        event.widget.unbind_all("<Button-5>")
 
-    def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _on_device_mouse_wheel(self, event):
+        """Handles mouse wheel scrolling for the device buttons canvas."""
+        if sys.platform == "darwin":
+            self.device_canvas.yview_scroll(-1 * int(event.delta), "units")
+        elif event.num == 4: # Linux scroll up
+            self.device_canvas.yview_scroll(-1, "units")
+        elif event.num == 5: # Linux scroll down
+            self.device_canvas.yview_scroll(1, "units")
+        else: # Windows
+            self.device_canvas.yview_scroll(-1 * int(event.delta/120), "units")
+
+    def _populate_zone_group_tree(self):
         """
-        Populates the Treeview with zones and groups only.
-        The tree structure will be: ZONE -> GROUP.
-        If GROUP is empty, it will not create a group node, but the markers will still be associated with the zone.
+        Populates the treeview with zones and groups from the marker data.
         """
-        debug_print("Populating zone/group tree (2 levels)...", file=file, function=function)
-        self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing data
+        self.tree.delete(*self.tree.get_children()) # Clear existing tree
+        
+        # Define treeview columns
+        self.tree["columns"] = ("Frequency", "Type")
+        self.tree.column("#0", width=200, minwidth=150, stretch=tk.NO, anchor="w") # Zone/Group Name
+        self.tree.column("Frequency", width=100, minwidth=80, stretch=tk.NO, anchor="center")
+        self.tree.column("Type", width=100, minwidth=80, stretch=tk.NO, anchor="center")
 
-        # Nested dictionary to store data: {ZONE: {GROUP: [rows]}}
-        nested_grouped_data = {}
+        self.tree.heading("#0", text="Zone / Group")
+        self.tree.heading("Frequency", text="Freq (MHz)")
+        self.tree.heading("Type", text="Type")
 
+        # Group data by ZONE, then by GROUP
+        zones = {}
         for row in self.rows:
-            zone = row.get('ZONE', 'Uncategorized Zone').strip()
-            group = row.get('GROUP', '').strip() # Get group, strip whitespace, default to empty string
+            zone = row.get("ZONE", "Uncategorized Zone")
+            group = row.get("GROUP", "Uncategorized Group")
+            if zone not in zones:
+                zones[zone] = {}
+            if group not in zones[zone]:
+                zones[zone][group] = []
+            zones[zone][group].append(row)
 
-            if zone not in nested_grouped_data:
-                nested_grouped_data[zone] = {}
-            
-            # If group is empty, use a placeholder key to store markers directly under the zone.
-            # Otherwise, use the group name.
-            group_key = group if group else "__NO_GROUP__"
+        for zone, groups in sorted(zones.items()):
+            zone_id = self.tree.insert("", "end", text=zone, open=False, tags=("zone",))
+            for group, devices in sorted(groups.items()):
+                # Store the full device data with the group for easy retrieval
+                group_id = self.tree.insert(zone_id, "end", text=group, open=False, tags=("group",),
+                                            values=("", "", json.dumps(devices))) # Store devices as JSON string
+                
+        debug_print(f"Treeview populated with {len(zones)} zones.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
-            if group_key not in nested_grouped_data[zone]:
-                nested_grouped_data[zone][group_key] = []
-            
-            nested_grouped_data[zone][group_key].append(row)
-
-        for zone_name in sorted(nested_grouped_data.keys()):
-            zone_id = self.zone_group_tree.insert("", "end", text=zone_name, open=True, tags=('zone',))
-            
-            for group_key in sorted(nested_grouped_data[zone_name].keys()):
-                if group_key != "__NO_GROUP__": # Only create a group node if a group name exists
-                    self.zone_group_tree.insert(zone_id, "end", text=group_key, open=True, tags=('group',))
-                # No leaf nodes for individual markers here, as per the new requirement.
-                # The markers will be retrieved directly from the selected zone/group in _on_tree_select.
-
-        # Clear device buttons when tree is repopulated
-        self._populate_device_buttons([])
-
-    def _on_tree_select(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _on_tree_select(self, event):
         """
-        Handles selection events in the zone/group treeview.
-        Populates the device buttons based on the selected zone or group.
+        Handles selection in the treeview. When a group is selected,
+        it populates the device buttons frame with devices from that group.
         """
-        debug_print("Tree item selected...", file=file, function=function)
-        selected_items = self.zone_group_tree.selection()
-        if not selected_items:
-            self._populate_device_buttons([])
+        selected_item = self.tree.focus()
+        if not selected_item:
+            self._populate_device_buttons([]) # Clear buttons if nothing selected
             return
 
-        selected_rows_data = []
+        item_tags = self.tree.item(selected_item, "tags")
+        if "group" in item_tags:
+            # Retrieve the devices data stored as a JSON string in the values
+            item_values = self.tree.item(selected_item, "values")
+            if len(item_values) > 2 and item_values[2]:
+                devices_json = item_values[2]
+                devices = json.loads(devices_json)
+                self._populate_device_buttons(devices)
+            else:
+                selfprint("🚫 No device data found for this group.")
+                debug_print("No device data found for selected group.", file=__file__, function=inspect.currentframe().f_code.co_name)
+                self._populate_device_buttons([]) # Clear buttons
+        else:
+            self._populate_device_buttons([]) # Clear buttons if a zone or empty space is selected
 
-        for item_id in selected_items:
-            item_tags = self.zone_group_tree.item(item_id, 'tags')
-            
-            if 'zone' in item_tags:
-                zone_name = self.zone_group_tree.item(item_id, 'text')
-                # Collect all markers belonging to this zone
-                for row in self.rows:
-                    if row.get('ZONE', '').strip() == zone_name:
-                        selected_rows_data.append(row)
-            elif 'group' in item_tags:
-                group_name = self.zone_group_tree.item(item_id, 'text')
-                parent_id = self.zone_group_tree.parent(item_id)
-                zone_name = self.zone_group_tree.item(parent_id, 'text')
-                # Collect all markers belonging to this specific group within this zone
-                for row in self.rows:
-                    if row.get('ZONE', '').strip() == zone_name and row.get('GROUP', '').strip() == group_name:
-                        selected_rows_data.append(row)
-            # No 'marker' tag check needed here as individual markers are not tree nodes anymore
-
-        self._populate_device_buttons(selected_rows_data)
-
-    def _populate_device_buttons(self, devices_to_display, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _populate_device_buttons(self, devices_to_display):
         """
-        Populates the right-hand frame with clickable buttons for each device.
-        Buttons will be approximately 1/3 of the window width, orange with black text,
-        and display NAME, DEVICE, and FREQ (in MHz) on three lines.
+        Creates and arranges buttons for each device in the right pane.
         """
-        debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=file, function=function)
         # Clear existing buttons
-        for widget in self.inner_buttons_frame.winfo_children():
+        for widget in self.device_buttons_frame.winfo_children():
             widget.destroy()
 
         if not devices_to_display:
-            tk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
-            self.inner_buttons_frame.update_idletasks()
-            self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
+            ttk.Label(self.device_buttons_frame, text="Select a group from the left to see devices.",
+                      foreground="#cccccc", background="#1e1e1e").grid(row=0, column=0, padx=5, pady=5, sticky="w")
             return
 
         row_idx = 0
         col_idx = 0
-        for i, device_data in enumerate(devices_to_display):
-            name = device_data.get('NAME', '').strip()
-            device = device_data.get('DEVICE', '').strip()
-            freq_mhz = device_data.get('FREQ') 
+        for i, device in enumerate(devices_to_display):
+            device_name = device.get("NAME", "N/A")
+            device_freq = device.get("FREQ", "N/A")
+            device_type = device.get("DEVICE", "N/A") # Using DEVICE column for type if available, otherwise "N/A"
 
-            if freq_mhz is not None:
-                try:
-                    frequency_hz = float(freq_mhz) * 1_000_000 # Convert MHz to Hz for instrument
-                    
-                    # Format button text for three lines
-                    # Ensure empty strings are handled for name and device
-                    display_name = name if name else "N/A Name"
-                    display_device = device if device and device.lower() != "none - none - n/a" else "N/A Device"
-                    
-                    button_text = f"{display_name}\n{display_device}\n{float(freq_mhz):.3f} MHz"
-                    
-                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Markers.TButton",
-                                     command=lambda f=frequency_hz, n=name: self._on_device_button_click(f, n))
-                    
-                    # Use sticky="nsew" to make buttons expand within their grid cells
-                    btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
-                    
-                    col_idx += 1
-                    if col_idx >= 2: # Two columns per row
-                        col_idx = 0
-                        row_idx += 1
-                except ValueError:
-                    debug_print(f"Could not convert frequency '{freq_mhz}' to float for button. Skipping.", file=file, function=function)
-            else:
-                debug_print(f"Frequency not found for device '{name}'. Skipping button.", file=file, function=function)
-
-        # Ensure columns in inner_buttons_frame expand to fill available space
-        self.inner_buttons_frame.grid_columnconfigure(0, weight=1)
-        self.inner_buttons_frame.grid_columnconfigure(1, weight=1)
-        # Ensure rows also expand if needed, though buttons will dictate row height
-        for r in range(row_idx + 1):
-            self.inner_buttons_frame.grid_rowconfigure(r, weight=1)
-
-
-        self.inner_buttons_frame.update_idletasks() # Ensure layout is updated before calculating scrollregion
-        self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
-
-    def _on_device_button_click(self, freq, name, file=__file__, function=inspect.currentframe().f_code.co_name):
-        """
-        Callback for device buttons. Sets the instrument's focus frequency and a marker.
-        Uses the currently selected span from the span buttons, or a default if none selected.
-        """
-        debug_print(f"Device button clicked: {name} at {freq} Hz", file=file, function=function)
-        if self.app_instance and self.app_instance.inst:
-            # Use the currently selected span, or fall back to default focus width
-            span_to_use = self.current_span_hz if self.current_span_hz is not None else \
-                          float(self.app_instance.desired_default_focus_width_var.get())
+            button_text = f"{device_name}\n{device_freq} MHz\n({device_type})"
             
-            set_focus_frequency_logic(self.app_instance, freq, span_hz=span_to_use)
-            set_marker_and_trace_modes_logic(self.app_instance, freq, name)
-        else:
-            debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
+            # Use a frame for each button to allow for more complex layouts if needed
+            btn_frame = ttk.Frame(self.device_buttons_frame, style='Dark.TFrame')
+            btn_frame.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
+            btn_frame.grid_columnconfigure(0, weight=1)
 
+            btn = ttk.Button(btn_frame, text=button_text,
+                             command=lambda f=device_freq, n=device_name: self._on_device_button_click(f, n),
+                             style='Markers.TButton')
+            btn.grid(row=0, column=0, sticky="ew")
 
-    def _on_span_button_click(self, span_hz, button_widget=None, button_text=None, file=__file__, function=inspect.currentframe().f_code.co_name):
+            col_idx += 1
+            if col_idx >= 2: # 2 columns per row for device buttons
+                col_idx = 0
+                row_idx += 1
+        debug_print(f"Populated {len(devices_to_display)} device buttons.", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+    def _on_device_button_click(self, frequency_mhz, device_name):
         """
-        Callback for span control buttons. Changes the instrument's span and toggles button color/font.
+        Handles a click on a device button. Sets the instrument's focus frequency
+        and a marker at that frequency.
         """
-        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=file, function=function)
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+
+        if not self.app_instance.inst:
+            print("🚫 Not connected to instrument. Cannot set frequency or marker.")
+            debug_print("Not connected to instrument, cannot set frequency or marker.", file=current_file, function=current_function)
+            # tk.messagebox.showwarning("Not Connected", "Please connect to an instrument first.") # Removed messagebox
+            return
+
+        try:
+            freq_hz = float(frequency_mhz) * MHZ_TO_HZ
+            span_hz = self.current_span_hz # Use the currently selected span
+
+            # Set focus frequency and span
+            set_focus_frequency_logic(self.app_instance, freq_hz, span_hz)
+            
+            # Set marker
+            set_marker_and_trace_modes_logic(self.app_instance, freq_hz, device_name)
+
+        except ValueError:
+            print(f"❌ Invalid frequency value: {frequency_mhz} MHz. Cannot set instrument focus.")
+            debug_print(f"Invalid frequency value: {frequency_mhz} MHz.", file=current_file, function=current_function)
+            # tk.messagebox.showerror("Invalid Frequency", f"Could not set instrument frequency. Invalid value: {frequency_mhz} MHz") # Removed messagebox
+        except Exception as e:
+            print(f"❌ An unexpected error occurred while setting frequency/marker: {e}")
+            debug_print(f"Error setting frequency/marker: {e}", file=current_file, function=current_function)
+            # tk.messagebox.showerror("Error", f"An unexpected error occurred: {e}") # Removed messagebox
+
+    def _on_span_button_click(self, span_hz, button_widget, button_text):
+        """
+        Handles a click on a span control button. Updates the current span and
+        highlights the selected button.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+
+        # Reset style of previously selected button
+        if self.current_selected_span_button:
+            self.current_selected_span_button.config(style='Markers.TButton')
         
-        # Update the stored current span
+        # Set new selected button and update its style
+        self.current_selected_span_button = button_widget
+        self.current_selected_span_button.config(style='SelectedSpan.TButton')
         self.current_span_hz = span_hz
+        print(f"Selected span: {button_text} ({span_hz / MHZ_TO_HZ:.3f} MHz)")
+        debug_print(f"Selected span: {button_text} ({span_hz / MHZ_TO_HZ:.3f} MHz)", file=current_file, function=current_function)
 
-        # Toggle button styles for visual feedback (bold/red text or orange background)
-        for text, btn in self.span_buttons.items():
-            if btn == button_widget:
-                # Apply the style that includes orange background, red foreground, and bold font
-                btn.config(style="SelectedSpan.TButton") 
-            else:
-                # Revert to the default style for unselected buttons
-                btn.config(style="Markers.TButton") 
-        
-        # If the instrument is connected, send the commands
-        if self.app_instance and self.app_instance.inst:
-            try:
-                # Direct SCPI command to set span
-                if not self.app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
-                    debug_print(f"Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
-                    messagebox.showerror("Instrument Error", "Failed to set instrument span.")
-                    return False
-                debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
-                print(f"✅ Instrument span set to {span_hz / 1_000_000:.3f} MHz.")
-
-                # Send additional trace mode commands (blank then set)
-                # Ensure all traces are blanked first
-                if not self.app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=file, function=function)
-                
-                # Then set the desired trace modes
-                if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
-                
-                print("✅ Trace modes set: TRAC1:WRITE, TRAC2:MAXHOLD, TRAC3:MINHOLD, TRAC4:BLANK.")
-
-            except pyvisa.errors.VisaIOError as e:
-                print(f"❌ VISA error while setting span: {e}")
-                messagebox.showerror("VISA Error", f"Failed to set instrument span: {e}")
-                debug_print(f"VISA Error setting span: {e}", file=file, function=function)
-                return False
-            except Exception as e:
-                print(f"❌ An unexpected error occurred while setting span: {e}")
-                messagebox.showerror("Error", f"An unexpected error occurred while setting span: {e}")
-                debug_print(f"An unexpected error occurred while setting span: {e}", file=file, function=function)
-                return False
+        # Optionally, apply the new span to the instrument immediately if connected
+        if self.app_instance.inst:
+            # We don't have a specific center frequency to set here,
+            # so we might just update the span without changing center freq,
+            # or use the last known center freq if available from app_instance.
+            # For now, let's just log the change. The next device button click will use it.
+            print("Note: Span change will apply on next device button click or explicit frequency set.")
+            debug_print("Span change will apply on next device button click.", file=current_file, function=current_function)
         else:
-            debug_print("Cannot set span: Instrument not connected.", file=file, function=function)
-            
+            print("🚫 Not connected to instrument. Span change will take effect when connected.")
+            debug_print("Not connected to instrument. Span change will take effect when connected.", file=current_file, function=current_function)
 
 
-    def update_markers_data(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def update_markers_data(self, headers, rows):
         """
-        Updates the data displayed in the markers tab.
+        Updates the internal marker data and refreshes the display.
         """
-        debug_print("Updating markers data...", file=file, function=function)
         self.headers = headers
         self.rows = rows
-        self._populate_zone_group_tree() # Repopulate the treeview with new data
-        self._populate_device_buttons([]) # Clear device buttons when new data loaded
+        self._populate_zone_group_tree()
+        self._populate_device_buttons([]) # Clear device buttons when data is updated
 
-    def _on_tab_selected(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
+    def _on_tab_selected(self, event):
         """
-        Callback when this tab is selected. Checks for and loads MARKERS.CSV.
+        Callback for when this tab is selected.
+        Dynamically determines MARKERS.CSV path and loads data.
         """
-        debug_print("MarkersDisplayTab selected. Checking for MARKERS.CSV...", file=file, function=function)
-        
-        # Dynamically determine MARKERS.CSV path from the main app's output folder
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+
+        debug_print("Markers Display Tab selected. Attempting to load MARKERS.CSV...", file=current_file, function=current_function)
+
+        # Determine MARKERS.CSV path based on the current output folder
+        output_folder = self.app_instance.output_folder_var.get()
         markers_file_path = None
-        if self.app_instance and hasattr(self.app_instance, 'output_folder_var'):
-            output_folder = self.app_instance.output_folder_var.get()
-            if output_folder:
-                markers_file_path = os.path.join(output_folder, 'MARKERS.CSV')
-                debug_print(f"Attempting to load MARKERS.CSV from configured output folder: {markers_file_path}", file=file, function=function)
-            else:
-                debug_print("Output folder not configured in main app. Cannot check for MARKERS.CSV.", file=file, function=function)
+        if output_folder and os.path.isdir(output_folder):
+            markers_file_path = os.path.join(output_folder, "MARKERS.CSV")
+            debug_print(f"Looking for MARKERS.CSV at: {markers_file_path}", file=current_file, function=current_function)
         else:
-            debug_print("App instance or output_folder_var not available. Cannot check for MARKERS.CSV.", file=file, function=function)
+            print("🚫 Output directory not set or does not exist. Cannot load MARKERS.CSV.")
+            debug_print("Output directory not set or does not exist.", file=current_file, function=current_function)
+            self.update_markers_data([], []) # Clear any existing display
+            return
 
         if markers_file_path and os.path.exists(markers_file_path):
-            debug_print(f"MARKERS.CSV found at: {markers_file_path}", file=file, function=function)
             try:
                 headers = []
                 rows = []
-                with open(markers_file_path, mode='r', newline='', encoding='utf-8') as csvfile:
+                with open(markers_file_path, 'r', newline='', encoding='utf-8') as csvfile:
                     reader = csv.DictReader(csvfile)
                     headers = reader.fieldnames
                     for row_data in reader:
+                        # Convert FREQ to float if possible, keep original if not
+                        if "FREQ" in row_data and row_data["FREQ"]:
+                            try:
+                                row_data["FREQ"] = float(row_data["FREQ"])
+                            except ValueError:
+                                # Keep as string if conversion fails, or set to None/error indicator
+                                row_data["FREQ"] = "Invalid" # Or keep as original string
                         rows.append(row_data)
                 
                 if headers and rows:
-                    debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=file, function=function)
+                    debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=current_file, function=current_function)
                     self.update_markers_data(headers, rows)
                 else:
-                    debug_print("MARKERS.CSV is empty or has no data rows.", file=file, function=function)
+                    debug_print("MARKERS.CSV is empty or has no data rows.", file=current_file, function=current_function)
                     # Changed messagebox to debug_print
-                    debug_print("No Markers: The MARKERS.CSV file was found but contains no data.", file=file, function=function)
+                    debug_print("No Markers: The MARKERS.CSV file was found but contains no data.", file=current_file, function=current_function)
                     self.update_markers_data([], []) # Clear any existing display
             except Exception as e:
-                debug_print(f"Error loading MARKERS.CSV: {e}", file=file, function=function)
+                debug_print(f"Error loading MARKERS.CSV: {e}", file=current_file, function=current_function)
                 # Changed messagebox to debug_print
-                debug_print(f"Error Loading Markers: An error occurred while loading MARKERS.CSV: {e}", file=file, function=function)
+                debug_print(f"Error Loading Markers: An error occurred while loading MARKERS.CSV: {e}", file=current_file, function=current_function)
                 self.update_markers_data([], []) # Clear any existing display on error
         else:
-            debug_print(f"MARKERS.CSV not found or path not determined. Path: {markers_file_path}", file=file, function=function)
+            debug_print(f"MARKERS.CSV not found or path not determined. Path: {markers_file_path}", file=current_file, function=current_function)
             # Changed messagebox to debug_print
-            debug_print("No Markers File: MARKERS.CSV not found. Please generate a report first.", file=file, function=function)
+            debug_print("No Markers File: MARKERS.CSV not found. Please generate a report first.", file=current_file, function=current_function)
             self.update_markers_data([], []) # Ensure display is clear if file doesn't exist
+
