@@ -416,27 +416,14 @@ def set_focus_frequency_logic(app_instance, frequency_hz, span_hz=None, file=__f
         if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_to_set}"): return False
         debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_to_set}", file=file, function=function)
 
-        # Send additional trace mode commands
-        if not app_instance.inst.write(":TRAC1:MODE WRITe"): return False
-        debug_print("Sent: :TRAC1:MODE WRITe", file=file, function=function)
-        if not app_instance.inst.write(":TRAC2:MODE MAXhold"): return False
-        debug_print("Sent: :TRAC2:MODE WRITe", file=file, function=function)
-        if not app_instance.inst.write(":TRAC3:MODE MINHold"): return False
-        debug_print("Sent: :TRAC3:MODE MINHold", file=file, function=function)
-        if not app_instance.inst.write(":TRAC4:MODE BLANK"): return False
-        debug_print("Sent: :TRAC4:MODE BLANK", file=file, function=function)
-        
-
-
- # Send additional trace mode commands
+        # Send trace mode commands: blank all, then set desired modes
+        # Corrected trace mode commands
         if not app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
-        debug_print("Sent: :TRAC1:MODE BLANK:TRAC2:MODE BLANK;:TRAC3:MODE BLANK;:TRAC4:MODE BLANK", file=file, function=function)
+        debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=file, function=function)
                 
         if not app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
-        debug_print("Sent: :TRAC1:MODE WRITel:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
+        debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
                 
-        
-
         print(f"✅ Instrument center frequency set to {frequency_hz / MHZ_TO_HZ:.3f} MHz with span {span_to_set / MHZ_TO_HZ:.3f} MHz. Trace modes set.")
         return True
     except pyvisa.errors.VisaIOError as e:

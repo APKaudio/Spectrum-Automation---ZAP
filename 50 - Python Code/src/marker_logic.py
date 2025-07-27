@@ -49,6 +49,7 @@ class MarkersDisplayTab(ttk.Frame):
         # Apply style to the main frame (this style is now defined globally in main_app.py)
         self.config(style="Markers.TFrame") 
         self.last_selected_span_button = None # To keep track of the last selected span button
+        self.current_span_hz = None # To store the currently active span value in Hz
 
         self.create_widgets()
 
@@ -143,7 +144,7 @@ class MarkersDisplayTab(ttk.Frame):
             self.span_buttons[text] = btn
             col += 1
         
-        # Set "Normal" as the initially selected button
+        # Set "Normal" as the initially selected button and span
         self._on_span_button_click(self.span_options["Normal"], self.span_buttons["Normal"], "Normal")
         # --- End New ---
 
@@ -287,12 +288,15 @@ class MarkersDisplayTab(ttk.Frame):
     def _on_device_button_click(self, freq, name, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Callback for device buttons. Sets the instrument's focus frequency and a marker.
+        Uses the currently selected span from the span buttons, or a default if none selected.
         """
         debug_print(f"Device button clicked: {name} at {freq} Hz", file=file, function=function)
         if self.app_instance and self.app_instance.inst:
-            # When a device button is clicked, use the default focus width from app_instance
-            default_span = float(self.app_instance.desired_default_focus_width_var.get())
-            set_focus_frequency_logic(self.app_instance, freq, span_hz=default_span)
+            # Use the currently selected span, or fall back to default focus width
+            span_to_use = self.current_span_hz if self.current_span_hz is not None else \
+                          float(self.app_instance.desired_default_focus_width_var.get())
+            
+            set_focus_frequency_logic(self.app_instance, freq, span_hz=span_to_use)
             set_marker_and_trace_modes_logic(self.app_instance, freq, name)
         else:
             debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
@@ -300,24 +304,24 @@ class MarkersDisplayTab(ttk.Frame):
 
     def _on_span_button_click(self, span_hz, button_widget=None, button_text=None, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
-        Callback for span control buttons. Changes the instrument's span and toggles button color.
+        Callback for span control buttons. Changes the instrument's span and toggles button color/font.
         """
         debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=file, function=function)
-        if self.app_instance and self.app_instance.inst:
-            # Toggle button colors
-            if self.last_selected_span_button and self.last_selected_span_button != button_widget:
-                self.last_selected_span_button.config(style="Markers.TButton") # Revert old button
-            
-            if button_widget:
-                button_widget.config(style="SelectedSpan.TButton") # Set new button to selected style
-                self.last_selected_span_button = button_widget
-            else:
-                # If button_widget is None (e.g., if called programmatically without a button reference)
-                # find the button by its span value and set its style.
-                # This part is more complex and might require iterating self.span_buttons
-                # For simplicity, we assume button_widget is always passed when clicked.
-                pass # If called without button_widget, we can't change its color here.
+        
+        # Update the stored current span
+        self.current_span_hz = span_hz
 
+        # Toggle button styles for visual feedback (bold/red text or orange background)
+        for text, btn in self.span_buttons.items():
+            if btn == button_widget:
+                # Apply the style that includes orange background, red foreground, and bold font
+                btn.config(style="SelectedSpan.TButton") 
+            else:
+                # Revert to the default style for unselected buttons
+                btn.config(style="Markers.TButton") 
+        
+        # If the instrument is connected, send the commands
+        if self.app_instance and self.app_instance.inst:
             try:
                 # Direct SCPI command to set span
                 if not self.app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
@@ -327,13 +331,16 @@ class MarkersDisplayTab(ttk.Frame):
                 debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
                 print(f"✅ Instrument span set to {span_hz / 1_000_000:.3f} MHz.")
 
-                # Send additional trace mode commands
+                # Send additional trace mode commands (blank then set)
+                # Ensure all traces are blanked first
                 if not self.app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
                 debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=file, function=function)
                 
-                if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHoldl;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE WRITel:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
+                # Then set the desired trace modes
+                if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
+                debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
                 
+                print("✅ Trace modes set: TRAC1:WRITE, TRAC2:MAXHOLD, TRAC3:MINHOLD, TRAC4:BLANK.")
 
             except pyvisa.errors.VisaIOError as e:
                 print(f"❌ VISA error while setting span: {e}")
