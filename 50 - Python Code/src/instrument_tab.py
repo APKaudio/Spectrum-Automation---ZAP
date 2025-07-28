@@ -202,20 +202,6 @@ class InstrumentTab(ttk.Frame):
             ref_level_str = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
             self.current_ref_level_var.set(f"{float(ref_level_str):.1f}" if ref_level_str else "N/A")
 
-            # Query Frequency Shift
-            freq_shift_str = query_safe(self.app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", self.console_print_func)
-            self.current_freq_shift_var.set(f"{float(freq_shift_str):.0f}" if freq_shift_str else "N/A")
-
-            # Query Max Hold state
-            trace_type_query = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", self.console_print_func)
-            self.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
-
-            # Query High Sensitivity / Preamp state
-            atten_auto_query = query_safe(self.app_instance.inst, ":INPut:ATTenuation:AUTO?", self.console_print_func)
-            gain_state_query = query_safe(self.app_instance.inst, ":INPut:GAIN:STATe?", self.console_print_func)
-            high_sensitivity_status = "Enabled" if (atten_auto_query and "OFF" in atten_auto_query.upper() and \
-                                                   gain_state_query and "ON" in gain_state_query.upper()) else "Disabled"
-            self.current_high_sensitivity_var.set(high_sensitivity_status)
 
             self.console_print_func("✅ Current instrument settings displayed.")
             debug_print("Current instrument settings displayed.", file=current_file, function=current_function, console_print_func=self.console_print_func)

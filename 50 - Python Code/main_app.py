@@ -37,8 +37,8 @@ from src.instrument_logic import (
     query_current_instrument_settings_logic, query_device_presets_logic,
     load_selected_preset_logic, set_marker_and_trace_modes_logic
 )
-# Renamed update_connection_status_logic to update_connection_status for direct use by app_instance
-from src.scan_logic import update_connection_status_logic as update_connection_status 
+# Import the logic function directly, it will be called by a method in App
+from src.scan_logic import update_connection_status_logic
 from src.settings_logic import restore_default_settings_logic
 from src.instrument_preset_tab import PresetFilesTab # Import the new tab class
 from src.marker_tab import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
@@ -46,7 +46,7 @@ from src.plotting_tab import PlottingTab # Import the PlottingTab
 from src.report_converter_tab import ReportConverterTab # Import the ReportConverterTab
 from src.scan_tab import ScanTab # Import the new ScanTab
 from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
-
+from src.instrument_tab import InstrumentTab # Import the InstrumentTab
 
 # Import constants from frequency_bands.py
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
@@ -116,10 +116,13 @@ class App(tk.Tk):
         self._redirect_stdout_to_console() # Redirect print statements to GUI console
 
         # Initial population of resources and button states
-        self._populate_resources() # Now this will find self.resource_names
-        # Corrected: Call update_connection_status with required arguments
-        # Use the renamed function directly
-        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
+        # The actual population of resources is now handled by the InstrumentTab's
+        # _populate_resources method, which is called after the tab is created.
+        # This line is no longer needed here as it will be called by the tab itself.
+        # self._populate_resources() 
+        
+        # Corrected: Call the new App method update_connection_status
+        self.update_connection_status(self.inst is not None)
         
         # Print the ASCII art logo to the console
         print_art()
@@ -265,21 +268,9 @@ class App(tk.Tk):
         self.left_notebook = ttk.Notebook(self)
         self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
-        # Create frames for the new tabs
-        main_settings_tab_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
-        
-        # Add the new frames as tabs to the left notebook
-        self.left_notebook.add(main_settings_tab_frame, text="Main Settings")
-        
-        # Configure grid for main_settings_tab_frame
-        main_settings_tab_frame.grid_columnconfigure(0, weight=1)
-        main_settings_tab_frame.grid_rowconfigure(0, weight=0) # Session Description
-        main_settings_tab_frame.grid_rowconfigure(1, weight=1) # Instrument Connection (expands)
-
-
-        # --- Session Description Frame (Moved into Main Settings tab) ---
-        session_description_frame = ttk.LabelFrame(main_settings_tab_frame, text="Session Description", style='Dark.TLabelframe')
-        session_description_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new")
+        # --- Session Description Frame (Moved to top of left column) ---
+        session_description_frame = ttk.LabelFrame(self, text="Session Description", style='Dark.TLabelframe')
+        session_description_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new", columnspan=1) # Place in left column, top
         session_description_frame.grid_columnconfigure(1, weight=1) # Allow entry fields to expand
 
         ttk.Label(session_description_frame, text="Scan Name:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -292,37 +283,14 @@ class App(tk.Tk):
         self.browse_output_button = ttk.Button(session_description_frame, text="Browse", command=self._browse_output_folder, style='Blue.TButton')
         self.browse_output_button.grid(row=1, column=2, padx=5, pady=5)
 
+        # Ensure the notebook takes the rest of the vertical space in the left column
+        self.grid_rowconfigure(1, weight=1) # New row for the notebook
+        self.left_notebook.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Move notebook to new row
 
-        # --- Instrument Connection Frame (Moved into Main Settings tab) ---
-        instrument_frame = ttk.LabelFrame(main_settings_tab_frame, text="Instrument Connection", style='Dark.TLabelframe')
-        instrument_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Now expands vertically
-        instrument_frame.grid_columnconfigure(1, weight=1) # Allow combobox to expand
 
-        ttk.Label(instrument_frame, text="VISA Resource:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        # Use self.resource_names here
-        self.resource_combobox = ttk.Combobox(instrument_frame, textvariable=self.selected_resource, values=[], state="readonly", style='TCombobox')
-        self.resource_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        self.resource_combobox.bind("<<ComboboxSelected>>", self._on_resource_selected)
-
-        self.refresh_button = ttk.Button(instrument_frame, text="Refresh", command=self._populate_resources, style='Blue.TButton')
-        self.refresh_button.grid(row=0, column=2, padx=5, pady=5)
-
-        self.connect_button = ttk.Button(instrument_frame, text="Connect", command=self._connect_instrument, style='Green.TButton')
-        self.connect_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-
-        self.disconnect_button = ttk.Button(instrument_frame, text="Disconnect", command=self._disconnect_instrument, state=tk.DISABLED, style='Red.TButton')
-        self.disconnect_button.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-
-        self.apply_button = ttk.Button(instrument_frame, text="Apply Settings to Instrument", command=self._apply_instrument_settings, state=tk.DISABLED, style='Orange.TButton')
-        self.apply_button.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
-
-        # Removed the load_preset_button from here, as it's now handled within PresetFilesTab
-        # self.load_preset_button = ttk.Button(instrument_frame, text="Load Selected Preset", command=self._load_selected_preset, state=tk.DISABLED, style='Purple.TButton')
-        # self.load_preset_button.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
-
-        # Debugging checkboxes (Moved here from Scan Configuration)
-        ttk.Checkbutton(instrument_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style='TCheckbutton').grid(row=4, column=0, columnspan=3, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(instrument_frame, text="Log VISA Commands", variable=self.log_visa_commands_enabled_var, style='TCheckbutton').grid(row=5, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+        # Instantiate InstrumentTab and add it to the notebook
+        self.instrument_tab = InstrumentTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.instrument_tab, text="Instrument Connection")
 
 
         # --- ScanTab (New tab for Scan Configuration and Bands to Scan) ---
@@ -351,7 +319,7 @@ class App(tk.Tk):
         # --- Right Column Container Frame ---
         # This frame will hold the Scan Control and Application Console
         right_column_container = ttk.Frame(self, style='Dark.TFrame')
-        right_column_container.grid(row=0, column=1, padx=5, pady=5, sticky="nsew") # Place in main window's grid
+        right_column_container.grid(row=0, column=1, rowspan=2, padx=5, pady=5, sticky="nsew") # Place in main window's grid, span two rows
         right_column_container.grid_columnconfigure(0, weight=1) # Single column within this container
         right_column_container.grid_rowconfigure(0, weight=0) # Scan Control row (fixed height)
         right_column_container.grid_rowconfigure(1, weight=1) # Application Console row (expands)
@@ -553,62 +521,62 @@ class App(tk.Tk):
 
     def _populate_resources(self):
         """
-        Populates the VISA resource combobox with available instruments.
+        Delegates the call to populate VISA resources to the InstrumentTab.
         """
-        debug_print("Populating VISA resources...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Corrected the argument passed to populate_resources_logic
-        populate_resources_logic(self, self._print_to_gui_console)
-        # After populating, update the combobox values
-        # The resource_names StringVar holds a space-separated string of resources
-        # We need to split it to set the 'values' attribute of the combobox
-        resource_list = self.resource_names.get().split(' ') if self.resource_names.get() else []
-        self.resource_combobox.config(values=resource_list)
-        if resource_list:
-            # Set the selected resource to the first one if no last used resource was found
-            if not self.selected_resource.get() or self.selected_resource.get() not in resource_list:
-                self.selected_resource.set(resource_list[0])
+        debug_print("Delegating populate VISA resources to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        if hasattr(self, 'instrument_tab'):
+            self.instrument_tab._populate_resources()
+        else:
+            self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot populate resources.")
+            debug_print("InstrumentTab not initialized for _populate_resources.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _on_resource_selected(self, event):
         """
-        Callback when a VISA resource is selected from the combobox.
+        Delegates the resource selection callback to the InstrumentTab.
         """
-        selected_resource = self.resource_combobox.get()
-        self._print_to_gui_console(f"Selected resource: {selected_resource}")
-        debug_print(f"Resource selected: {selected_resource}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        debug_print("Delegating resource selection to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        if hasattr(self, 'instrument_tab'):
+            self.instrument_tab._on_resource_selected(event)
+        else:
+            self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot handle resource selection.")
+            debug_print("InstrumentTab not initialized for _on_resource_selected.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _connect_instrument(self):
         """
-        Attempts to connect to the selected VISA instrument.
+        Delegates the connect instrument call to the InstrumentTab.
         """
-        debug_print("Attempting to connect instrument...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        selected_resource = self.resource_combobox.get()
-        
-        # Pass self (app_instance) to the logic function
-        connect_instrument_logic(self, self._print_to_gui_console) # Removed selected_resource as it's now accessed via app_instance.selected_resource
-        # Update button states after connection attempt
-        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
+        debug_print("Delegating connect instrument to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        if hasattr(self, 'instrument_tab'):
+            self.instrument_tab._connect_instrument()
+        else:
+            self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot connect instrument.")
+            debug_print("InstrumentTab not initialized for _connect_instrument.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _disconnect_instrument(self):
         """
-        Disconnects from the currently connected VISA instrument.
+        Delegates the disconnect instrument call to the InstrumentTab.
         """
-        debug_print("Attempting to disconnect instrument...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Pass self (app_instance) to the logic function
-        disconnect_instrument_logic(self, self._print_to_gui_console)
-        # Update button states after disconnection
-        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
+        debug_print("Delegating disconnect instrument to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        if hasattr(self, 'instrument_tab'):
+            self.instrument_tab._disconnect_instrument()
+        else:
+            self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot disconnect instrument.")
+            debug_print("InstrumentTab not initialized for _disconnect_instrument.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _apply_instrument_settings(self):
         """
-        Applies the current settings from the GUI to the connected instrument.
+        Delegates the apply instrument settings call to the InstrumentTab.
         """
-        debug_print("Applying instrument settings...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Pass self (app_instance) to the logic function
-        apply_settings_logic(self, self._print_to_gui_console)
+        debug_print("Delegating apply instrument settings to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        if hasattr(self, 'instrument_tab'):
+            self.instrument_tab._apply_settings() # Call the _apply_settings method on InstrumentTab
+        else:
+            self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot apply settings.")
+            debug_print("InstrumentTab not initialized for _apply_instrument_settings.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _load_selected_preset(self):
@@ -657,7 +625,6 @@ class App(tk.Tk):
         Stops the active scan.
         """
         debug_print("Stopping scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Call the method on the scan_control_tab instance
         if hasattr(self, 'scan_control_tab'):
             self.scan_control_tab._stop_scan()
         else:
@@ -749,6 +716,13 @@ class App(tk.Tk):
             debug_print(f"Tab changed to {selected_tab_widget.winfo_class()}. Calling _on_tab_selected.", file=__file__, function=inspect.currentframe().f_code.co_name)
         else:
             debug_print(f"Tab changed to {selected_tab_widget.winfo_class()}. No _on_tab_selected method found.", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+    def update_connection_status(self, is_connected):
+        """
+        A wrapper method in the App class to call the external logic function.
+        This method will be called by other parts of the application.
+        """
+        update_connection_status_logic(self, is_connected, self._print_to_gui_console)
 
 
 if __name__ == "__main__":

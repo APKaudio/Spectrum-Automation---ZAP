@@ -30,7 +30,9 @@ import csv # Added import for csv module
 import inspect # Import inspect module for debug_print
 
 # Import instrument control functions
-from utils.instrument_control import query_safe, write_safe, debug_print, initialize_instrument # Added initialize_instrument
+from utils.instrument_control import query_safe, write_safe, debug_print, initialize_instrument
+# Corrected import: Changed set_log_visa_commands to set_log_visa_commands_mode
+from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode
 # Import CSV utility
 from utils.csv_utils import write_scan_data_to_csv # Import write_scan_data_to_csv
 
@@ -82,9 +84,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
 
     # Configure debug mode for underlying instrument control functions
     # This must be done at the start of the scan
-    from utils.instrument_control import set_debug_mode, set_log_visa_commands
     set_debug_mode(general_debug_enabled)
-    set_log_visa_commands(log_visa_commands_enabled)
+    set_log_visa_commands_mode(log_visa_commands_enabled) # Corrected function call
 
     overall_start_freq_hz = min(band["Start MHz"] for band in selected_bands) * MHZ_TO_HZ
     overall_stop_freq_hz = max(band["Stop MHz"] for band in selected_bands) * MHZ_TO_HZ
@@ -102,7 +103,8 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
         maxhold_enabled=maxhold_enabled,
         high_sensitivity=high_sensitivity,
         preamp_on=preamp_on,
-        debug_mode=general_debug_enabled
+        debug_mode=general_debug_enabled,
+        model_match=app_instance_ref.instrument_model # Pass the instrument model
     ):
         app_console_update_func("❌ Error: Failed to initialize instrument for scan. Aborting.")
         # app_instance_ref.after(0, lambda: messagebox.showerror("Instrument Init Error", "Failed to initialize instrument for scan. Aborting.")) # Removed

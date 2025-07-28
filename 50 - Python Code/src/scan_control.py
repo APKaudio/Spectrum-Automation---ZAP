@@ -81,8 +81,7 @@ class ScanControlTab(ttk.Frame):
             self.console_print_func("▶️ Scan resumed.")
             debug_print("Scan resumed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             # Trigger full GUI update after state change
-            # Pass app_instance and console_print_func explicitly
-            self.app_instance.update_connection_status(self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+            self.app_instance.update_connection_status(self.app_instance.inst is not None)
             return
 
         self.is_scanning = True
@@ -93,8 +92,7 @@ class ScanControlTab(ttk.Frame):
         self.console_print_func("▶️ Scan started...")
         debug_print("Scan thread started.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         # Trigger full GUI update after state change
-        # Pass app_instance and console_print_func explicitly
-        self.app_instance.update_connection_status(self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+        self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
 
     def _pause_scan(self):
@@ -110,8 +108,7 @@ class ScanControlTab(ttk.Frame):
             self.console_print_func("⏸️ Scan paused.")
             debug_print("Scan paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             # Trigger full GUI update after state change
-            # Pass app_instance and console_print_func explicitly
-            self.app_instance.update_connection_status(self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+            self.app_instance.update_connection_status(self.app_instance.inst is not None)
         elif self.is_paused:
             self.console_print_func("ℹ️ Info: Scan is already paused.")
             debug_print("Scan already paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -143,8 +140,7 @@ class ScanControlTab(ttk.Frame):
             debug_print("No scan is currently running.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         
         # Trigger full GUI update after state change
-        # Pass app_instance and console_print_func explicitly
-        self.app_instance.update_connection_status(self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+        self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
     def _run_scan(self):
         """
@@ -160,8 +156,7 @@ class ScanControlTab(ttk.Frame):
                 self.app_instance.after(0, lambda: self.console_print_func("⚠️ Warning: No frequency bands selected for scan."))
                 debug_print("No frequency bands selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                 self.is_scanning = False
-                # Pass app_instance and console_print_func explicitly
-                self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance, self.app_instance.inst is not None, self.console_print_func) # Update buttons on main thread
+                self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None) # Update buttons on main thread
                 return
 
             num_scan_cycles = int(self.app_instance.num_scan_cycles_var.get())
@@ -183,7 +178,7 @@ class ScanControlTab(ttk.Frame):
             for cycle in range(num_scan_cycles):
                 while self.is_paused:
                     # Call the main app's update_connection_status which will then update all tabs
-                    self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+                    self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
                     time.sleep(0.1) # Small sleep to avoid busy-waiting
 
                 if not self.is_scanning: # Check again after potential pause
@@ -196,19 +191,24 @@ class ScanControlTab(ttk.Frame):
 
                 # Perform the actual scan
                 last_successful_band_index, scan_df, markers_data = scan_bands(
-                    self.app_instance.inst,
-                    selected_bands,
-                    self.app_instance.scan_rbw_hz_var,
-                    self.app_instance.scan_rbw_segmentation_var, # Corrected variable name
-                    self.app_instance.reference_level_dbm_var,
-                    self.app_instance.freq_shift_hz_var,
-                    self.app_instance.maxhold_enabled_var,
-                    self.app_instance.high_sensitivity_var,
-                    self.app_instance.preamp_on_var,
-                    self.app_instance.cycle_wait_time_seconds_var,
-                    self.app_instance.maxhold_time_seconds_var,
-                    self.console_print_func, # Pass console_print_func
-                    self.app_instance # Pass app_instance_ref
+                    app_instance_ref=self.app_instance, # Pass app_instance_ref as keyword argument
+                    inst=self.app_instance.inst,
+                    selected_bands=selected_bands,
+                    rbw_hz=self.app_instance.scan_rbw_hz_var,
+                    ref_level_dbm=self.app_instance.reference_level_dbm_var,
+                    freq_shift_hz=self.app_instance.freq_shift_hz_var,
+                    maxhold_enabled=self.app_instance.maxhold_enabled_var,
+                    high_sensitivity=self.app_instance.high_sensitivity_var,
+                    preamp_on=self.app_instance.preamp_on_var,
+                    rbw_step_size_hz=self.app_instance.rbw_step_size_hz_var, # Added this missing argument
+                    cycle_wait_time_seconds=self.app_instance.cycle_wait_time_seconds_var,
+                    scan_name=scan_name, # Added this missing argument
+                    output_folder=output_dir, # Added this missing argument
+                    stop_event=self.app_instance.stop_scan_event,
+                    pause_event=self.app_instance.pause_scan_event,
+                    log_visa_commands_enabled=self.app_instance.log_visa_commands_enabled_var.get(),
+                    general_debug_enabled=self.app_instance.general_debug_enabled_var.get(),
+                    app_console_update_func=self.console_print_func
                 )
 
                 if scan_df is not None and not scan_df.empty:
@@ -270,18 +270,12 @@ class ScanControlTab(ttk.Frame):
                     self.app_instance.after(0, lambda: self.console_print_func("ℹ️ No markers extracted during scan to update Markers tab."))
                     debug_print("No markers extracted during scan or markers tab not found.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             
-            # Pass app_instance and console_print_func explicitly
-            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance, self.app_instance.inst is not None, self.console_print_func)
+            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
 
         except Exception as e:
             self.is_scanning = False
             self.is_paused = False
             self.app_instance.after(0, lambda: self.console_print_func(f"❌ An error occurred during scan: {e}"))
             debug_print(f"Error during scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            # Pass app_instance and console_print_func explicitly
-            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance, self.app_instance.inst is not None, self.console_print_func)
-
-    # Removed the update_scan_button_states method from ScanControlTab
-    # as its functionality is now handled by update_connection_status_logic in scan_logic.py
-    # and called directly from App.update_connection_status.
+            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
 
