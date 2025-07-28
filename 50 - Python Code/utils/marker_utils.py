@@ -33,7 +33,7 @@ SPAN_OPTIONS = {
 def set_span_logic(inst, span_hz, center_freq_hz=None, live_mode=False, max_hold_mode=False, min_hold_mode=False, console_print_func=None):
     """
     Sets the instrument's span, optionally its center frequency, and configures trace modes.
-    Only sends commands for settings that have changed.
+    Directly sends commands without querying current state to ensure desired settings are applied.
 
     Inputs:
         inst (pyvisa.resources.Resource): The connected VISA instrument object.
@@ -62,90 +62,52 @@ def set_span_logic(inst, span_hz, center_freq_hz=None, live_mode=False, max_hold
     try:
         # --- Set Center Frequency (if provided) ---
         if center_freq_hz is not None:
-            debug_print(f"Querying current center frequency...", file=current_file, function=current_function, console_print_func=console_print_func)
-            current_center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?", console_print_func)
-            current_center_freq_hz = float(current_center_freq_str) if current_center_freq_str else None
-
-            if current_center_freq_hz is not None and abs(current_center_freq_hz - center_freq_hz) < 1: # Compare with a small tolerance
-                debug_print(f"Center frequency already set to {center_freq_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
+            formatted_freq_hz = int(center_freq_hz) if center_freq_hz == int(center_freq_hz) else center_freq_hz
+            debug_print(f"Sending center frequency command: :SENSe:FREQuency:CENTer {formatted_freq_hz}", file=current_file, function=current_function, console_print_func=console_print_func)
+            if not write_safe(inst, f":SENSe:FREQuency:CENTer {formatted_freq_hz}", console_print_func):
                 if console_print_func:
-                    display_freq_mhz = int(center_freq_hz / MHZ_TO_HZ) if (center_freq_hz / MHZ_TO_HZ) == int(center_freq_hz / MHZ_TO_HZ) else f"{center_freq_hz / MHZ_TO_HZ:.3f}"
-                    console_print_func(f"ℹ️ Info: Instrument center frequency already at {display_freq_mhz} MHz.")
-            else:
-                formatted_freq_hz = int(center_freq_hz) if center_freq_hz == int(center_freq_hz) else center_freq_hz
-                debug_print(f"Sending center frequency command: :SENSe:FREQuency:CENTer {formatted_freq_hz}", file=current_file, function=current_function, console_print_func=console_print_func)
-                if not write_safe(inst, f":SENSe:FREQuency:CENTer {formatted_freq_hz}", console_print_func):
-                    if console_print_func:
-                        console_print_func(f"❌ Error: Failed to send center frequency command: :SENSe:FREQuency:CENTer {formatted_freq_hz}")
-                    debug_print(f"Failed to send center frequency command.", file=current_file, function=current_function, console_print_func=console_print_func)
-                    overall_success = False
-                else:
-                    if console_print_func:
-                        display_freq_mhz = int(center_freq_hz / MHZ_TO_HZ) if (center_freq_hz / MHZ_TO_HZ) == int(center_freq_hz / MHZ_TO_HZ) else f"{center_freq_hz / MHZ_TO_HZ:.3f}"
-                        console_print_func(f"✅ Instrument center frequency set to {display_freq_mhz} MHz.")
-
-        # --- Set Span ---
-        debug_print(f"Querying current span...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?", console_print_func)
-        current_span_hz = float(current_span_str) if current_span_str else None
-
-        if current_span_hz is not None and abs(current_span_hz - span_hz) < 1: # Compare with a small tolerance
-            debug_print(f"Span already set to {span_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            if console_print_func:
-                console_print_func(f"ℹ️ Info: Instrument span already at {span_hz / MHZ_TO_HZ:.3f} MHz.")
-        else:
-            debug_print(f"Sending span command: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not write_safe(inst, f":SENSe:FREQuency:SPAN {span_hz}", console_print_func):
-                if console_print_func:
-                    console_print_func(f"❌ Error: Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}")
-                debug_print(f"Failed to send span command.", file=current_file, function=current_function, console_print_func=console_print_func)
+                    console_print_func(f"❌ Error: Failed to send center frequency command: :SENSe:FREQuency:CENTer {formatted_freq_hz}")
+                debug_print(f"Failed to send center frequency command.", file=current_file, function=current_function, console_print_func=console_print_func)
                 overall_success = False
             else:
                 if console_print_func:
-                    console_print_func(f"✅ Instrument span set to {span_hz / MHZ_TO_HZ:.3f} MHz.")
+                    display_freq_mhz = int(center_freq_hz / MHZ_TO_HZ) if (center_freq_hz / MHZ_TO_HZ) == int(center_freq_hz / MHZ_TO_HZ) else f"{center_freq_hz / MHZ_TO_HZ:.3f}"
+                    console_print_func(f"✅ Instrument center frequency set to {display_freq_mhz} MHz.")
+
+        # --- Set Span ---
+        debug_print(f"Sending span command: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=console_print_func)
+        if not write_safe(inst, f":SENSe:FREQuency:SPAN {span_hz}", console_print_func):
+            if console_print_func:
+                console_print_func(f"❌ Error: Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}")
+            debug_print(f"Failed to send span command.", file=current_file, function=current_function, console_print_func=console_print_func)
+            overall_success = False
+        else:
+            if console_print_func:
+                console_print_func(f"✅ Instrument span set to {span_hz / MHZ_TO_HZ:.3f} MHz.")
 
         # --- Set Trace Modes ---
+        # Directly set trace modes without querying current state
         trace_commands_to_send = []
         
         # TRAC1: Live Mode (WRITe) or BLANK
         desired_trac1_mode = "WRITe" if live_mode else "BLANK"
-        debug_print(f"Querying current TRAC1 mode...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trac1_mode = query_safe(inst, ":TRAC1:MODE?", console_print_func)
-        if current_trac1_mode and desired_trac1_mode.upper() in current_trac1_mode.upper():
-            debug_print(f"TRAC1 mode already {desired_trac1_mode}. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-        else:
-            trace_commands_to_send.append(f":TRAC1:MODE {desired_trac1_mode}")
-            debug_print(f"Adding TRAC1 command: :TRAC1:MODE {desired_trac1_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
+        trace_commands_to_send.append(f":TRAC1:MODE {desired_trac1_mode}")
+        debug_print(f"Adding TRAC1 command: :TRAC1:MODE {desired_trac1_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
 
         # TRAC2: Max Hold or BLANK
         desired_trac2_mode = "MAXHold" if max_hold_mode else "BLANK"
-        debug_print(f"Querying current TRAC2 mode...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trac2_mode = query_safe(inst, ":TRAC2:MODE?", console_print_func)
-        if current_trac2_mode and desired_trac2_mode.upper() in current_trac2_mode.upper():
-            debug_print(f"TRAC2 mode already {desired_trac2_mode}. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-        else:
-            trace_commands_to_send.append(f":TRAC2:MODE {desired_trac2_mode}")
-            debug_print(f"Adding TRAC2 command: :TRAC2:MODE {desired_trac2_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
+        trace_commands_to_send.append(f":TRAC2:MODE {desired_trac2_mode}")
+        debug_print(f"Adding TRAC2 command: :TRAC2:MODE {desired_trac2_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
 
         # TRAC3: Min Hold or BLANK
         desired_trac3_mode = "MINHold" if min_hold_mode else "BLANK"
-        debug_print(f"Querying current TRAC3 mode...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trac3_mode = query_safe(inst, ":TRAC3:MODE?", console_print_func)
-        if current_trac3_mode and desired_trac3_mode.upper() in current_trac3_mode.upper():
-            debug_print(f"TRAC3 mode already {desired_trac3_mode}. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-        else:
-            trace_commands_to_send.append(f":TRAC3:MODE {desired_trac3_mode}")
-            debug_print(f"Adding TRAC3 command: :TRAC3:MODE {desired_trac3_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
+        trace_commands_to_send.append(f":TRAC3:MODE {desired_trac3_mode}")
+        debug_print(f"Adding TRAC3 command: :TRAC3:MODE {desired_trac3_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
         
         # TRAC4: Always BLANK as per requirement
         desired_trac4_mode = "BLANK"
-        debug_print(f"Querying current TRAC4 mode...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trac4_mode = query_safe(inst, ":TRAC4:MODE?", console_print_func)
-        if current_trac4_mode and desired_trac4_mode.upper() in current_trac4_mode.upper():
-            debug_print(f"TRAC4 mode already {desired_trac4_mode}. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-        else:
-            trace_commands_to_send.append(f":TRAC4:MODE {desired_trac4_mode}")
-            debug_print(f"Adding TRAC4 command: :TRAC4:MODE {desired_trac4_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
+        trace_commands_to_send.append(f":TRAC4:MODE {desired_trac4_mode}")
+        debug_print(f"Adding TRAC4 command: :TRAC4:MODE {desired_trac4_mode}", file=current_file, function=current_function, console_print_func=console_print_func)
 
 
         if trace_commands_to_send:
@@ -180,7 +142,7 @@ def set_span_logic(inst, span_hz, center_freq_hz=None, live_mode=False, max_hold
 
 def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_name, console_print_func):
     """
-    Sets a marker at the specified frequency and ensures the trace mode is Normal.
+    Sets a marker at the specified frequency.
     This function is kept separate from set_span_logic as it specifically handles marker setup.
     """
     current_function = inspect.currentframe().f_code.co_name
@@ -199,18 +161,13 @@ def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_n
         if not write_safe(app_instance.inst, f":CALCulate:MARKer1:X {formatted_marker_freq_hz}", console_print_func): return False
         debug_print(f"Sent: :CALCulate:MARKer1:X {formatted_marker_freq_hz}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        # Activate marker 1
-        #if not write_safe(app_instance.inst, ":CALCulate:MARKer1:STATe ON", console_print_func): return False
-        #debug_print("Sent: :CALCulate:MARKer1:STATe ON", file=current_file, function=current_function, console_print_func=console_print_func)
+        # Activate marker 1 (always turn on when setting)
+        if not write_safe(app_instance.inst, ":CALCulate:MARKer1:STATe ON", console_print_func): return False
+        debug_print("Sent: :CALCulate:MARKer1:STATe ON", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        # Set marker 1 to peak (optional, but often desired for markers)
-        #if not write_safe(app_instance.inst, ":CALCulate:MARKer1:MAXimum:PEAK", console_print_func): return False
-        #debug_print("Sent: :CALCulate:MARKer1:MAXimum:PEAK", file=current_file, function=current_function, console_print_func=console_print_func)
-
-        # The trace mode setting part is now handled by set_span_logic,
-        # but this function might still be called for specific marker-related actions.
-        # If this function is only ever called immediately after set_span_logic,
-        # this part might be redundant, but keeping it for now for explicit marker setup.
+        # Set marker 1 to peak (always set to peak when setting a marker)
+        if not write_safe(app_instance.inst, ":CALCulate:MARKer1:MAXimum:PEAK", console_print_func): return False
+        debug_print("Sent: :CALCulate:MARKer1:MAXimum:PEAK", file=current_file, function=current_function, console_print_func=console_print_func)
 
         # Display without decimal if it's a whole number, otherwise with .3f
         display_marker_freq_mhz = int(marker_frequency_hz / MHZ_TO_HZ) if (marker_frequency_hz / MHZ_TO_HZ) == int(marker_frequency_hz / MHZ_TO_HZ) else f"{marker_frequency_hz / MHZ_TO_HZ:.3f}"

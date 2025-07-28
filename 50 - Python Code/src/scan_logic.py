@@ -20,6 +20,7 @@ def update_connection_status_logic(app_instance, is_connected, console_print_fun
     scan_control_tab = getattr(app_instance, 'scan_control_tab', None)
     preset_files_tab = getattr(app_instance, 'preset_files_tab', None)
     plotting_tab = getattr(app_instance, 'plotting_tab', None)
+    markers_display_tab = getattr(app_instance, 'markers_display_tab', None) # Added for completeness
 
     is_scanning = scan_control_tab.is_scanning if scan_control_tab else False
     is_paused = scan_control_tab.is_paused if scan_control_tab else False
@@ -84,4 +85,13 @@ def update_connection_status_logic(app_instance, is_connected, console_print_fun
             plotting_tab.plot_average_button.config(state=tk.DISABLED)
     else:
         debug_print("PlottingTab not found when updating connection status.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    # --- Markers Display Tab buttons (if any) ---
+    # Assuming MarkersDisplayTab might have buttons that depend on connection/scan status
+    if markers_display_tab:
+        # Example: if you have a button to "Query Markers from Instrument"
+        # markers_display_tab.query_markers_button.config(state=tk.NORMAL if is_connected and not is_scanning else tk.DISABLED)
+        pass # No specific buttons to update in MarkersDisplayTab based on provided code
+    else:
+        debug_print("MarkersDisplayTab not found when updating connection status.", file=current_file, function=current_function, console_print_func=console_print_func)
 

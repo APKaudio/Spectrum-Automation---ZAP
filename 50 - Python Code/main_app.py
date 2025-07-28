@@ -37,8 +37,8 @@ from src.instrument_logic import (
     query_current_instrument_settings_logic, query_device_presets_logic,
     load_selected_preset_logic, set_marker_and_trace_modes_logic
 )
-# Removed specific scan_logic imports as they are not defined in scan_logic.py
-from src.scan_logic import update_connection_status_logic as _update_button_states_on_connection # Keep this for button state updates
+# Renamed update_connection_status_logic to update_connection_status for direct use by app_instance
+from src.scan_logic import update_connection_status_logic as update_connection_status 
 from src.settings_logic import restore_default_settings_logic
 from src.instrument_preset_tab import PresetFilesTab # Import the new tab class
 from src.marker_tab import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
@@ -117,8 +117,9 @@ class App(tk.Tk):
 
         # Initial population of resources and button states
         self._populate_resources() # Now this will find self.resource_names
-        # Corrected: Call _update_button_states_on_connection with required arguments
-        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
+        # Corrected: Call update_connection_status with required arguments
+        # Use the renamed function directly
+        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
         
         # Print the ASCII art logo to the console
         print_art()
@@ -587,7 +588,7 @@ class App(tk.Tk):
         # Pass self (app_instance) to the logic function
         connect_instrument_logic(self, self._print_to_gui_console) # Removed selected_resource as it's now accessed via app_instance.selected_resource
         # Update button states after connection attempt
-        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
+        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
 
 
     def _disconnect_instrument(self):
@@ -598,7 +599,7 @@ class App(tk.Tk):
         # Pass self (app_instance) to the logic function
         disconnect_instrument_logic(self, self._print_to_gui_console)
         # Update button states after disconnection
-        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
+        self.update_connection_status(self, self.inst is not None, self._print_to_gui_console)
 
 
     def _apply_instrument_settings(self):
