@@ -21,7 +21,7 @@ from datetime import datetime
 
 # Import necessary functions from instrument_control and frequency_bands
 from utils.instrument_control import debug_print, query_safe, write_safe, query_current_instrument_settings # Re-added query_current_instrument_settings
-from utils.frequency_bands import MHZ_TO_HZ
+from ref.frequency_bands import MHZ_TO_HZ
 
 def query_device_presets(inst, console_print_func=None):
     """

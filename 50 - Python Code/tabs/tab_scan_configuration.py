@@ -9,7 +9,7 @@ import sys # Import the sys module to fix NameError
 from utils.instrument_control import debug_print
 from src.settings_logic import restore_default_settings_logic, restore_last_used_settings_logic # Import the new logic function
 from src.config_manager import save_config
-from utils.frequency_bands import MHZ_TO_HZ # Import for display formatting
+from ref.frequency_bands import MHZ_TO_HZ # Import for display formatting
 
 class ScanTab(ttk.Frame):
     """
@@ -43,9 +43,12 @@ class ScanTab(ttk.Frame):
 
         # Configure grid for this tab
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0) # Settings frame
-        self.grid_rowconfigure(1, weight=1) # Bands frame
-        self.grid_rowconfigure(2, weight=0) # New frame for buttons
+        # We will dynamically adjust row weights later if needed, but for now,
+        # settings and actions will be fixed, and bands will expand.
+        self.grid_rowconfigure(0, weight=0) # Scan Settings frame
+        # Placeholder for bands (will be dynamically configured)
+        self.grid_rowconfigure(1, weight=1) # Bands will occupy this row and potentially more
+        self.grid_rowconfigure(2, weight=0) # Configuration Actions frame
 
         # --- Scan Settings Frame ---
         settings_frame = ttk.LabelFrame(self, text="Scan Settings", style='Dark.TLabelframe')
@@ -92,23 +95,20 @@ class ScanTab(ttk.Frame):
         settings_frame.grid_columnconfigure(2, weight=0) # Don't let browse button column expand
         row += 1
 
-        # --- START OF MODIFICATION ---
         # Add "Browse Export Folder" button, now opening the folder directly
         ttk.Button(settings_frame, text="Browse Export Folder", command=self._open_export_folder, style='Blue.TButton').grid(row=row, column=0, columnspan=3, pady=2, padx=5, sticky="ew")
         row += 1
-        # --- END OF MODIFICATION ---
 
-        # --- Bands to Scan Frame ---
-        bands_frame = ttk.LabelFrame(self, text="Bands to Scan", style='Dark.TLabelframe')
-        bands_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        bands_frame.grid_columnconfigure(0, weight=1) # Allow band list to expand
-
+        # --- Bands to Scan (Directly in ScanTab, no LabelFrame) ---
         # Create a canvas and scrollbar for the band selection checkboxes
-        bands_canvas = tk.Canvas(bands_frame, bg="#2b2b2b", highlightthickness=0)
-        bands_canvas.grid(row=0, column=0, sticky="nsew")
+        # This canvas will now be a direct child of ScanTab
+        bands_canvas = tk.Canvas(self, bg="#2b2b2b", highlightthickness=0)
+        # Place it in row 1, spanning all columns if necessary
+        bands_canvas.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
 
-        bands_scrollbar = ttk.Scrollbar(bands_frame, orient="vertical", command=bands_canvas.yview)
-        bands_scrollbar.grid(row=0, column=1, sticky="ns")
+        bands_scrollbar = ttk.Scrollbar(self, orient="vertical", command=bands_canvas.yview)
+        bands_scrollbar.grid(row=1, column=1, sticky="ns", pady=10) # Place scrollbar next to canvas
+
         bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
 
         self.bands_inner_frame = ttk.Frame(bands_canvas, style='Dark.TFrame')
@@ -116,9 +116,14 @@ class ScanTab(ttk.Frame):
         self.bands_inner_frame.bind("<Configure>", lambda e: bands_canvas.configure(scrollregion=bands_canvas.bbox("all")))
         bands_canvas.bind('<Configure>', lambda e: bands_canvas.itemconfig(bands_canvas.find_withtag("all")[0], width=e.width))
 
-        self.bands_inner_frame.grid_columnconfigure(0, weight=1) # Allow checkboxes to expand horizontally
+        # Configure columns for the inner frame to allow multiple columns of checkboxes
+        num_columns = 2 # You can adjust this number based on desired layout
+        for col_idx in range(num_columns):
+            self.bands_inner_frame.grid_columnconfigure(col_idx, weight=1)
 
-        # Populate bands
+        # Populate bands in multiple columns
+        current_band_row = 0
+        current_band_col = 0
         for i, band_item in enumerate(self.app_instance.band_vars):
             band_info = band_item["band"]
             band_var = band_item["var"]
@@ -131,10 +136,16 @@ class ScanTab(ttk.Frame):
             )
 
             cb = ttk.Checkbutton(self.bands_inner_frame, text=display_text, variable=band_var, style='TCheckbutton')
-            cb.grid(row=i, column=0, sticky="w", padx=5, pady=2)
+            cb.grid(row=current_band_row, column=current_band_col, sticky="w", padx=5, pady=2)
 
-        # New frame for buttons below the Bands to Scan box
+            current_band_col += 1
+            if current_band_col >= num_columns:
+                current_band_col = 0
+                current_band_row += 1
+
+        # --- Configuration Actions Frame ---
         button_frame = ttk.LabelFrame(self, text="Configuration Actions", style='Dark.TLabelframe')
+        # This frame will now be in row 2, below the bands
         button_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
         button_frame.grid_columnconfigure(0, weight=1) # Allow buttons to expand
 
@@ -206,7 +217,6 @@ class ScanTab(ttk.Frame):
             self.console_print_func(f"❌ Failed to open config.ini: {e}")
             debug_print(f"Error opening config.ini: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-    # --- START OF MODIFICATION ---
     def _open_export_folder(self):
         """
         Opens the currently configured Scan Export Folder using the OS's default file explorer.
@@ -233,7 +243,6 @@ class ScanTab(ttk.Frame):
         except Exception as e:
             self.console_print_func(f"❌ Failed to open export folder: {e}")
             debug_print(f"Error opening export folder: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-    # --- END OF MODIFICATION ---
 
     def _on_tab_selected(self, event):
         """

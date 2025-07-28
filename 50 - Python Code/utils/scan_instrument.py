@@ -37,7 +37,7 @@ from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode
 from utils.csv_utils import write_scan_data_to_csv # Import write_scan_data_to_csv
 
 # Import frequency band definitions
-from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
+from ref.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
 
 def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz):
     """

@@ -9,7 +9,7 @@ import webbrowser # For opening HTML plot in browser
 from utils.instrument_control import debug_print
 from src.plot_logic import plot_single_scan_data # Import only plot_single_scan_data
 # Import generate_current_cycle_average_csv_and_plot from its correct location
-from utils.averaging_utils import generate_current_cycle_average_csv_and_plot
+from process_math.averaging_utils import generate_current_cycle_average_csv_and_plot
 
 class PlottingTab(ttk.Frame):
     """

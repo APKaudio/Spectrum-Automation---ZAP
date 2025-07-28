@@ -26,7 +26,7 @@ import re
 
 # Import plotting functions and constants
 from utils.plotting_utils import plot_multi_trace_data, _open_plot_in_browser
-from utils.frequency_bands import (
+from ref.frequency_bands import (
     MHZ_TO_HZ,
     TV_PLOT_BAND_MARKERS,
     GOV_PLOT_BAND_MARKERS

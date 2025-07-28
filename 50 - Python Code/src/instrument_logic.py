@@ -14,7 +14,7 @@ from utils.instrument_control import (
     query_safe, # Import query_safe for individual queries
     write_safe # Import write_safe for setting instrument parameters
 )
-from utils.frequency_bands import MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
+from ref.frequency_bands import MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
 from src.config_manager import save_config # Import save_config
 import tkinter.ttk as ttk # Import ttk for themed widgets
 

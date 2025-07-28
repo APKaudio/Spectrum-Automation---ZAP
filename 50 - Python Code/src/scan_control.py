@@ -10,10 +10,10 @@ import inspect
 
 # Import scan-related logic
 from utils.scan_instrument import scan_bands
-from utils.frequency_bands import MHZ_TO_HZ
+from ref.frequency_bands import MHZ_TO_HZ
 from utils.instrument_control import debug_print
 from src.plot_logic import plot_single_scan_data, _open_plot_in_browser
-from utils.averaging_utils import generate_current_cycle_average_csv_and_plot as generate_average_plot_logic
+from process_math.averaging_utils import generate_current_cycle_average_csv_and_plot as generate_average_plot_logic
 
 
 class ScanControlTab(ttk.Frame):

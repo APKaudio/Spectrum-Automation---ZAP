@@ -9,7 +9,7 @@ import json # Import json for serializing/deserializing row data
 # Import set_marker_and_trace_modes_logic from marker_utils
 from utils.marker_utils import set_marker_and_trace_modes_logic
 from utils.instrument_control import debug_print, query_current_instrument_settings # Import query_current_instrument_settings
-from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
+from ref.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
 
 # Import new marker utility functions and constants
 from utils.marker_utils import SPAN_OPTIONS, set_span_logic

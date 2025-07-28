@@ -10,7 +10,7 @@ import inspect
 import threading
 
 # Import the new report converter utility functions
-from utils.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw, convert_pdf_report_to_csv
+from process_math.report_converter_utils import convert_html_report_to_csv, generate_csv_from_shw, convert_pdf_report_to_csv
 from src.gui_elements import TextRedirector
 from utils.instrument_control import debug_print # Import debug_print
 

@@ -1,7 +1,7 @@
 # utils/marker_utils.py
 import inspect
 from utils.instrument_control import debug_print, write_safe, query_safe
-from utils.frequency_bands import MHZ_TO_HZ
+from ref.frequency_bands import MHZ_TO_HZ
 import time # Import time for potential small delays
 
 # Constants for Span Options (used in MarkersDisplayTab)

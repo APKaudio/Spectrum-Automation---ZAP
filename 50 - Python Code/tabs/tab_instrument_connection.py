@@ -10,7 +10,7 @@ from src.instrument_logic import (
 )
 # Removed: from src.scan_logic import update_connection_status_logic # This import is no longer needed here
 from utils.instrument_control import debug_print, set_debug_mode, log_visa_command, query_safe # Import debug control functions and query_safe
-from utils.frequency_bands import MHZ_TO_HZ # Import for display conversion
+from ref.frequency_bands import MHZ_TO_HZ # Import for display conversion
 from src.config_manager import save_config # Import save_config
 
 class InstrumentTab(ttk.Frame):

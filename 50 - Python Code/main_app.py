@@ -41,8 +41,9 @@ from src.instrument_logic import (
 from src.scan_logic import update_connection_status_logic
 from src.settings_logic import restore_default_settings_logic
 from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
-from tabs.tab_instrument_preset import PresetFilesTab # Import the new tab class
 
+from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode, debug_print # Import debug_print
+from tabs.tab_instrument_preset import PresetFilesTab # Import the new tab class
 from tabs.tab_marker_display import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
 from tabs.tab_plotting import PlottingTab # Import the PlottingTab
 from tabs.tab_report_converter import ReportConverterTab # Import the ReportConverterTab
@@ -52,8 +53,8 @@ from tabs.tab_instrument_connection import InstrumentTab # Import the Instrument
 from tabs.tab_visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
 
 # Import constants from frequency_bands.py
-from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
-from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode, debug_print # Import debug_print
+from ref.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
+
 
 # Global flag for debug mode (can be controlled by GUI checkbox)
 # DEBUG_MODE = False # Now controlled by instrument_control.py's global variable

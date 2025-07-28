@@ -28,7 +28,7 @@ import inspect # Import inspect for debug_print
 
 # Import constants from frequency_bands.py
 try:
-    from utils.frequency_bands import ( # Changed to relative import
+    from ref.frequency_bands import ( # Changed to relative import
         MHZ_TO_HZ,
         TV_PLOT_BAND_MARKERS,
         GOV_PLOT_BAND_MARKERS

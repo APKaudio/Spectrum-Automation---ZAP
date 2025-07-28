@@ -16,7 +16,7 @@ from src.instrument_logic import (
 from utils.preset_utils import query_device_presets_logic, load_selected_preset as load_selected_preset_util # Import the logic function from its new home
 
 from utils.instrument_control import debug_print
-from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
+from ref.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
 
 class PresetFilesTab(ttk.Frame):
     """
