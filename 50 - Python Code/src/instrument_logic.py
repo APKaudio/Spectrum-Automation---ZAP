@@ -80,7 +80,17 @@ def connect_instrument_logic(app_instance, selected_resource, console_print_func
         if inst:
             # Initialize the instrument with default settings after connection
             console_print_func(f"Attempting to initialize instrument: {selected_resource}")
-            init_success, instrument_model = initialize_instrument(inst, console_print_func) # Pass console_print_func and get model
+            # Pass all required parameters to initialize_instrument
+            init_success = initialize_instrument(
+                inst, 
+                _get_float_value(app_instance.reference_level_dbm_var, -40.0, "Reference Level", console_print_func),
+                app_instance.high_sensitivity_var.get(),
+                app_instance.preamp_on_var.get(),
+                _get_float_value(app_instance.scan_rbw_hz_var, 10000.0, "Scan RBW", console_print_func),
+                _get_float_value(app_instance.scan_rbw_hz_var, 10000.0, "Scan RBW", console_print_func) * VBW_RBW_RATIO, # VBW based on RBW
+                app_instance.instrument_model, # Pass the instrument model
+                console_print_func
+            )
             if not init_success:
                 console_print_func(f"❌ Error: Failed to initialize instrument {selected_resource}. Disconnecting.")
                 debug_print(f"Initialization failed for {selected_resource}.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -90,8 +100,14 @@ def connect_instrument_logic(app_instance, selected_resource, console_print_func
                 return False
             
             app_instance.inst = inst
-            app_instance.instrument_model = instrument_model
-            console_print_func(f"✅ Successfully connected and initialized to {selected_resource} (Model: {instrument_model})")
+            # The instrument model should be queried after connection, before initialization
+            # or passed from a previous query if available. For now, assuming it's set elsewhere
+            # or can be queried here if needed.
+            # For this fix, we'll assume app_instance.instrument_model is already set or will be set.
+            # If not, a query here might be necessary:
+            # app_instance.instrument_model = query_safe(inst, "*IDN?", console_print_func).split(',')[1].strip() if query_safe(inst, "*IDN?", console_print_func) else "UNKNOWN"
+            
+            console_print_func(f"✅ Successfully connected and initialized to {selected_resource} (Model: {app_instance.instrument_model if app_instance.instrument_model else 'N/A'})")
             
             # Query and display current instrument settings after connection and initialization
             query_current_instrument_settings_logic(app_instance, console_print_func)
@@ -288,7 +304,8 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
         return False
 
     try:
-        center_freq_hz, span_hz, rbw_hz = query_current_instrument_settings(app_instance.inst, console_print_func) # Pass console_print_func
+        # Pass MHZ_TO_HZ to query_current_instrument_settings
+        center_freq_hz, span_hz, rbw_hz = query_current_instrument_settings(app_instance.inst, app_instance.MHZ_TO_HZ, console_print_func)
         
         center_freq_mhz = center_freq_hz / MHZ_TO_HZ if center_freq_hz is not None else None
         span_mhz = span_hz / MHZ_TO_HZ if span_hz is not None else None
@@ -407,4 +424,3 @@ def set_marker_and_trace_modes_logic(app_instance, marker_frequency_hz, marker_n
         console_print_func(f"❌ An unexpected error occurred while setting marker/trace modes: {e}")
         debug_print(f"An unexpected error occurred while setting marker/trace modes: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
         return False
-

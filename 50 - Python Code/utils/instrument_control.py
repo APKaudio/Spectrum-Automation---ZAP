@@ -223,34 +223,168 @@ def query_safe(inst, command, console_print_func=None):
         return None
 
 
-def initialize_instrument(inst, console_print_func=None):
+def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, rbw_config_val, vbw_config_val, model_match, console_print_func=None):
     """
-    Initializes the instrument to a known state.
+    Initializes the spectrum analyzer with basic settings such as reference level,
+    preamplifier state, high sensitivity mode, and trace configurations.
+    This function sets up the instrument for a scan.
+
+    Inputs:
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
+        ref_level_dbm (float): The desired reference level in dBm.
+        high_sensitivity_on (bool): True to enable high sensitivity mode, False otherwise.
+        preamp_on (bool): True to turn the preamplifier ON, False otherwise.
+        rbw_config_val (float): The Resolution Bandwidth (RBW) value to configure on the instrument in Hz.
+                                 (Note: This parameter is currently not directly used for setting RBW in this function
+                                 but is passed for consistency with the GUI's intent. RBW for scanning is set in `scan_bands`.)
+        vbw_config_val (float): The Video Bandwidth (VBW) value to configure on the instrument in Hz.
+                                 (Note: This parameter is currently not directly used for setting VBW in this function
+                                 but is passed for consistency with the GUI's intent. VBW for scanning is set in `scan_bands`.)
+        model_match (str): The detected model of the instrument (e.g., "N9340B", "N9342CN").
+                            Used for model-specific SCPI commands.
+        console_print_func (function, optional): Function to use for console output.
+    Process:
+        1. **Reset**: Sends `*RST` to reset the instrument to a known state, then waits for operation completion.
+        2. **Reference Level**: Sets the display reference level.
+        3. **Preamplifier/High Sensitivity**: Configures the preamplifier and high sensitivity mode based on `preamp_on`
+           and `high_sensitivity_on` flags. This involves setting attenuation and gain.
+        4. **Trace Modes**: Configures Trace 1 to 'WRITe', Trace 2 to 'MAXHold', and Trace 3 to 'MINHold'.
+        5. **Display Scale**: Sets the Y-axis display scale to 'LOGarithmic'.
+        6. **Sweep Time**: Sets sweep time to 'AUTO'.
+        7. **Data Format**: Sets the trace data format to 'ASCII' for data transfer, with a model-specific command.
+        8. Prints status messages for each configuration step.
+        9. Handles `pyvisa.errors.VisaIOError` and general `Exception`.
+    Outputs:
+        bool: True if initialization is successful; False on failure.
+        str: The detected instrument model string, or "UNKNOWN" on failure.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    debug_print("Initializing instrument...", file=current_file, function=current_function, console_print_func=console_print_func)
+    if console_print_func:
+        console_print_func("✨ Initializing instrument with desired settings.")
+    debug_print("Initializing instrument with desired settings...", file=current_file, function=current_function, console_print_func=console_print_func)
+    
+    instrument_model = "UNKNOWN" # Default model
+
     try:
-        if not write_safe(inst, "*RST", console_print_func): return False # Reset instrument
-        if not write_safe(inst, "*CLS", console_print_func): return False # Clear status
-        if not write_safe(inst, ":SYSTem:DISPlay:UPDate ON", console_print_func): return False # Enable display updates
-        if not write_safe(inst, ":FORMat:TRACe:DATA ASCii", console_print_func): return False # ASCII format for trace data
-        if not write_safe(inst, ":DISPlay:WINDow:TRACe:TYPE NORM", console_print_func): return False # Normal trace mode
-        if not write_safe(inst, ":POW:ATT:AUTO ON", console_print_func): return False # Auto attenuator
-        if not write_safe(inst, ":FREQ:CENT 1GHZ", console_print_func): return False # Default center frequency
-        if not write_safe(inst, ":FREQ:SPAN 1GHZ", console_print_func): return False # Default span
-        if not write_safe(inst, ":BAND:RES 10000", console_print_func): return False # Default RBW
-        if not write_safe(inst, ":BAND:VID 3000", console_print_func): return False # Default VBW (RBW/3)
-        
-        
-        debug_print("Instrument initialization commands sent.", file=current_file, function=current_function, console_print_func=console_print_func)
-        return True
-    except Exception as e:
-        error_msg = f"❌ Error during instrument initialization: {e}"
+        # Reset the instrument to a known state using *RST first
+        if not write_safe(inst, "*RST", console_print_func): return False, None
+        if not query_safe(inst, "*OPC?", console_print_func): return False, None # Wait for operation to complete
+        time.sleep(1) # Give it a moment after reset
+
+        # Query instrument model
+        idn_response = query_safe(inst, "*IDN?", console_print_func)
+        if idn_response:
+            try:
+                # Assuming standard IDN response format: Manufacturer,Model,Serial,Firmware
+                instrument_model = idn_response.split(',')[1].strip()
+                debug_print(f"Instrument model detected: {instrument_model}", file=current_file, function=current_function, console_print_func=console_print_func)
+            except IndexError:
+                debug_print(f"Could not parse instrument model from IDN: {idn_response}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+
+        # Set continuous initiation ON
+        if write_safe(inst, ":INITiate:CONTinuous ON", console_print_func):
+            debug_print("Sent: :INITiate:CONTinuous ON", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            debug_print("Failed to set :INITiate:CONTinuous ON", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        # Set reference level
+        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func): return False, None
         if console_print_func:
-            console_print_func(error_msg)
-        debug_print(error_msg, file=current_file, function=current_function, console_print_func=console_print_func)
-        return False
+            console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
+        debug_print(f"Set reference level to {ref_level_dbm} dBm.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        # Set preamplifier
+        if preamp_on:
+            if not write_safe(inst, ":POWer:ATTenuation:AUTO ON", console_print_func): return False, None
+            if not write_safe(inst, ":POWer:GAIN ON", console_print_func): return False, None
+            if console_print_func:
+                console_print_func("✅ Preamplifier ON.")
+            debug_print("Preamplifier ON.", file=current_file, function=current_function, console_print_func=console_print_func)
+            # Note: The original code re-set RLEVel here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func): return False, None
+            if console_print_func:
+                console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
+            debug_print(f"Re-set reference level to {ref_level_dbm} dBm after preamp config.", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            if not write_safe(inst, ":POWer:GAIN OFF", console_print_func): return False, None
+            if console_print_func:
+                console_print_func("✅ Preamplifier OFF.")
+            debug_print("Preamplifier OFF.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        # Set high sensitivity (preamplifier)
+        if high_sensitivity_on:
+            # Note: The original code set RLEVel to -50 here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50DBM", console_print_func): return False, None
+            if not write_safe(inst, ":POWer:ATTenuation 0", console_print_func): return False, None
+            if not write_safe(inst, ":POWer:GAIN 1", console_print_func): return False, None
+            if not write_safe(inst, ":POWer:HSENsitive ON", console_print_func): return False, None
+            if console_print_func:
+                console_print_func("✅ High sensitivity turned ON.")
+            debug_print("High sensitivity turned ON.", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            if not write_safe(inst, ":POWer:HSENsitive OFF", console_print_func): return False, None
+            if not write_safe(inst, ":POWer:ATTenuation 10", console_print_func): return False, None
+            # Note: The original code re-set RLEVel here, preserving that behavior
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func): return False, None
+            if console_print_func:
+                console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
+                console_print_func("✅ High sensitivity turned OFF.")
+            debug_print("High sensitivity turned OFF.", file=current_file, function=current_function, console_print_func=console_print_func)
+        
+        # Configure Trace Modes
+        if not write_safe(inst, ":TRAC1:MODE WRITe", console_print_func): return False, None
+        if console_print_func:
+            console_print_func(f"✅ Trace 1 sent to write")
+        debug_print("Trace 1 set to WRITE.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        if not write_safe(inst, ":TRAC2:MODE MAXHold", console_print_func): return False, None
+        if console_print_func:
+            console_print_func(f"✅ Trace 2 sent to MAX HOLD")
+        debug_print("Trace 2 set to MAX HOLD.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        if not write_safe(inst, ":TRAC3:MODE MINHold", console_print_func): return False, None
+        if console_print_func:
+            console_print_func(f"✅ Trace 3 sent to Min Hold")
+        debug_print("Trace 3 set to MIN HOLD.", file=current_file, function=current_function, console_print_func=console_print_func)
+        
+        # Display scale is always LOGarithmic
+        if not write_safe(inst, ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic", console_print_func): return False, None
+        if console_print_func:
+            console_print_func("✅ Display scale set to LOGarithmic (always).")
+        debug_print("Display scale set to LOGarithmic.", file=current_file, function=current_function, console_print_func=console_print_func)
+        
+        # Set VBW and Sweep Time to AUTO
+        if not write_safe(inst, ":SENSe:BANDwidth:VIDeo:AUTO ON", console_print_func): return False, None
+        if not write_safe(inst, ":SENSe:SWEep:TIME:AUTO ON", console_print_func): return False, None
+        if console_print_func:
+            console_print_func("✅ VBW and Sweep time set to AUTO.")
+        debug_print("VBW and Sweep time set to AUTO.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        # Set trace data format
+        if model_match == "N9340B":
+            if not write_safe(inst, ":TRACe:FORMat:DATA ASCii", console_print_func): return False, None
+        else:
+            if not write_safe(inst, ":FORMat:DATA ASCii", console_print_func): return False, None
+        if console_print_func:
+            console_print_func("✅ Set trace data format to ASCII for data transfer.")
+        debug_print("Trace data format set to ASCII.", file=current_file, function=current_function, console_print_func=console_print_func)
+       
+        if console_print_func:
+            console_print_func("🎉 Instrument initialized successfully with desired settings.")
+        debug_print("Instrument initialized successfully.", file=current_file, function=current_function, console_print_func=console_print_func)
+        return True, instrument_model
+    except pyvisa.errors.VisaIOError as e:
+        if console_print_func:
+            console_print_func(f"🛑 Failed to initialize instrument with desired settings: {e}")
+        debug_print(f"VISA Error during instrument initialization: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+        return False, None
+    except Exception as e:
+        if console_print_func:
+            console_print_func(f"❌ An unexpected error occurred during instrument initialization: {e}")
+        debug_print(f"Unexpected error during instrument initialization: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+        return False, None
 
 
 def query_current_instrument_settings(inst, MHZ_TO_HZ, console_print_func=None):
