@@ -42,10 +42,13 @@ class PresetFilesTab(ttk.Frame):
         current_file = __file__
         debug_print("Creating PresetFilesTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(2, weight=1) # Make both columns expandable
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0) # For the query button
+        # Configure grid for two main columns (MON and Other)
+        self.grid_columnconfigure(0, weight=1) # MON column
+        self.grid_columnconfigure(1, weight=0) # Scrollbar for MON
+        self.grid_columnconfigure(2, weight=1) # Other column
+        self.grid_columnconfigure(3, weight=0) # Scrollbar for Other
+        self.grid_rowconfigure(0, weight=1) # Main row for canvases
+        self.grid_rowconfigure(1, weight=0) # For the Query button (and removed Open Folder button)
 
         # Frame for MON presets group label
         self.mon_label_frame = ttk.Frame(self, style='Dark.TFrame')
@@ -64,10 +67,9 @@ class PresetFilesTab(ttk.Frame):
         self.inner_mon_buttons_frame = ttk.Frame(self.mon_preset_canvas, style='Dark.TFrame')
         self.mon_preset_canvas.create_window((0, 0), window=self.inner_mon_buttons_frame, anchor="nw")
 
-        # Configure inner frame for three columns
+        # Configure inner frame for two columns
         self.inner_mon_buttons_frame.grid_columnconfigure(0, weight=1)
         self.inner_mon_buttons_frame.grid_columnconfigure(1, weight=1)
-        self.inner_mon_buttons_frame.grid_columnconfigure(2, weight=1) # Added third column
 
         self.inner_mon_buttons_frame.bind("<Configure>", lambda e: self.mon_preset_canvas.config(scrollregion=self.mon_preset_canvas.bbox("all")))
         self.mon_preset_canvas.bind('<Enter>', self._bind_mouse_wheel)
@@ -91,10 +93,9 @@ class PresetFilesTab(ttk.Frame):
         self.inner_other_buttons_frame = ttk.Frame(self.other_preset_canvas, style='Dark.TFrame')
         self.other_preset_canvas.create_window((0, 0), window=self.inner_other_buttons_frame, anchor="nw")
 
-        # Configure inner frame for three columns
+        # Configure inner frame for two columns
         self.inner_other_buttons_frame.grid_columnconfigure(0, weight=1)
         self.inner_other_buttons_frame.grid_columnconfigure(1, weight=1)
-        self.inner_other_buttons_frame.grid_columnconfigure(2, weight=1) # Added third column
 
         self.inner_other_buttons_frame.bind("<Configure>", lambda e: self.other_preset_canvas.config(scrollregion=self.inner_other_buttons_frame.bbox("all")))
         self.other_preset_canvas.bind('<Enter>', self._bind_mouse_wheel)
@@ -104,14 +105,14 @@ class PresetFilesTab(ttk.Frame):
         self.query_presets_button = ttk.Button(self, text="Query Presets from Device", command=self._query_presets_from_device, state=tk.DISABLED, style='Blue.TButton')
         self.query_presets_button.grid(row=1, column=0, columnspan=4, padx=10, pady=5, sticky="ew") # Spanning across all columns
 
-        # Open Local Preset Folder Button (moved from main_app)
-        self.open_preset_folder_button = ttk.Button(
-            self,
-            text="Open Local Preset Folder",
-            command=self._open_local_preset_folder,
-            style='Purple.TButton'
-        )
-        self.open_preset_folder_button.grid(row=2, column=0, columnspan=4, padx=10, pady=5, sticky="ew")
+        # Removed the "Open Local Preset Folder" button
+        # self.open_preset_folder_button = ttk.Button(
+        #     self,
+        #     text="Open Local Preset Folder",
+        #     command=self._open_local_preset_folder,
+        #     style='Purple.TButton'
+        # )
+        # self.open_preset_folder_button.grid(row=2, column=0, columnspan=4, padx=10, pady=5, sticky="ew")
 
 
         debug_print("PresetFilesTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -160,8 +161,7 @@ class PresetFilesTab(ttk.Frame):
             self.preset_files = []
             self.source_of_displayed_presets = "device"
             self.populate_preset_buttons([], source="device") # Clear display
-            if self.app_instance and hasattr(self.app_instance, 'load_preset_button'):
-                self.app_instance.load_preset_button.config(state=tk.DISABLED)
+            # self.app_instance.load_preset_button.config(state=tk.DISABLED) # Removed, no longer exists in main_app
 
     def _load_selected_preset(self):
         """
@@ -179,7 +179,8 @@ class PresetFilesTab(ttk.Frame):
             if success:
                 self.console_print_func(f"✅ Preset '{self.selected_preset}' loaded. Instrument settings updated.")
                 # Update the button text with the new settings
-                self.update_preset_button_info(self.selected_preset, center_freq * MHZ_TO_HZ, span * MHZ_TO_HZ, rbw)
+                # Note: center_freq and span are already in MHz from load_selected_preset_logic
+                self.update_preset_button_info(self.selected_preset, center_freq, span, rbw)
             else:
                 self.console_print_func(f"❌ Failed to load preset '{self.selected_preset}'.")
         else:
@@ -202,6 +203,7 @@ class PresetFilesTab(ttk.Frame):
 
         if not os.path.exists(preset_dir):
             debug_print(f"Local preset directory not found: {preset_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.console_print_func(f"ℹ️ Info: Local preset directory not found: {preset_dir}")
             self.source_of_displayed_presets = "local" # Still set source even if folder not found
             self.preset_files = []
             self.populate_preset_buttons([], source="local") # Call to show "No presets found"
@@ -236,7 +238,7 @@ class PresetFilesTab(ttk.Frame):
     def populate_preset_buttons(self, presets_list, source="unknown"):
         """
         Populates the display with clickable buttons for each preset in the given list,
-        categorizing them into "MON" and "Other" groups, arranged in three columns.
+        categorizing them into "MON" and "Other" groups, arranged in two columns.
 
         Inputs:
             presets_list (list): A list of preset names (strings) to display as buttons.
@@ -256,31 +258,31 @@ class PresetFilesTab(ttk.Frame):
         # Populate MON presets
         if mon_presets:
             for i, preset_name in enumerate(mon_presets):
-                row = i // 3 # Changed to 3 columns
-                col = i % 3 # Changed to 3 columns
+                row = i // 2 # Changed to 2 columns
+                col = i % 2 # Changed to 2 columns
                 button = ttk.Button(self.inner_mon_buttons_frame, text=preset_name,
                                     command=lambda name=preset_name: self._on_preset_button_click(name),
                                     style='LargePreset.TButton')
-                button.grid(row=row, column=col, padx=5, pady=5, sticky="ew") # Use grid for 3 columns
+                button.grid(row=row, column=col, padx=5, pady=5, sticky="ew") # Use grid for 2 columns
                 self.preset_buttons[preset_name] = button # Store button reference
         else:
             ttk.Label(self.inner_mon_buttons_frame, text="No MON presets found.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=10, pady=10) # Changed columnspan to 3
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=10, pady=10) # Changed columnspan to 2
 
 
         # Populate Other presets
         if other_presets:
             for i, preset_name in enumerate(other_presets):
-                row = i // 3 # Changed to 3 columns
-                col = i % 3 # Changed to 3 columns
+                row = i // 2 # Changed to 2 columns
+                col = i % 2 # Changed to 2 columns
                 button = ttk.Button(self.inner_other_buttons_frame, text=preset_name,
                                     command=lambda name=preset_name: self._on_preset_button_click(name),
                                     style='LargePreset.TButton')
-                button.grid(row=row, column=col, padx=5, pady=5, sticky="ew") # Use grid for 3 columns
+                button.grid(row=row, column=col, padx=5, pady=5, sticky="ew") # Use grid for 2 columns
                 self.preset_buttons[preset_name] = button # Store button reference
         else:
             ttk.Label(self.inner_other_buttons_frame, text="No other presets found.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=10, pady=10) # Changed columnspan to 3
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=10, pady=10) # Changed columnspan to 2
 
 
         self.inner_mon_buttons_frame.update_idletasks()
@@ -312,10 +314,12 @@ class PresetFilesTab(ttk.Frame):
                 self.current_selected_button.config(style='SelectedPreset.TButton') # Set to selected style
             
             # Call the load logic
-            success, center_freq, span, rbw = load_selected_preset_logic(self.app_instance, preset_name, self.console_print_func)
+            success, center_freq, span, rbw = load_selected_preset_logic(self.app_instance, self.selected_preset, self.console_print_func)
             
             if success:
+                self.console_print_func(f"✅ Preset '{self.selected_preset}' loaded. Instrument settings updated.")
                 # Update the button text with the new settings
+                # Note: center_freq and span are already in MHz from load_selected_preset_logic
                 self.update_preset_button_info(self.selected_preset, center_freq, span, rbw)
             else:
                 self.console_print_func(f"❌ Failed to load preset '{self.selected_preset}'.")
@@ -335,21 +339,26 @@ class PresetFilesTab(ttk.Frame):
             self.selected_preset = None
 
 
-    def update_preset_button_info(self, preset_name, center_freq_hz, span_hz, rbw_hz):
+    def update_preset_button_info(self, preset_name, center_freq_mhz, span_mhz, rbw_hz):
         """
         Updates the label of a specific preset button with frequency, span, and RBW info.
+        Inputs:
+            preset_name (str): The name of the preset.
+            center_freq_mhz (float): Center frequency in MHz.
+            span_mhz (float): Span in MHz.
+            rbw_hz (float): RBW in Hz.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print(f"Updating button '{preset_name}' with C:{center_freq_hz/MHZ_TO_HZ:.3f}MHz SP:{span_hz/MHZ_TO_HZ:.3f}MHz RBW:{rbw_hz}Hz", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Updating button '{preset_name}' with C:{center_freq_mhz:.3f}MHz SP:{span_mhz:.3f}MHz RBW:{rbw_hz}Hz", file=current_file, function=current_function, console_print_func=self.console_print_func)
         if preset_name in self.preset_buttons:
             button = self.preset_buttons[preset_name]
             current_text = preset_name # Start with original preset name
             
-            # Format frequency, span, and RBW
-            formatted_freq = f"C: {center_freq_hz/MHZ_TO_HZ:.3f} MHz" if center_freq_hz is not None else "N/A"
-            formatted_span = f"SP: {span_hz/MHZ_TO_HZ:.3f} MHz" if span_hz is not None else "N/A"
-            formatted_rbw = f"RBW: {rbw_hz / 1000:.1f} kHz" if rbw_hz is not None else "N/A" # New line for RBW
+            # Format frequency, span, and RBW. No division by MHZ_TO_HZ needed here.
+            formatted_freq = f"C: {center_freq_mhz:.3f} MHz" if center_freq_mhz is not None else "N/A"
+            formatted_span = f"SP: {span_mhz:.3f} MHz" if span_mhz is not None else "N/A"
+            formatted_rbw = f"RBW: {rbw_hz / 1000:.1f} kHz" if rbw_hz is not None else "N/A" # This one is correct (Hz to kHz)
 
             # Combine original text with new info, using newlines
             new_text = f"{current_text}\n{formatted_freq}\n{formatted_span}\n{formatted_rbw}" # Add RBW to new line
@@ -389,14 +398,13 @@ class PresetFilesTab(ttk.Frame):
         self.selected_preset = None # Clear selected preset
         self.preset_files = [] # Clear the stored list of presets
         self.source_of_displayed_presets = "unknown" # Reset source
-        if self.app_instance and hasattr(self.app_instance, 'load_preset_button'):
-            self.app_instance.load_preset_button.config(state=tk.DISABLED)
+        # self.app_instance.load_preset_button.config(state=tk.DISABLED) # Removed, no longer exists in main_app
         
         # Add placeholder labels if no presets are displayed
         ttk.Label(self.inner_mon_buttons_frame, text="No MON presets found.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=10, pady=10)
         ttk.Label(self.inner_other_buttons_frame, text="No other presets found.",
-                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=10, pady=10)
 
 
     def _on_tab_selected(self, event):

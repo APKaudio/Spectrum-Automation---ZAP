@@ -51,7 +51,10 @@ def start_scan_thread_logic(app_instance):
     app_instance.connect_button.config(state=tk.DISABLED) # Disable connect button
     app_instance.disconnect_button.config(state=tk.DISABLED) # Disable disconnect button
     app_instance.apply_button.config(state=tk.DISABLED) # Disable apply settings button
-    app_instance.load_preset_button.config(state=tk.DISABLED) # Disable load preset button
+    
+    # Disable load preset button via preset_files_tab
+    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+        app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
     
     # Disable query presets button
     if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
@@ -315,11 +318,12 @@ def _reset_scan_buttons(app_instance):
     app_instance.disconnect_button.config(state=tk.NORMAL)
     app_instance.apply_button.config(state=tk.NORMAL)
     
-    # Re-enable load preset button based on instrument model
-    if app_instance.inst and app_instance.instrument_model != "N9340B":
-        app_instance.load_preset_button.config(state=tk.NORMAL)
-    else:
-        app_instance.load_preset_button.config(state=tk.DISABLED) # Disable if no instrument or N9340B
+    # Re-enable load preset button based on instrument model, accessing via preset_files_tab
+    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+        if app_instance.inst and app_instance.instrument_model != "N9340B":
+            app_instance.preset_files_tab.load_preset_button.config(state=tk.NORMAL)
+        else:
+            app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED) # Disable if no instrument or N9340B
     
     # Re-enable query presets button
     if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
@@ -356,11 +360,12 @@ def _update_button_states_on_connection(app_instance):
         # app_instance.disconnect_button.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
         app_instance.apply_button.config(state=tk.NORMAL)
-        # Enable load preset button based on instrument model
-        if app_instance.instrument_model != "N9340B":
-            app_instance.load_preset_button.config(state=tk.NORMAL)
-        else:
-            app_instance.load_preset_button.config(state=tk.DISABLED)
+        # Enable load preset button based on instrument model, accessing via preset_files_tab
+        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+            if app_instance.instrument_model != "N9340B":
+                app_instance.preset_files_tab.load_preset_button.config(state=tk.NORMAL)
+            else:
+                app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
         
         # Enable query presets button
         if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
@@ -377,7 +382,9 @@ def _update_button_states_on_connection(app_instance):
         app_instance.connect_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew") # Show connect button
         app_instance.disconnect_button.config(state=tk.DISABLED)
         app_instance.apply_button.config(state=tk.DISABLED)
-        app_instance.load_preset_button.config(state=tk.DISABLED) # Disable load preset if no instrument
+        # Disable load preset button if no instrument, accessing via preset_files_tab
+        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+            app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
         # Disable query presets button
         if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
             app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)

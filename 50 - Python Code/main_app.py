@@ -308,8 +308,9 @@ class App(tk.Tk):
         self.apply_button = ttk.Button(instrument_frame, text="Apply Settings to Instrument", command=self._apply_instrument_settings, state=tk.DISABLED, style='Orange.TButton')
         self.apply_button.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
-        self.load_preset_button = ttk.Button(instrument_frame, text="Load Selected Preset", command=self._load_selected_preset, state=tk.DISABLED, style='Purple.TButton')
-        self.load_preset_button.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        # Removed the load_preset_button from here, as it's now handled within PresetFilesTab
+        # self.load_preset_button = ttk.Button(instrument_frame, text="Load Selected Preset", command=self._load_selected_preset, state=tk.DISABLED, style='Purple.TButton')
+        # self.load_preset_button.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
         # Debugging checkboxes (Moved here from Scan Configuration)
         ttk.Checkbutton(instrument_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style='TCheckbutton').grid(row=4, column=0, columnspan=3, sticky="w", padx=5, pady=2)
@@ -506,11 +507,11 @@ class App(tk.Tk):
         style.configure("TLabelFrame", background="#1e1e1e", foreground="#cccccc") # Consistent dark background and light text
         style.configure("TLabelFrame.Label", background="#1e1e1e", foreground="#cccccc") # Ensure label matches
         
-        # Add the new style for selected preset buttons (already correct)
+        # Update font size for preset buttons to 14pt (smaller than 20pt)
         style.configure("LargePreset.TButton",
                         background="#4a4a4a", # Darker grey for buttons
                         foreground="white",
-                        font=("Helvetica", 40, "bold"), # Set font size to 40
+                        font=("Helvetica", 14, "bold"), # Set font size to 14
                         padding=[30, 15, 30, 15]) # Adjust padding as needed
         style.map("LargePreset.TButton",
                 background=[('active', '#606060')]) # Lighter grey on active
@@ -518,7 +519,7 @@ class App(tk.Tk):
         style.configure("SelectedPreset.TButton",
                         background="#007bff", # A nice blue color (consistent with Blue.TButton)
                         foreground="white",
-                        font=("Helvetica", 40, "bold"), # Keep the 40-point font
+                        font=("Helvetica", 14, "bold"), # Keep the 14-point font
                         padding=[30, 15, 30, 15])
         style.map("SelectedPreset.TButton",
                 background=[('active', '#0056b3')]) # Darker blue on active
@@ -612,7 +613,8 @@ class App(tk.Tk):
         """
         debug_print("Loading selected preset...", file=__file__, function=inspect.currentframe().f_code.co_name)
         if hasattr(self, 'preset_files_tab'):
-            self.preset_files_tab.load_selected_preset_from_tab()
+            # Call the _load_selected_preset method on the preset_files_tab instance
+            self.preset_files_tab._load_selected_preset()
         else:
             self._print_to_gui_console("⚠️ Warning: Preset Files tab not initialized.")
             debug_print("PresetFilesTab not initialized.", file=__file__, function=inspect.currentframe().f_code.co_name)
