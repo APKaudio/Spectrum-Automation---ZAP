@@ -28,6 +28,7 @@ def load_config(app_instance):
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
 
+    debug_print(f"Attempting to load configuration from {app_instance.CONFIG_FILE}...", file=current_file, function=current_function)
     app_instance.config.read(app_instance.CONFIG_FILE)
 
     if 'DEFAULT_SETTINGS' not in app_instance.config:
@@ -100,28 +101,60 @@ def load_config(app_instance):
     for var_name, (last_key, default_key, tk_var) in app_instance.setting_var_map.items():
         if isinstance(tk_var, tk.BooleanVar):
             tk_var.set(_get_boolean_config(last_key, default_key))
+            debug_print(f"Loading '{last_key}' (Boolean): '{tk_var.get()}'", file=current_file, function=current_function)
         elif isinstance(tk_var, tk.IntVar):
             try:
                 value = int(_get_config_value('LAST_USED_SETTINGS', last_key, default_key, '0'))
                 tk_var.set(value)
+                debug_print(f"Loading '{last_key}' (Int): '{tk_var.get()}'", file=current_file, function=current_function)
             except ValueError:
                 debug_print(f"Warning: Could not convert '{_get_config_value('LAST_USED_SETTINGS', last_key, default_key, '0')}' to int for {last_key}. Using default.", file=current_file, function=current_function)
                 tk_var.set(int(app_instance.config['DEFAULT_SETTINGS'].get(default_key, '0')))
+        elif isinstance(tk_var, tk.DoubleVar):
+            try:
+                value = float(_get_config_value('LAST_USED_SETTINGS', last_key, default_key, '0.0'))
+                tk_var.set(value)
+                debug_print(f"Loading '{last_key}' (Double): '{tk_var.get()}'", file=current_file, function=current_function)
+            except ValueError:
+                debug_print(f"Warning: Could not convert '{_get_config_value('LAST_USED_SETTINGS', last_key, default_key, '0.0')}' to float for {last_key}. Using default.", file=current_file, function=current_function)
+                tk_var.set(float(app_instance.config['DEFAULT_SETTINGS'].get(default_key, '0.0')))
         else: # StringVar
             tk_var.set(_get_config_value('LAST_USED_SETTINGS', last_key, default_key, ''))
+            debug_print(f"Loading '{last_key}' (String): '{tk_var.get()}'", file=current_file, function=current_function)
 
     # Special handling for output_folder_var which maps to scan_directory_var's config keys
-    # Corrected: Use output_folder_var directly and get value from config
     app_instance.output_folder_var.set(
         _get_config_value('LAST_USED_SETTINGS', 'last_scan_directory', 'default_scan_directory', 'scan_data')
     )
+    debug_print(f"Loading 'last_scan_directory': '{app_instance.output_folder_var.get()}'", file=current_file, function=current_function)
+
 
     # Load the last selected VISA resource
     last_selected_visa = _get_config_value('LAST_USED_SETTINGS', 'last_selected_visa_resource', 'default_selected_visa_resource', 'N/A')
     app_instance.selected_resource.set(last_selected_visa)
+    debug_print(f"Loading 'last_selected_visa_resource': '{app_instance.selected_resource.get()}'", file=current_file, function=current_function)
 
+    # Load the last selected bands and update Tkinter BooleanVars
+    last_selected_bands_str = _get_config_value('LAST_USED_SETTINGS', 'last_selected_bands', 'default_selected_bands', '')
+    debug_print(f"Loading 'last_selected_bands': '{last_selected_bands_str}'", file=current_file, function=current_function)
+    
+    selected_bands_list = [band.strip() for band in last_selected_bands_str.split(',') if band.strip()]
+    
+    # Update app_instance.band_vars based on loaded selection
+    for band_item in app_instance.band_vars:
+        if band_item["band"]["Band Name"] in selected_bands_list:
+            band_item["var"].set(True)
+        else:
+            band_item["var"].set(False)
 
     debug_print("Configuration loaded.", file=current_file, function=current_function)
+    debug_print("--- Current ConfigParser Contents (After Loading) ---", file=current_file, function=current_function)
+    # Print all sections and their items
+    for section in app_instance.config.sections():
+        debug_print(f"[{section}]", file=current_file, function=current_function)
+        for key, value in app_instance.config.items(section):
+            debug_print(f"  {key} = {value}", file=current_file, function=current_function)
+    debug_print("--- End ConfigParser Contents ---", file=current_file, function=current_function)
 
 
 def save_config(app_instance):
@@ -143,6 +176,8 @@ def save_config(app_instance):
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+
+    debug_print(f"Attempting to save configuration to {app_instance.CONFIG_FILE}...", file=current_file, function=current_function)
 
     if 'LAST_USED_SETTINGS' not in app_instance.config:
         app_instance.config['LAST_USED_SETTINGS'] = {}
@@ -178,4 +213,11 @@ def save_config(app_instance):
         debug_print(f"❌ Error saving configuration to {app_instance.CONFIG_FILE}: {e}", file=current_file, function=current_function)
     except Exception as e:
         debug_print(f"❌ An unexpected error occurred while saving configuration: {e}", file=current_file, function=current_function)
-
+    
+    debug_print("--- Current ConfigParser Contents (After Saving) ---", file=current_file, function=current_function)
+    # Print all sections and their items
+    for section in app_instance.config.sections():
+        debug_print(f"[{section}]", file=current_file, function=current_function)
+        for key, value in app_instance.config.items(section):
+            debug_print(f"  {key} = {value}", file=current_file, function=current_function)
+    debug_print("--- End ConfigParser Contents ---", file=current_file, function=current_function)

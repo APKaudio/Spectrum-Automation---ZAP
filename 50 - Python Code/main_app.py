@@ -87,6 +87,9 @@ class App(tk.Tk):
         self.config = configparser.ConfigParser()
         self.config.read(self.CONFIG_FILE) # Read config early
 
+        # Initialize a flag to indicate if the application is fully initialized and ready to save
+        self.is_ready_to_save = False # NEW FLAG: Set to False initially
+
         # Ensure necessary Python packages are installed
         self._check_and_install_dependencies()
 
@@ -136,6 +139,20 @@ class App(tk.Tk):
         
         # Print the ASCII art logo to the console
         print_art()
+
+        # --- FIX FOR LAST_SELECTED_BANDS ISSUE ---
+        # After all tabs are created and config is loaded,
+        # explicitly call _load_band_selections_from_config on the ScanTab.
+        # This ensures the checkboxes are updated on startup regardless of which
+        # tab is initially displayed.
+        if hasattr(self, 'scan_tab'):
+            self.scan_tab._load_band_selections_from_config()
+            debug_print("Called _load_band_selections_from_config on ScanTab during startup.", file=__file__, function=inspect.currentframe().f_code.co_name)
+        # --- END FIX ---
+
+        # Set the flag to True only after all initialization is complete
+        self.is_ready_to_save = True # NEW FLAG: Set to True after full initialization
+        debug_print("Application fully initialized and ready to save configuration.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _check_and_install_dependencies(self):
@@ -688,9 +705,7 @@ class App(tk.Tk):
             if isinstance(tk_var_instance, (tk.StringVar, tk.IntVar, tk.DoubleVar)):
                 # This is a bit hacky, but tries to find the entry widget associated
                 # with the variable. A better design would be to store widget references.
-                # For now, we'll just print a debug message if we can't find it.
-                # This function is mainly for visual feedback, so it's not critical
-                # if it doesn't find every single widget.
+                # For now, we'll just print a debug message if it doesn't find every single widget.
                 try:
                     # Attempt to find the entry widget by iterating through children
                     # This is not guaranteed to work for all layouts
@@ -713,10 +728,23 @@ class App(tk.Tk):
 
     def _on_closing(self):
         """
-        Handles the window closing event. Saves configuration before exiting.
+        Handles the window closing event. Saves configuration before exiting,
+        but only if the application is fully initialized.
         """
         debug_print("Application closing. Performing cleanup...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        save_config(self) # Save current settings to config.ini
+        
+        # Only save configuration if the application has been fully initialized
+        if self.is_ready_to_save:
+            # --- NEW DEBUG: Print state of band_vars before saving ---
+            debug_print("--- State of band_vars before saving ---", file=__file__, function=inspect.currentframe().f_code.co_name)
+            for i, band_item in enumerate(self.band_vars):
+                debug_print(f"  Band {band_item['band']['Band Name']}: {band_item['var'].get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
+            debug_print("--- End state of band_vars ---", file=__file__, function=inspect.currentframe().f_code.co_name)
+            # --- END NEW DEBUG ---
+            save_config(self) # Save current settings to config.ini
+        else:
+            debug_print("Application closing prematurely or not fully initialized. Skipping config save.", file=__file__, function=inspect.currentframe().f_code.co_name)
+
         self.destroy() # Close the application
 
 
@@ -747,4 +775,3 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
-
