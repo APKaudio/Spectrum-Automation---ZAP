@@ -5,7 +5,7 @@ from utils.frequency_bands import MHZ_TO_HZ
 
 # Constants for Span Options (used in MarkersDisplayTab)
 SPAN_OPTIONS = {
-    "Full Span": 0.0, # This would typically be a special value for full span
+    "Full Span": 100 * MHZ_TO_HZ, # This would typically be a special value for full span
     "Normal": 10 * MHZ_TO_HZ, # Example: 10 MHz
     "Zoom 1": 1 * MHZ_TO_HZ,  # Example: 1 MHz
     "Zoom 2": 100 * 1000,    # Example: 100 KHz
@@ -44,21 +44,27 @@ def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_
             console_print_func(f"❌ Failed to set span to {span_hz / MHZ_TO_HZ:.3f} MHz.")
 
     # Apply Trace Modes
-    # Prioritize modes: Max Hold > Min Hold > Live
-    if max_hold_mode:
-        if not write_safe(inst, ":TRAC1:MODE MAXHold", console_print_func): success = False
-        console_print_func("✅ Trace mode set to Max Hold.")
-    elif min_hold_mode:
-        if not write_safe(inst, ":TRAC1:MODE MINHold", console_print_func): success = False
-        console_print_func("✅ Trace mode set to Min Hold.")
-    elif live_mode:
-        if not write_safe(inst, ":TRAC1:MODE WRITe", console_print_func): # WRITe is typically "Live"
-            success = False
-        console_print_func("✅ Trace mode set to Live.")
-    else:
-        # If no mode is selected, default to Live or warn
-        console_print_func("⚠️ No trace mode selected. Defaulting to Live.")
+    # Ensure only the selected mode is active, and others are blanked.
+    if live_mode:
         if not write_safe(inst, ":TRAC1:MODE WRITe", console_print_func): success = False
+        console_print_func("✅ Trace 1 set to Live (WRITe).")
+    else:
+        if not write_safe(inst, ":TRAC1:MODE BLANK", console_print_func): success = False
+        console_print_func("ℹ️ Trace 1 set to BLANK.")
+
+    if max_hold_mode:
+        if not write_safe(inst, ":TRAC2:MODE MAXHold", console_print_func): success = False
+        console_print_func("✅ Trace 2 set to Max Hold.")
+    else:
+        if not write_safe(inst, ":TRAC2:MODE BLANK", console_print_func): success = False
+        console_print_func("ℹ️ Trace 2 set to BLANK.")
+
+    if min_hold_mode:
+        if not write_safe(inst, ":TRAC3:MODE MINHold", console_print_func): success = False
+        console_print_func("✅ Trace 3 set to Min Hold.")
+    else:
+        if not write_safe(inst, ":TRAC3:MODE BLANK", console_print_func): success = False
+        console_print_func("ℹ️ Trace 3 set to BLANK.")
 
 
     if success:

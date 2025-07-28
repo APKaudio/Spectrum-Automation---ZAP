@@ -354,7 +354,9 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
                     console_print_func(f"ℹ️ High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.")
                 debug_print(f"High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
         
-        # Configure Trace Modes
+        # Configure Trace Modes (These are now handled by set_span_logic when called from GUI)
+        # The initial setup of trace modes here should reflect a default state,
+        # which is usually Live (WRITe).
         if not write_safe(inst, ":TRAC1:MODE WRITe", console_print_func):
             debug_print("Failed to set :TRAC1:MODE WRITe.", file=current_file, function=current_function, console_print_func=console_print_func)
             return False
@@ -362,19 +364,20 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             console_print_func(f"✅ Trace 1 sent to write")
         debug_print("Trace 1 set to WRITE.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        if not write_safe(inst, ":TRAC2:MODE MAXHold", console_print_func):
-            debug_print("Failed to set :TRAC2:MODE MAXHold.", file=current_file, function=current_function, console_print_func=console_print_func)
+        # Ensure other traces are blanked on initialization
+        if not write_safe(inst, ":TRAC2:MODE BLANK", console_print_func):
+            debug_print("Failed to set :TRAC2:MODE BLANK.", file=current_file, function=current_function, console_print_func=console_print_func)
             return False
         if console_print_func:
-            console_print_func(f"✅ Trace 2 sent to MAX HOLD")
-        debug_print("Trace 2 set to MAX HOLD.", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"✅ Trace 2 sent to BLANK")
+        debug_print("Trace 2 set to BLANK.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        if not write_safe(inst, ":TRAC3:MODE MINHold", console_print_func):
-            debug_print("Failed to set :TRAC3:MODE MINHold.", file=current_file, function=current_function, console_print_func=console_print_func)
+        if not write_safe(inst, ":TRAC3:MODE BLANK", console_print_func):
+            debug_print("Failed to set :TRAC3:MODE BLANK.", file=current_file, function=current_function, console_print_func=console_print_func)
             return False
         if console_print_func:
-            console_print_func(f"✅ Trace 3 sent to Min Hold")
-        debug_print("Trace 3 set to MIN HOLD.", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"✅ Trace 3 sent to BLANK")
+        debug_print("Trace 3 set to BLANK.", file=current_file, function=current_function, console_print_func=console_print_func)
         
         # Display scale is always LOGarithmic
         if not write_safe(inst, ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic", console_print_func):
@@ -395,7 +398,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             console_print_func("✅ VBW and Sweep time set to AUTO.")
         debug_print("VBW and Sweep time set to AUTO.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        # --- MODIFIED: Set trace data format based on model ---
+        # Set trace data format based on model
         if model_match == "N9342CN":
             if not write_safe(inst, ":TRACe:FORMat:DATA ASCii", console_print_func):
                 debug_print("Failed to set :TRACe:FORMat:DATA ASCii for N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -415,7 +418,6 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             if console_print_func:
                 console_print_func(f"ℹ️ Trace data format command skipped for model {model_match}. No specific command defined.")
             debug_print(f"Trace data format command skipped for model {model_match}. No specific command defined.", file=current_file, function=current_function, console_print_func=console_print_func)
-        # --- END MODIFIED ---
        
         if console_print_func:
             console_print_func("🎉 Instrument initialized successfully with desired settings.")
