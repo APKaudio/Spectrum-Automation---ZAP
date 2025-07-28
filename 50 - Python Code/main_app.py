@@ -35,7 +35,7 @@ from src.instrument_logic import (
     populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
     apply_settings_logic,
     query_current_instrument_settings_logic, query_device_presets_logic,
-    load_selected_preset_logic # Removed: set_marker_and_trace_modes_logic
+    load_selected_preset_logic
 )
 # Import the logic function directly, it will be called by a method in App
 from src.scan_logic import update_connection_status_logic
@@ -478,6 +478,17 @@ class App(tk.Tk):
                         padding=[30, 15, 30, 15])
         style.map("SelectedPreset.TButton",
                 background=[('active', '#0056b3')]) # Darker blue on active
+
+        # Style for the large YAK button (defined globally in main_app.py)
+        YAK_ORANGE = "#ff8c00" # A vibrant orange color for YAK button
+        style.configure('LargeYAK.TButton',
+                        font=('Helvetica', 100, 'bold'),
+                        background=YAK_ORANGE,
+                        foreground="white",
+                        padding=[20, 10])
+        style.map('LargeYAK.TButton',
+                  background=[('active', '#e07b00'), ('disabled', '#cc7000')])
+
 
         debug_print("ttk styles set up.", file=__file__, function=inspect.currentframe().f_code.co_name)
 

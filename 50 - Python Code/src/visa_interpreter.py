@@ -46,14 +46,27 @@ class VisaInterpreterTab(ttk.Frame):
         debug_print("Creating VisaInterpreterTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0) # Row for model dropdown
-        self.grid_rowconfigure(1, weight=1) # Treeview takes most space
-        self.grid_rowconfigure(2, weight=0) # Buttons row (Add, Delete, Save)
-        self.grid_rowconfigure(3, weight=0) # New row for YAK buttons
+        # Re-configure grid rows to place buttons first
+        self.grid_rowconfigure(0, weight=0) # Row for Add/Delete/Save buttons
+        self.grid_rowconfigure(1, weight=0) # Row for Model Selection dropdown
+        self.grid_rowconfigure(2, weight=1) # Treeview takes most space
+        self.grid_rowconfigure(3, weight=0) # Scrollbar for Treeview (horizontal)
+        self.grid_rowconfigure(4, weight=0) # New row for YAK buttons
 
-        # Model Selection Dropdown (for filtering/defaulting new rows)
+        # Button Frame (Add, Delete, Save) - Moved to row 0
+        button_frame = ttk.Frame(self, style='Dark.TFrame')
+        button_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
+        button_frame.grid_columnconfigure(2, weight=1)
+
+        ttk.Button(button_frame, text="Add Row", command=self._add_row, style='Blue.TButton').grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ttk.Button(button_frame, text="Delete Selected Row", command=self._delete_row, style='Red.TButton').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Button(button_frame, text="Save Commands", command=self._save_data, style='Green.TButton').grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # Model Selection Dropdown (for filtering/defaulting new rows) - Moved to row 1
         model_frame = ttk.Frame(self, style='Dark.TFrame')
-        model_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        model_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         model_frame.grid_columnconfigure(1, weight=1) # Allow dropdown to expand
 
         ttk.Label(model_frame, text="Select Instrument Model:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -63,11 +76,11 @@ class VisaInterpreterTab(ttk.Frame):
         self.model_dropdown.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
 
-        # Treeview for displaying and editing commands
+        # Treeview for displaying and editing commands - Moved to row 2
         # Updated columns to include "Model" at the beginning
         columns = ("Model", "Command Type", "Action", "VISA Command", "Variable")
         self.tree = ttk.Treeview(self, columns=columns, show="headings", style='Treeview')
-        self.tree.grid(row=1, column=0, sticky="nsew", padx=5, pady=5) # Shifted to row 1
+        self.tree.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
 
         # Configure column headings
         self.tree.heading("Model", text="Model", anchor=tk.W) # New heading for Model
@@ -85,31 +98,31 @@ class VisaInterpreterTab(ttk.Frame):
 
         # Scrollbars
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
-        vsb.grid(row=1, column=1, sticky="ns") # Shifted to row 1
+        vsb.grid(row=2, column=1, sticky="ns") # Aligned with Treeview
         self.tree.configure(yscrollcommand=vsb.set)
 
         hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
-        hsb.grid(row=2, column=0, sticky="ew") # Shifted to row 2
+        hsb.grid(row=3, column=0, sticky="ew") # Below Treeview
         self.tree.configure(xscrollcommand=hsb.set)
 
-        # Button Frame (Add, Delete, Save)
-        button_frame = ttk.Frame(self, style='Dark.TFrame')
-        button_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # Shifted to row 3
-        button_frame.grid_columnconfigure(0, weight=1)
-        button_frame.grid_columnconfigure(1, weight=1)
-        button_frame.grid_columnconfigure(2, weight=1)
-
-        ttk.Button(button_frame, text="Add Row", command=self._add_row, style='Blue.TButton').grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        ttk.Button(button_frame, text="Delete Selected Row", command=self._delete_row, style='Red.TButton').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        ttk.Button(button_frame, text="Save Commands", command=self._save_data, style='Green.TButton').grid(row=0, column=2, padx=5, pady=5, sticky="ew")
-
-        # --- YAK Button Row (Execute Selected Command) ---
+        # --- YAK Button Row (Execute Selected Command) - Moved to row 4 ---
         yak_frame = ttk.LabelFrame(self, text="YAK (Execute Selected Command)", style='Dark.TLabelframe')
-        yak_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # New row 4
+        yak_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         yak_frame.grid_columnconfigure(0, weight=1) # Single column to center the button
 
+        # Define a new style for the large YAK button
+        style = ttk.Style(self)
+        ACCENT_ORANGE = "#ff8c00" # A vibrant orange color
+        style.configure('LargeYAK.TButton',
+                        font=('Helvetica', 100, 'bold'),
+                        background=ACCENT_ORANGE, # Set background to orange
+                        foreground="white", # Ensure text is white for contrast
+                        padding=[20, 10]) # Keep padding, adjust if needed for size
+        style.map('LargeYAK.TButton',
+                  background=[('active', '#e07b00'), ('disabled', '#cc7000')]) # Darker orange for active/disabled
+
         # YAK button to execute the selected VISA command (2x taller)
-        ttk.Button(yak_frame, text="YAK - Execute Selected", command=self._yak_button_action, style='Purple.TButton', padding=[20, 10]).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ttk.Button(yak_frame, text="YAK", command=self._yak_button_action, style='LargeYAK.TButton').grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
         self.editor = None # To hold the Entry widget for editing
 
@@ -329,7 +342,9 @@ class VisaInterpreterTab(ttk.Frame):
             ("N9340B", "Frequency/Span", "SET", ":SENSe:FREQuency:SPAN", "1000"),
             ("N9340B", "Frequency/Span", "GET", ":SENSe:FREQuency:SPAN?", ""),
             ("N9340B", "Frequency/Start", "GET", ":FREQuency:STARt?", ""),
+            ("N9340B", "Frequency/Start", "SET", ":FREQuency:STARt", "100000"),
             ("N9340B", "Frequency/Stop", "GET", ":FREQuency:STOP?", ""),
+            ("N9340B", "Frequency/Stop", "SET", ":FREQuency:STOP", "200000"),
             ("N9340B", "Frequency/Sweep/Points", "GET", ":SENSe:SWEep:POINts?", ""),
             ("N9340B", "Frequency/Sweep/Time", "SET", ":SENSe:SWEep:TIME:AUTO", "ON"),
             ("N9340B", "Frequency/Sweep/Spacing", "SET", ":SENSe:X:SPACing LINear", "LINear"),
@@ -410,7 +425,7 @@ class VisaInterpreterTab(ttk.Frame):
             # Marker Calculate State
             ("N9340B", "Marker/1/Calculate/State", "SET", ":CALCulate:MARKer1:STATe", "ON"),
             ("N9340B", "Marker/2/Calculate/State", "SET", ":CALCulate:MARKer2:STATe", "ON"),
-            ("N9340B", "Marker/3/Calculate/State", "SET", ":CALCulate:MARKer3:STATe", "ON"),
+            ("N940B", "Marker/3/Calculate/State", "SET", ":CALCulate:MARKer3:STATe", "ON"),
             ("N9340B", "Marker/4/Calculate/State", "SET", ":CALCulate:MARKer4:STATe", "ON"),
             ("N9340B", "Marker/5/Calculate/State", "SET", ":CALCulate:MARKer5:STATe", "ON"),
             ("N9340B", "Marker/6/Calculate/State", "SET", ":CALCulate:MARKer6:STATe", "ON"),

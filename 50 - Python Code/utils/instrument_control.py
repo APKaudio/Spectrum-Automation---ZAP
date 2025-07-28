@@ -17,7 +17,6 @@
 #
 import pyvisa
 import time
-# from tkinter import messagebox # Corrected import: directly import messagebox - REMOVED
 import inspect # Import inspect module
 import os # Import os module to fix NameError
 from datetime import datetime # Import datetime for timestamp
@@ -84,7 +83,7 @@ def log_visa_command(command, direction="SENT", console_print_func=None):
     """
     if LOG_VISA_COMMANDS:
         timestamp = datetime.now().strftime("%M.%S")
-        log_message = f"�🌲 [{timestamp}] {direction}: {command.strip()}"
+        log_message = f"🌲 [{timestamp}] {direction}: {command.strip()}"
         if console_print_func:
             console_print_func(log_message)
         else:
@@ -121,7 +120,7 @@ def connect_to_instrument(resource_name, console_print_func=None):
     try:
         rm = pyvisa.ResourceManager()
         inst = rm.open_resource(resource_name)
-        inst.timeout = 5000 # Set a timeout (milliseconds)
+        inst.timeout = 10000 # Set a timeout (milliseconds) - Increased for robustness
         inst.read_termination = '\n' # Set read termination character
         inst.write_termination = '\n' # Set write termination character
         inst.query_delay = 0.1 # Small delay between write and read for query
@@ -178,13 +177,17 @@ def write_safe(inst, command, console_print_func=None):
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    log_visa_command(command, "SENT", console_print_func)
+    if not inst:
+        debug_print(f"Not connected to instrument, cannot write command: {command}", file=current_file, function=current_function, console_print_func=console_print_func)
+        if console_print_func:
+            console_print_func(f"⚠️ Warning: Not connected. Failed to write: {command}")
+        return False
     try:
+        log_visa_command(command, "SENT", console_print_func)
         inst.write(command)
-        debug_print(f"Command sent: {command.strip()}", file=current_file, function=current_function, console_print_func=console_print_func)
         return True
     except pyvisa.errors.VisaIOError as e:
-        error_msg = f"❌ VISA error sending command '{command.strip()}': {e}"
+        error_msg = f"🛑 VISA error sending command '{command.strip()}': {e}"
         if console_print_func:
             console_print_func(error_msg)
         debug_print(error_msg, file=current_file, function=current_function, console_print_func=console_print_func)
@@ -204,14 +207,19 @@ def query_safe(inst, command, console_print_func=None):
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    log_visa_command(command, "SENT", console_print_func)
+    if not inst:
+        debug_print(f"Not connected to instrument, cannot query command: {command}", file=current_file, function=current_function, console_print_func=console_print_func)
+        if console_print_func:
+            console_print_func(f"⚠️ Warning: Not connected. Failed to query: {command}")
+        return "" # Return empty string on error if not connected
     try:
+        log_visa_command(command, "SENT", console_print_func)
         response = inst.query(command).strip()
         log_visa_command(response, "RECEIVED", console_print_func)
         debug_print(f"Query '{command.strip()}' response: {response}", file=current_file, function=current_function, console_print_func=console_print_func)
         return response
     except pyvisa.errors.VisaIOError as e:
-        error_msg = f"❌ VISA error querying '{command.strip()}': {e}"
+        error_msg = f"🛑 VISA error querying '{command.strip()}': {e}"
         if console_print_func:
             console_print_func(error_msg)
         debug_print(error_msg, file=current_file, function=current_function, console_print_func=console_print_func)
@@ -405,50 +413,58 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
         return False
 
 
+def query_current_instrument_settings(inst, MHZ_TO_HZ_CONVERSION, console_print_func=None):
+    """
+    Queries and returns the current Center Frequency, Span, and RBW from the instrument.
 
-def _query_settings_display(self):
-        """
-        Queries the current settings from the instrument and updates the display variables.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Querying current instrument settings for display...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+    Inputs:
+        inst (pyvisa.resources.Resource): The connected VISA instrument object.
+        MHZ_TO_HZ_CONVERSION (float): The conversion factor from MHz to Hz.
+        console_print_func (function, optional): Function to print to the GUI console.
+    Outputs:
+        tuple: (center_freq_mhz, span_mhz, rbw_hz) or (None, None, None) on failure.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print("Querying current instrument settings...", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        if not self.app_instance.inst:
-            self.console_print_func("⚠️ Warning: No instrument connected. Cannot query settings for display.")
-            debug_print("No instrument connected. Cannot query settings for display.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self._clear_settings_display()
-            return False
+    if not inst:
+        debug_print("No instrument connected to query settings.", file=current_file, function=current_function, console_print_func=console_print_func)
+        if console_print_func:
+            console_print_func("⚠️ Warning: No instrument connected. Cannot query settings.")
+        return None, None, None
 
-        try:
-            # Query Center Frequency
-            center_freq_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:CENTer?", self.console_print_func)
-            self.current_center_freq_var.set(f"{float(center_freq_str) / MHZ_TO_HZ:.3f}" if center_freq_str else "N/A")
+    center_freq_hz = None
+    span_hz = None
+    rbw_hz = None
 
-            # Query Span
-            span_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:SPAN?", self.console_print_func)
-            self.current_span_var.set(f"{float(span_str) / MHZ_TO_HZ:.3f}" if span_str else "N/A")
+    try:
+        # Query Center Frequency
+        center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?", console_print_func)
+        if center_freq_str:
+            center_freq_hz = float(center_freq_str)
 
-            # Query RBW
-            rbw_str = query_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution?", self.console_print_func)
-            self.current_rbw_var.set(f"{float(rbw_str):.0f}" if rbw_str else "N/A")
+        # Query Span
+        span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?", console_print_func)
+        if span_str:
+            span_hz = float(span_str)
 
-            # Query Reference Level
-            ref_level_str = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
-            self.current_ref_level_var.set(f"{float(ref_level_str):.1f}" if ref_level_str else "N/A")
+        # Query RBW
+        rbw_str = query_safe(inst, ":SENSe:BANDwidth:RESolution?", console_print_func)
+        if rbw_str:
+            rbw_hz = float(rbw_str)
 
-            # Query High Sensitivity / Preamp state
-            atten_auto_query = query_safe(self.app_instance.inst, ":INPut:ATTenuation:AUTO?", self.console_print_func)
-            gain_state_query = query_safe(self.app_instance.inst, ":INPut:GAIN:STATe?", self.console_print_func)
-            high_sensitivity_status = "Enabled" if (atten_auto_query and "OFF" in atten_auto_query.upper() and \
-                                                   gain_state_query and "ON" in gain_state_query.upper()) else "Disabled"
-            self.current_high_sensitivity_var.set(high_sensitivity_status)
+        center_freq_mhz = center_freq_hz / MHZ_TO_HZ_CONVERSION if center_freq_hz is not None else None
+        span_mhz = span_hz / MHZ_TO_HZ_CONVERSION if span_hz is not None else None
 
-            self.console_print_func("✅ Current instrument settings displayed.")
-            debug_print("Current instrument settings displayed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return True
-        except Exception as e:
-            self.console_print_func(f"❌ Error querying instrument settings for display: {e}")
-            debug_print(f"Error querying instrument settings for display: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self._clear_settings_display()
-            return False
+        debug_print(f"Queried settings: Center Freq: {center_freq_mhz:.3f} MHz, Span: {span_mhz:.3f} MHz, RBW: {rbw_hz} Hz", file=current_file, function=current_function, console_print_func=console_print_func)
+        if console_print_func:
+            console_print_func(f"✅ Queried settings: C: {center_freq_mhz:.3f} MHz, SP: {span_mhz:.3f} MHz, RBW: {rbw_hz / 1000:.1f} kHz")
+        
+        return center_freq_mhz, span_mhz, rbw_hz
+
+    except Exception as e:
+        debug_print(f"❌ Error querying current instrument settings: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+        if console_print_func:
+            console_print_func(f"❌ Error querying current instrument settings: {e}")
+        return None, None, None

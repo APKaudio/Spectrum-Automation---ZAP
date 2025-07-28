@@ -9,9 +9,12 @@ import subprocess # Add this import for opening folders
 # Import instrument_logic for setting focus frequency and loading presets
 from src.instrument_logic import (
     load_selected_preset_logic,
-    query_device_presets_logic, # Keep this as it's the logic function from instrument_logic
+    # query_device_presets_logic, # Removed as it's now in preset_utils.py
     query_current_instrument_settings_logic # Import the logic function to get settings
 )
+# Import query_device_presets_logic from preset_utils.py
+from utils.preset_utils import query_device_presets_logic, load_selected_preset as load_selected_preset_util # Import the logic function from its new home
+
 from utils.instrument_control import debug_print
 from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
 
@@ -149,7 +152,11 @@ class PresetFilesTab(ttk.Frame):
         self.console_print_func("Querying device presets...")
         debug_print("Calling query_device_presets_logic...", file=current_file, function=current_function, console_print_func=self.console_print_func)
         
-        # Call the logic function from instrument_logic
+        # Add debug print for app_instance.inst before calling the logic function
+        self.console_print_func(f"Instrument instance in _query_presets_from_device: {self.app_instance.inst}")
+        debug_print(f"Instrument instance in _query_presets_from_device: {self.app_instance.inst}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Call the logic function from preset_utils
         presets = query_device_presets_logic(self.app_instance, self.console_print_func)
         
         if presets:
@@ -174,7 +181,8 @@ class PresetFilesTab(ttk.Frame):
             self.console_print_func(f"Loading preset: {self.selected_preset}")
             debug_print(f"Calling load_selected_preset_logic for: {self.selected_preset}", file=current_file, function=current_function, console_print_func=self.console_print_func)
             
-            success, center_freq, span, rbw = load_selected_preset_logic(self.app_instance, self.selected_preset, self.console_print_func)
+            # Call the load utility function from preset_utils
+            success, center_freq, span, rbw = load_selected_preset_util(self.app_instance.inst, self.selected_preset, self.console_print_func)
             
             if success:
                 self.console_print_func(f"✅ Preset '{self.selected_preset}' loaded. Instrument settings updated.")
@@ -183,9 +191,21 @@ class PresetFilesTab(ttk.Frame):
                 self.update_preset_button_info(self.selected_preset, center_freq, span, rbw)
             else:
                 self.console_print_func(f"❌ Failed to load preset '{self.selected_preset}'.")
+                # If loading fails, revert the button style and clear selection
+                if self.current_selected_button:
+                    self.current_selected_button.config(style='LargePreset.TButton')
+                    self.current_selected_button = None
+                self.selected_preset = None
+
         else:
             self.console_print_func("⚠️ Warning: No preset selected to load.")
             debug_print("No preset selected to load.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            # If not connected, clear selected button and revert its style if any
+            if self.current_selected_button:
+                self.current_selected_button.config(style='LargePreset.TButton')
+                self.current_selected_button = None
+            self.selected_preset = None
+
 
     def _populate_local_preset_list(self):
         """
@@ -313,8 +333,8 @@ class PresetFilesTab(ttk.Frame):
                 self.current_selected_button = self.preset_buttons[preset_name]
                 self.current_selected_button.config(style='SelectedPreset.TButton') # Set to selected style
             
-            # Call the load logic
-            success, center_freq, span, rbw = load_selected_preset_logic(self.app_instance, self.selected_preset, self.console_print_func)
+            # Call the load utility function from preset_utils
+            success, center_freq, span, rbw = load_selected_preset_util(self.app_instance.inst, self.selected_preset, self.console_print_func)
             
             if success:
                 self.console_print_func(f"✅ Preset '{self.selected_preset}' loaded. Instrument settings updated.")
