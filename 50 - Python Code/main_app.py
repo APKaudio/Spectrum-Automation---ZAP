@@ -114,7 +114,8 @@ class App(tk.Tk):
 
         # Initial population of resources and button states
         self._populate_resources()
-        self._update_button_states_on_connection()
+        # Corrected: Call _update_button_states_on_connection as a function, passing self
+        _update_button_states_on_connection(self)
         
         # Print the ASCII art logo to the console
         print_art()
@@ -242,15 +243,32 @@ class App(tk.Tk):
         Creates and arranges all GUI widgets in the main application window.
         """
         debug_print("Creating main application widgets...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Configure grid for the main window
-        self.grid_columnconfigure(0, weight=1) # Left column (Session, Instrument, Scan Control)
-        self.grid_columnconfigure(1, weight=1) # Right column (Scan Config, Tabs)
-        self.grid_rowconfigure(0, weight=0) # Top row for Session/Instrument and Scan Config
-        self.grid_rowconfigure(1, weight=0) # Row for Scan Control buttons
-        self.grid_rowconfigure(2, weight=1) # Bottom row for console (expands)
+        
+        # Configure grid for the main window - 50/50 split, single row
+        self.grid_columnconfigure(0, weight=1) # Left column
+        self.grid_columnconfigure(1, weight=1) # Right column
+        self.grid_rowconfigure(0, weight=1) # Main row for both columns (expands)
 
-        # --- Session Description Frame (New) ---
-        session_description_frame = ttk.LabelFrame(self, text="Session Description", style='Dark.TLabelframe')
+        # --- Left Column: Notebook for Settings and Tabs ---
+        self.left_notebook = ttk.Notebook(self)
+        self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        
+        # Create frames for the new tabs
+        main_settings_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
+        scan_config_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
+
+        # Add the new frames as tabs to the left notebook
+        self.left_notebook.add(main_settings_frame, text="Main Settings")
+        self.left_notebook.add(scan_config_frame, text="Scan Configuration")
+
+        # Configure grid for main_settings_frame
+        main_settings_frame.grid_columnconfigure(0, weight=1)
+        main_settings_frame.grid_rowconfigure(0, weight=0) # Session Description
+        main_settings_frame.grid_rowconfigure(1, weight=0) # Instrument Connection
+        main_settings_frame.grid_rowconfigure(2, weight=1) # Bands to Scan (stretch)
+
+        # --- Session Description Frame (Moved into Main Settings tab) ---
+        session_description_frame = ttk.LabelFrame(main_settings_frame, text="Session Description", style='Dark.TLabelframe')
         session_description_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new")
         session_description_frame.grid_columnconfigure(1, weight=1) # Allow entry fields to expand
 
@@ -265,9 +283,9 @@ class App(tk.Tk):
         self.browse_output_button.grid(row=1, column=2, padx=5, pady=5)
 
 
-        # --- Instrument Connection Frame (Moved) ---
-        instrument_frame = ttk.LabelFrame(self, text="Instrument Connection", style='Dark.TLabelframe')
-        instrument_frame.grid(row=1, column=0, padx=5, pady=5, sticky="new") # Placed below Session Description
+        # --- Instrument Connection Frame (Moved into Main Settings tab) ---
+        instrument_frame = ttk.LabelFrame(main_settings_frame, text="Instrument Connection", style='Dark.TLabelframe')
+        instrument_frame.grid(row=1, column=0, padx=5, pady=5, sticky="new")
         instrument_frame.grid_columnconfigure(1, weight=1) # Allow combobox to expand
 
         ttk.Label(instrument_frame, text="VISA Resource:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -291,70 +309,114 @@ class App(tk.Tk):
         self.load_preset_button.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
 
-        # --- Scan Configuration Frame (Remains top-right) ---
-        scan_config_frame = ttk.LabelFrame(self, text="Scan Configuration", style='Dark.TLabelframe')
-        scan_config_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=5, sticky="nsew") # Spans 2 rows
-        scan_config_frame.grid_columnconfigure(0, weight=1) # Allow band checkboxes to expand
-
-        # Checkbox for each band
-        ttk.Label(scan_config_frame, text="Select Bands to Scan:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        # --- Bands to Scan (Moved into Main Settings tab) ---
+        bands_frame = ttk.LabelFrame(main_settings_frame, text="Select Bands to Scan:", style='Dark.TLabelframe')
+        bands_frame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        bands_frame.grid_columnconfigure(0, weight=1) # Allow band checkboxes to expand
         
-        band_checkbox_frame = ttk.Frame(scan_config_frame, style='Dark.TFrame')
-        band_checkbox_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        # Use a canvas and scrollbar for the bands if there are many
+        bands_canvas = tk.Canvas(bands_frame, background="#1e1e1e", highlightthickness=0)
+        bands_canvas.grid(row=0, column=0, sticky="nsew")
+        
+        bands_scrollbar = ttk.Scrollbar(bands_frame, orient="vertical", command=bands_canvas.yview)
+        bands_scrollbar.grid(row=0, column=1, sticky="ns")
+        
+        bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
+        bands_canvas.bind('<Configure>', lambda e: bands_canvas.configure(scrollregion = bands_canvas.bbox("all")))
+
+        band_checkbox_frame = ttk.Frame(bands_canvas, style='Dark.TFrame')
+        bands_canvas.create_window((0, 0), window=band_checkbox_frame, anchor="nw")
+        
         band_checkbox_frame.grid_columnconfigure(0, weight=1) # Allow checkboxes to expand
         
         for i, band_item in enumerate(self.band_vars):
             cb = ttk.Checkbutton(band_checkbox_frame, text=band_item["band"]["Band Name"], variable=band_item["var"], style='TCheckbutton')
             cb.grid(row=i, column=0, sticky="w", padx=2, pady=1)
 
+
+        # --- Scan Configuration Frame (Content moved into new Scan Configuration tab) ---
+        scan_config_frame.grid_columnconfigure(0, weight=1) # Allow elements to expand
+        scan_config_frame.grid_columnconfigure(1, weight=1)
+
         # Other scan settings
-        ttk.Label(scan_config_frame, text="RBW Step Size (Hz):", style='TLabel').grid(row=len(self.band_vars)+1, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.rbw_step_size_hz_var, style='TEntry').grid(row=len(self.band_vars)+1, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="RBW Step Size (Hz):", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.rbw_step_size_hz_var, style='TEntry').grid(row=0, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Cycle Wait Time (s):", style='TLabel').grid(row=len(self.band_vars)+2, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.cycle_wait_time_seconds_var, style='TEntry').grid(row=len(self.band_vars)+2, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Cycle Wait Time (s):", style='TLabel').grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.cycle_wait_time_seconds_var, style='TEntry').grid(row=1, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Max Hold Time (s):", style='TLabel').grid(row=len(self.band_vars)+3, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.maxhold_time_seconds_var, style='TEntry').grid(row=len(self.band_vars)+3, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Max Hold Time (s):", style='TLabel').grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.maxhold_time_seconds_var, style='TEntry').grid(row=2, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Scan RBW (Hz):", style='TLabel').grid(row=len(self.band_vars)+4, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_hz_var, style='TEntry').grid(row=len(self.band_vars)+4, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Scan RBW (Hz):", style='TLabel').grid(row=3, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_hz_var, style='TEntry').grid(row=3, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Reference Level (dBm):", style='TLabel').grid(row=len(self.band_vars)+5, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.reference_level_dbm_var, style='TEntry').grid(row=len(self.band_vars)+5, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Reference Level (dBm):", style='TLabel').grid(row=4, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.reference_level_dbm_var, style='TEntry').grid(row=4, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Frequency Shift (Hz):", style='TLabel').grid(row=len(self.band_vars)+6, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.freq_shift_hz_var, style='TEntry').grid(row=len(self.band_vars)+6, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Frequency Shift (Hz):", style='TLabel').grid(row=5, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.freq_shift_hz_var, style='TEntry').grid(row=5, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Checkbutton(scan_config_frame, text="Max Hold Enabled", variable=self.maxhold_enabled_var, style='TCheckbutton').grid(row=len(self.band_vars)+7, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(scan_config_frame, text="High Sensitivity", variable=self.high_sensitivity_var, style='TCheckbutton').grid(row=len(self.band_vars)+8, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(scan_config_frame, text="Preamp On", variable=self.preamp_on_var, style='TCheckbutton').grid(row=len(self.band_vars)+9, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(scan_config_frame, text="Max Hold Enabled", variable=self.maxhold_enabled_var, style='TCheckbutton').grid(row=6, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(scan_config_frame, text="High Sensitivity", variable=self.high_sensitivity_var, style='TCheckbutton').grid(row=7, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(scan_config_frame, text="Preamp On", variable=self.preamp_on_var, style='TCheckbutton').grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=2)
         
-        ttk.Label(scan_config_frame, text="RBW Segmentation (Hz):", style='TLabel').grid(row=len(self.band_vars)+10, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_segmentation_var, style='TEntry').grid(row=len(self.band_vars)+10, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="RBW Segmentation (Hz):", style='TLabel').grid(row=9, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_segmentation_var, style='TEntry').grid(row=9, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Default Focus Width (MHz):", style='TLabel').grid(row=len(self.band_vars)+11, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.desired_default_focus_width_var, style='TEntry').grid(row=len(self.band_vars)+11, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Default Focus Width (MHz):", style='TLabel').grid(row=10, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.desired_default_focus_width_var, style='TEntry').grid(row=10, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Label(scan_config_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=len(self.band_vars)+12, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.num_scan_cycles_var, style='TEntry').grid(row=len(self.band_vars)+12, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Label(scan_config_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=11, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(scan_config_frame, textvariable=self.num_scan_cycles_var, style='TEntry').grid(row=11, column=1, padx=2, pady=2, sticky="ew")
 
 
         # Debug and Plotting Options
         debug_plot_frame = ttk.LabelFrame(scan_config_frame, text="Debug & Plotting Options", style='Dark.TLabelframe')
-        debug_plot_frame.grid(row=len(self.band_vars)+13, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        debug_plot_frame.grid(row=12, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         debug_plot_frame.grid_columnconfigure(0, weight=1)
 
         ttk.Checkbutton(debug_plot_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style='TCheckbutton').grid(row=0, column=0, sticky="w", padx=5, pady=2)
         ttk.Checkbutton(debug_plot_frame, text="Log VISA Commands", variable=self.log_visa_commands_enabled_var, style='TCheckbutton').grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(debug_plot_frame, text="Include Gov Markers", variable=self.include_gov_markers_var, style='TCheckbutton').grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(debug_plot_frame, text="Include TV Markers", variable=self.include_tv_markers_var, style='TCheckbutton').grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(debug_plot_frame, text="Include Custom Markers", variable=self.include_markers_var, style='TCheckbutton').grid(row=4, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(debug_plot_frame, text="Open HTML Plot After Scan", variable=self.open_html_after_complete_var, style='TCheckbutton').grid(row=5, column=0, sticky="w", padx=5, pady=2)
         
         # Restore Defaults Button
-        ttk.Button(scan_config_frame, text="Restore Default Settings", command=self._restore_default_settings, style='Orange.TButton').grid(row=len(self.band_vars)+14, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        ttk.Button(scan_config_frame, text="Restore Default Settings", command=self._restore_default_settings, style='Orange.TButton').grid(row=13, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 
-        # --- Scan Control Buttons Frame (New Position) ---
-        scan_control_frame = ttk.LabelFrame(self, text="Scan Control", style='Dark.TLabelframe')
-        scan_control_frame.grid(row=2, column=0, padx=5, pady=5, sticky="new") # Placed above console
+        # --- Existing Notebook (Tabs) for Instrument Presets, Markers, Plotting, Report Converter ---
+        # These tabs are now added to the same left_notebook
+        self.preset_files_tab = PresetFilesTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.preset_files_tab, text="Instrument Presets")
+
+        self.markers_display_tab = MarkersDisplayTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.markers_display_tab, text="Markers Display")
+
+        self.plotting_tab = PlottingTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.plotting_tab, text="Plotting")
+
+        self.report_converter_tab = ReportConverterTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.report_converter_tab, text="Report Converter")
+
+        # Bind tab selection event to update specific tab contents for the left notebook
+        self.left_notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
+
+
+        # --- Right Column Container Frame ---
+        # This frame will hold the Scan Control and Application Console
+        right_column_container = ttk.Frame(self, style='Dark.TFrame')
+        right_column_container.grid(row=0, column=1, padx=5, pady=5, sticky="nsew") # Place in main window's grid
+        right_column_container.grid_columnconfigure(0, weight=1) # Single column within this container
+        right_column_container.grid_rowconfigure(0, weight=0) # Scan Control row (fixed height)
+        right_column_container.grid_rowconfigure(1, weight=1) # Application Console row (expands)
+
+
+        # --- Scan Control Buttons Frame (Moved into right_column_container) ---
+        scan_control_frame = ttk.LabelFrame(right_column_container, text="Scan Control", style='Dark.TLabelframe')
+        scan_control_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new") # Top of right column container
         scan_control_frame.grid_columnconfigure(0, weight=1)
         scan_control_frame.grid_columnconfigure(1, weight=1)
         scan_control_frame.grid_columnconfigure(2, weight=1)
@@ -369,34 +431,14 @@ class App(tk.Tk):
         self.stop_scan_button.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
 
-        # --- Notebook (Tabs) Frame ---
-        self.notebook = ttk.Notebook(self)
-        self.notebook.grid(row=2, column=1, padx=5, pady=5, sticky="nsew") # Placed next to scan control
-
-        # Initialize tabs
-        self.preset_files_tab = PresetFilesTab(self.notebook, app_instance=self, console_print_func=self._print_to_gui_console)
-        self.notebook.add(self.preset_files_tab, text="Instrument Presets")
-
-        self.markers_display_tab = MarkersDisplayTab(self.notebook, app_instance=self, console_print_func=self._print_to_gui_console)
-        self.notebook.add(self.markers_display_tab, text="Markers Display")
-
-        self.plotting_tab = PlottingTab(self.notebook, app_instance=self, console_print_func=self._print_to_gui_console)
-        self.notebook.add(self.plotting_tab, text="Plotting")
-
-        self.report_converter_tab = ReportConverterTab(self.notebook, app_instance=self, console_print_func=self._print_to_gui_console)
-        self.notebook.add(self.report_converter_tab, text="Report Converter")
-
-        # Bind tab selection event to update specific tab contents
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
-
-
-        # --- Application Console Frame (Remains at bottom) ---
-        console_frame = ttk.LabelFrame(self, text="Application Console", style='Dark.TLabelframe')
-        console_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="nsew") # Spans both columns at bottom
+        # --- Application Console Frame (Moved into right_column_container) ---
+        console_frame = ttk.LabelFrame(right_column_container, text="Application Console", style='Dark.TLabelframe')
+        console_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Below scan control in right column container
         console_frame.grid_rowconfigure(0, weight=1)
         console_frame.grid_columnconfigure(0, weight=1)
 
-        self.console_text = scrolledtext.ScrolledText(console_frame, wrap="word", height=15, bg="#2b2b2b", fg="#cccccc", insertbackground="white")
+        # Removed fixed height to allow grid weight to control height
+        self.console_text = scrolledtext.ScrolledText(console_frame, wrap="word", bg="#2b2b2b", fg="#cccccc", insertbackground="white")
         self.console_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.console_text.config(state=tk.DISABLED) # Make it read-only
         
@@ -582,7 +624,8 @@ class App(tk.Tk):
         Populates the VISA resource combobox with available instruments.
         """
         debug_print("Populating VISA resources...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        populate_resources_logic(self.resource_combobox, self._print_to_gui_console)
+        # Corrected the argument passed to populate_resources_logic
+        populate_resources_logic(self, self._print_to_gui_console)
 
 
     def _on_resource_selected(self, event):
@@ -604,7 +647,7 @@ class App(tk.Tk):
         # Pass self (app_instance) to the logic function
         connect_instrument_logic(self, selected_resource, self._print_to_gui_console)
         # Update button states after connection attempt
-        self._update_button_states_on_connection()
+        _update_button_states_on_connection(self)
 
 
     def _disconnect_instrument(self):
@@ -615,7 +658,7 @@ class App(tk.Tk):
         # Pass self (app_instance) to the logic function
         disconnect_instrument_logic(self, self._print_to_gui_console)
         # Update button states after disconnection
-        self._update_button_states_on_connection()
+        _update_button_states_on_connection(self)
 
 
     def _apply_instrument_settings(self):
@@ -734,8 +777,9 @@ class App(tk.Tk):
         Handles tab change events in the Notebook.
         Calls _on_tab_selected for the newly selected tab if available.
         """
-        selected_tab_id = self.notebook.select()
-        selected_tab_widget = self.notebook.nametowidget(selected_tab_id)
+        # Get the currently selected tab's widget from the left_notebook
+        selected_tab_id = self.left_notebook.select()
+        selected_tab_widget = self.left_notebook.nametowidget(selected_tab_id)
         
         # Check if the selected tab has an _on_tab_selected method and call it
         if hasattr(selected_tab_widget, '_on_tab_selected'):
