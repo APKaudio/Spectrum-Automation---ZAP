@@ -1,7 +1,8 @@
 # src/scantab.py
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog # Import filedialog
 import inspect
+import os # Import os for path manipulation
 
 # Import debug_print from utils
 from utils.instrument_control import debug_print
@@ -39,75 +40,124 @@ class ScanTab(ttk.Frame):
         current_file = __file__
         debug_print("Creating ScanTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        self.grid_columnconfigure(0, weight=1) # Allow elements to expand
+        # Configure columns to expand
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
 
-        # --- Instrument settings for scan Frame ---
-        instrument_settings_frame = ttk.LabelFrame(self, text="Instrument settings for scan", style='Dark.TLabelframe')
-        instrument_settings_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-        instrument_settings_frame.grid_columnconfigure(0, weight=1) # Allow labels/entries to expand
+        # Scan Session Details Frame
+        session_details_frame = ttk.LabelFrame(self, text="Scan Session Details", padding="10 10 10 10", style='Dark.TLabelframe')
+        session_details_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        session_details_frame.grid_columnconfigure(0, weight=1)
+        session_details_frame.grid_columnconfigure(1, weight=2)
+        session_details_frame.grid_columnconfigure(2, weight=0) # For browse button
+
+        ttk.Label(session_details_frame, text="Session Name:", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(session_details_frame, textvariable=self.app_instance.scan_name_var, style='TEntry').grid(row=0, column=1, columnspan=2, padx=2, pady=2, sticky="ew")
+
+        ttk.Label(session_details_frame, text="Output Directory:", style='TLabel').grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(session_details_frame, textvariable=self.app_instance.output_folder_var, style='TEntry').grid(row=1, column=1, padx=2, pady=2, sticky="ew")
+        ttk.Button(session_details_frame, text="Browse", command=self._browse_output_directory, style='TButton').grid(row=1, column=2, padx=2, pady=2, sticky="ew")
+
+
+        # Instrument Settings Frame
+        instrument_settings_frame = ttk.LabelFrame(self, text="Scan Configuration Settings", padding="10 10 10 10", style='Dark.TLabelframe')
+        instrument_settings_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        instrument_settings_frame.grid_columnconfigure(0, weight=1)
         instrument_settings_frame.grid_columnconfigure(1, weight=1)
 
+        # RBW Step Size
         ttk.Label(instrument_settings_frame, text="RBW Step Size (Hz):", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.rbw_step_size_hz_var, style='TEntry').grid(row=0, column=1, padx=2, pady=2, sticky="ew")
 
+        # Cycle Wait Time
         ttk.Label(instrument_settings_frame, text="Cycle Wait Time (s):", style='TLabel').grid(row=1, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.cycle_wait_time_seconds_var, style='TEntry').grid(row=1, column=1, padx=2, pady=2, sticky="ew")
 
+        # Max Hold Time
         ttk.Label(instrument_settings_frame, text="Max Hold Time (s):", style='TLabel').grid(row=2, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.maxhold_time_seconds_var, style='TEntry').grid(row=2, column=1, padx=2, pady=2, sticky="ew")
 
+        # Scan RBW
         ttk.Label(instrument_settings_frame, text="Scan RBW (Hz):", style='TLabel').grid(row=3, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.scan_rbw_hz_var, style='TEntry').grid(row=3, column=1, padx=2, pady=2, sticky="ew")
 
+        # Reference Level
         ttk.Label(instrument_settings_frame, text="Reference Level (dBm):", style='TLabel').grid(row=4, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.reference_level_dbm_var, style='TEntry').grid(row=4, column=1, padx=2, pady=2, sticky="ew")
 
+        # Frequency Shift
         ttk.Label(instrument_settings_frame, text="Frequency Shift (Hz):", style='TLabel').grid(row=5, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.freq_shift_hz_var, style='TEntry').grid(row=5, column=1, padx=2, pady=2, sticky="ew")
 
-        ttk.Checkbutton(instrument_settings_frame, text="Max Hold Enabled", variable=self.app_instance.maxhold_enabled_var, style='TCheckbutton').grid(row=6, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(instrument_settings_frame, text="High Sensitivity", variable=self.app_instance.high_sensitivity_var, style='TCheckbutton').grid(row=7, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(instrument_settings_frame, text="Preamp On", variable=self.app_instance.preamp_on_var, style='TCheckbutton').grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        
-        ttk.Label(instrument_settings_frame, text="RBW Segmentation (Hz):", style='TLabel').grid(row=9, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.scan_rbw_segmentation_var, style='TEntry').grid(row=9, column=1, padx=2, pady=2, sticky="ew")
+        # Max Hold Enabled Checkbox
+        ttk.Checkbutton(instrument_settings_frame, text="Max Hold Enabled", variable=self.app_instance.max_hold_enabled_var, style='TCheckbutton').grid(row=6, column=0, columnspan=2, padx=5, pady=2, sticky="w")
 
-        ttk.Label(instrument_settings_frame, text="Default Focus Width (MHz):", style='TLabel').grid(row=10, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.desired_default_focus_width_var, style='TEntry').grid(row=10, column=1, padx=2, pady=2, sticky="ew")
+        # High Sensitivity/Preamp Checkbox
+        ttk.Checkbutton(instrument_settings_frame, text="High Sensitivity (Preamp On)", variable=self.app_instance.high_sensitivity_var, style='TCheckbutton').grid(row=7, column=0, columnspan=2, padx=5, pady=2, sticky="w")
 
-        ttk.Label(instrument_settings_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=11, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.num_scan_cycles_var, style='TEntry').grid(row=11, column=1, padx=2, pady=2, sticky="ew")
+        # RBW Segmentation
+        ttk.Label(instrument_settings_frame, text="RBW Segmentation:", style='TLabel').grid(row=8, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.rbw_segmentation_var, style='TEntry').grid(row=8, column=1, padx=2, pady=2, sticky="ew")
 
-        # Restore Defaults Button (now within ScanTab)
-        ttk.Button(self, text="Restore Default Settings", command=self._restore_default_settings, style='Orange.TButton').grid(row=2, column=0, padx=5, pady=5, sticky="ew") # Placed below both frames
+        # Default Focus Width
+        ttk.Label(instrument_settings_frame, text="Default Focus Width:", style='TLabel').grid(row=9, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.desired_default_focus_width_var, style='TEntry').grid(row=9, column=1, padx=2, pady=2, sticky="ew")
 
-        # --- Select Bands to Scan Frame ---
-        bands_frame = ttk.LabelFrame(self, text="Select Bands to Scan:", style='Dark.TLabelframe')
-        bands_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Placed below instrument_settings_frame
-        bands_frame.grid_columnconfigure(0, weight=1) # Allow band checkboxes to expand
-        bands_frame.grid_rowconfigure(0, weight=1) # Allow canvas to expand
+        # Number of Scan Cycles
+        ttk.Label(instrument_settings_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=10, column=0, padx=5, pady=2, sticky="w")
+        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.num_scan_cycles_var, style='TEntry').grid(row=10, column=1, padx=2, pady=2, sticky="ew")
 
-        # Use a canvas and scrollbar for the bands if there are many
-        bands_canvas = tk.Canvas(bands_frame, background="#1e1e1e", highlightthickness=0)
-        bands_canvas.grid(row=0, column=0, sticky="nsew")
-        
-        bands_scrollbar = ttk.Scrollbar(bands_frame, orient="vertical", command=bands_canvas.yview)
-        bands_scrollbar.grid(row=0, column=1, sticky="ns")
-        
-        bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
-        # Bind the canvas to the frame's configure event to update scrollregion
-        bands_canvas.bind('<Configure>', lambda e: bands_canvas.configure(scrollregion = bands_canvas.bbox("all")))
+        # Plotting Options
+        plotting_options_frame = ttk.LabelFrame(self, text="Plotting Options", padding="10 10 10 10", style='Dark.TLabelframe')
+        plotting_options_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        plotting_options_frame.grid_columnconfigure(0, weight=1)
 
-        band_checkbox_frame = ttk.Frame(bands_canvas, style='Dark.TFrame')
-        bands_canvas.create_window((0, 0), window=band_checkbox_frame, anchor="nw")
-        
-        band_checkbox_frame.grid_columnconfigure(0, weight=1) # Allow checkboxes to expand
-        
+        ttk.Checkbutton(plotting_options_frame, text="Open HTML Plot After Complete", variable=self.app_instance.open_html_after_complete_var, style='TCheckbutton').grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Checkbutton(plotting_options_frame, text="Include TV Markers", variable=self.app_instance.include_tv_markers_var, style='TCheckbutton').grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        ttk.Checkbutton(plotting_options_frame, text="Include Government Markers", variable=self.app_instance.include_gov_markers_var, style='TCheckbutton').grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        ttk.Checkbutton(plotting_options_frame, text="Include Report Markers", variable=self.app_instance.include_markers_var, style='TCheckbutton').grid(row=3, column=0, padx=5, pady=2, sticky="w")
+
+
+        # Frequency Band Selection Frame
+        band_selection_frame = ttk.LabelFrame(self, text="Frequency Band Selection", padding="10 10 10 10", style='Dark.TLabelframe')
+        band_selection_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        band_selection_frame.grid_columnconfigure(0, weight=1)
+        band_selection_frame.grid_rowconfigure(0, weight=1) # Allow checkbox frame to expand
+
+        # Inner frame for band checkboxes to allow scrolling if many bands
+        band_checkbox_frame = ttk.Frame(band_selection_frame, style='Dark.TFrame')
+        band_checkbox_frame.grid(row=0, column=0, sticky="nsew")
+        band_checkbox_frame.grid_columnconfigure(0, weight=1)
+
+        # Create checkboxes for each band
         for i, band_item in enumerate(self.app_instance.band_vars):
             cb = ttk.Checkbutton(band_checkbox_frame, text=band_item["band"]["Band Name"], variable=band_item["var"], style='TCheckbutton')
             cb.grid(row=i, column=0, sticky="w", padx=2, pady=1)
 
+        # Restore Defaults Button
+        restore_defaults_button = ttk.Button(self, text="Restore Default Settings", command=self._restore_default_settings, style='TButton')
+        restore_defaults_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+
         debug_print("ScanTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _browse_output_directory(self):
+        """Opens a dialog to select the scan output directory."""
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        initial_dir = self.app_instance.output_folder_var.get()
+        if not os.path.isdir(initial_dir):
+            initial_dir = os.getcwd() # Fallback to current working directory
+
+        folder_selected = filedialog.askdirectory(initialdir=initial_dir, title="Select Scan Output Directory")
+        if folder_selected:
+            self.app_instance.output_folder_var.set(folder_selected)
+            self.console_print_func(f"✅ Output directory set to: {folder_selected}")
+            debug_print(f"Output directory set to: {folder_selected}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("ℹ️ Output directory selection cancelled.")
+            debug_print("Output directory selection cancelled.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
 
     def _restore_default_settings(self):
         """
@@ -117,7 +167,8 @@ class ScanTab(ttk.Frame):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("Restoring default settings from ScanTab...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        restore_default_settings_logic(self.app_instance)
+        restore_default_settings_logic(self.app_instance, self.console_print_func)
+
 
     def _on_tab_selected(self, event):
         """
@@ -127,5 +178,8 @@ class ScanTab(ttk.Frame):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("ScanTab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        # Example: if you had data specific to this tab that needed refreshing
-        # self.load_scan_settings()
+        # Enable plot button if there's data to plot
+        # This logic is now primarily handled by update_connection_status_logic
+        # which is called by the ScanControlTab.
+        pass
+

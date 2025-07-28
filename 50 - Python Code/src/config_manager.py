@@ -59,9 +59,9 @@ def load_config(app_instance):
         'default_log_visa_commands_enabled': 'False',
         'default_window_geometry': '1400x780+100+100',
         'default_scan_directory': 'scan_data',
-        'default_scan_name': 'MyScan',
+        'default_scan_name': 'ThisIsMyScan',
         'default_num_scan_cycles': '1',
-        'default_include_markers': 'False', # New default setting
+        'default_include_markers': 'True', # New default setting
     }
 
     # Ensure all default settings are present

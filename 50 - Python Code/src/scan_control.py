@@ -1,0 +1,305 @@
+# src/scan_control.py
+import tkinter as tk
+from tkinter import ttk, filedialog
+import threading
+import time
+import os
+from datetime import datetime
+import pandas as pd
+import inspect
+
+# Import scan-related logic
+from utils.scan_instrument import scan_bands
+from utils.frequency_bands import MHZ_TO_HZ
+from utils.instrument_control import debug_print
+from src.plot_logic import plot_single_scan_data, _open_plot_in_browser
+from utils.averaging_utils import generate_current_cycle_average_csv_and_plot as generate_average_plot_logic
+
+
+class ScanControlTab(ttk.Frame):
+    """
+    A Tkinter Frame that provides controls for starting, pausing, and stopping spectrum scans.
+    """
+    def __init__(self, master=None, app_instance=None, console_print_func=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.app_instance = app_instance
+        self.console_print_func = console_print_func if console_print_func else print
+
+        self.scan_thread = None
+        self.is_scanning = False
+        self.is_paused = False # New state for pausing
+
+        self._create_widgets()
+        self.update_scan_button_states() # Set initial button states
+
+    def _create_widgets(self):
+        """
+        Creates and arranges the widgets for the Scan Control tab.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Creating ScanControlTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=1)
+
+        # Scan Control Buttons
+        self.start_button = ttk.Button(self, text="Start Scan", command=self._start_scan, style='Green.TButton')
+        self.start_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
+        self.pause_button = ttk.Button(self, text="Pause Scan", command=self._pause_scan, style='Orange.TButton', state=tk.DISABLED)
+        self.pause_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+        self.stop_button = ttk.Button(self, text="Stop Scan", command=self._stop_scan, style='Red.TButton', state=tk.DISABLED)
+        self.stop_button.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        debug_print("ScanControlTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _start_scan(self):
+        """
+        Starts the spectrum analyzer scan in a new thread to keep the GUI responsive.
+        Manages scan state and button enablement.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to start scan...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not self.app_instance.inst:
+            self.console_print_func("⚠️ Warning: Please connect to an instrument first.")
+            debug_print("Scan start failed: No instrument connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        if self.is_scanning and not self.is_paused:
+            self.console_print_func("ℹ️ Info: Scan is already in progress.")
+            debug_print("Scan already in progress.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+        
+        if self.is_paused:
+            self.is_paused = False
+            self.console_print_func("▶️ Scan resumed.")
+            debug_print("Scan resumed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.update_scan_button_states()
+            return
+
+        self.is_scanning = True
+        self.is_paused = False
+        self.scan_thread = threading.Thread(target=self._run_scan)
+        self.scan_thread.daemon = True # Allow the thread to exit with the main application
+        self.scan_thread.start()
+        self.console_print_func("▶️ Scan started...")
+        debug_print("Scan thread started.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        self.update_scan_button_states()
+
+
+    def _pause_scan(self):
+        """
+        Pauses the currently running scan.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to pause scan...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if self.is_scanning and not self.is_paused:
+            self.is_paused = True
+            self.console_print_func("⏸️ Scan paused.")
+            debug_print("Scan paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.update_scan_button_states()
+        elif self.is_paused:
+            self.console_print_func("ℹ️ Info: Scan is already paused.")
+            debug_print("Scan already paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("ℹ️ Info: No scan is currently running to pause.")
+            debug_print("No scan running to pause.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _stop_scan(self):
+        """
+        Stops the currently running scan.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to stop scan...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if self.is_scanning:
+            self.is_scanning = False # Signal the thread to stop
+            self.is_paused = False # Ensure paused state is reset
+            # Wait for the thread to finish (optional, but good for cleanup)
+            if self.scan_thread and self.scan_thread.is_alive():
+                self.scan_thread.join(timeout=1.0) # Wait for up to 1 second
+                if self.scan_thread.is_alive():
+                    self.console_print_func("⚠️ Warning: Scan thread did not terminate gracefully.")
+                    debug_print("Scan thread did not terminate gracefully.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.console_print_func("⏹️ Scan stopped by user.")
+            debug_print("Scan stopped by user.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("ℹ️ Info: No scan is currently running.")
+            debug_print("No scan is currently running.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        self.update_scan_button_states() # Re-enable/disable buttons after stopping
+
+    def _run_scan(self):
+        """
+        The main scan loop, run in a separate thread.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Entering _run_scan function.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        try:
+            selected_bands = [item["band"] for item in self.app_instance.band_vars if item["var"].get()]
+            if not selected_bands:
+                self.app_instance.after(0, lambda: self.console_print_func("⚠️ Warning: No frequency bands selected for scan."))
+                debug_print("No frequency bands selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                self.is_scanning = False
+                self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+                return
+
+            num_scan_cycles = int(self.app_instance.num_scan_cycles_var.get())
+            cycle_wait_time = float(self.app_instance.cycle_wait_time_seconds_var.get())
+            scan_name = self.app_instance.scan_name_var.get()
+            output_dir = self.app_instance.output_folder_var.get()
+            open_html_after_complete = self.app_instance.open_html_after_complete_var.get()
+            include_tv_markers = self.app_instance.include_tv_markers_var.get()
+            include_gov_markers = self.app_instance.include_gov_markers_var.get()
+            include_markers = self.app_instance.include_markers_var.get()
+
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
+            debug_print(f"Ensured output directory exists: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+            self.app_instance.collected_scans_dataframes = [] # Clear previous scan data
+            self.app_instance.last_scan_markers = [] # Clear previous markers
+
+            for cycle in range(num_scan_cycles):
+                while self.is_paused:
+                    self.app_instance.after(0, self.update_scan_button_states) # Ensure buttons reflect paused state
+                    time.sleep(0.1) # Small sleep to avoid busy-waiting
+
+                if not self.is_scanning: # Check again after potential pause
+                    self.app_instance.after(0, lambda c=cycle: self.console_print_func(f"Scan cycle {c + 1}/{num_scan_cycles} interrupted."))
+                    debug_print(f"Scan cycle {cycle + 1}/{num_scan_cycles} interrupted.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    break
+                
+                self.app_instance.after(0, lambda c=cycle: self.console_print_func(f"Scanning Cycle {c + 1}/{num_scan_cycles}..."))
+                debug_print(f"Starting scan cycle {cycle + 1}/{num_scan_cycles}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+                # Perform the actual scan
+                last_successful_band_index, scan_df, markers_data = scan_bands(
+                    self.app_instance.inst,
+                    selected_bands,
+                    self.app_instance.scan_rbw_hz_var,
+                    self.app_instance.rbw_segmentation_var,
+                    self.app_instance.reference_level_dbm_var,
+                    self.app_instance.freq_shift_hz_var,
+                    self.app_instance.max_hold_enabled_var,
+                    self.app_instance.high_sensitivity_var,
+                    self.app_instance.preamp_on_var,
+                    self.app_instance.cycle_wait_time_seconds_var,
+                    self.app_instance.maxhold_time_seconds_var,
+                    self.console_print_func, # Pass console_print_func
+                    self.app_instance # Pass app_instance_ref
+                )
+
+                if scan_df is not None and not scan_df.empty:
+                    self.app_instance.collected_scans_dataframes.append(scan_df)
+                    self.app_instance.last_scan_markers = markers_data # Store markers from this scan
+                    self.app_instance.after(0, lambda: self.console_print_func(f"✅ Data collected for cycle {cycle + 1}."))
+                    debug_print(f"Data collected for cycle {cycle + 1}. DataFrame shape: {scan_df.shape}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+                    # Generate and save single scan plot
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    plot_filename = os.path.join(output_dir, f"{scan_name}_Scan_{timestamp}.html")
+                    
+                    self.app_instance.after(0, lambda: self.console_print_func(f"Generating plot for cycle {cycle + 1}..."))
+                    debug_print(f"Generating plot for cycle {cycle + 1} to {plot_filename}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    
+                    fig, html_path = plot_single_scan_data(
+                        scan_df,
+                        f"{scan_name} - Cycle {cycle + 1} - {timestamp}",
+                        include_tv_markers,
+                        include_gov_markers,
+                        include_markers, # Pass the include_markers flag
+                        output_html_path=plot_filename,
+                        console_print_func=self.console_print_func
+                    )
+                    if fig:
+                        self.app_instance.after(0, lambda: self.console_print_func(f"✅ Plot saved to: {html_path}"))
+                        debug_print(f"Plot saved to: {html_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                        # Update last plot path in plotting tab if it exists
+                        if hasattr(self.app_instance, 'plotting_tab') and hasattr(self.app_instance.plotting_tab, 'last_plot_path'):
+                            self.app_instance.plotting_tab.last_plot_path = html_path
+                        if open_html_after_complete:
+                            self.app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p, self.console_print_func))
+                    else:
+                        self.app_instance.after(0, lambda: self.console_print_func(f"🚫 Failed to generate plot for cycle {cycle + 1}."))
+                        debug_print(f"Failed to generate plot for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                else:
+                    self.app_instance.after(0, lambda: self.console_print_func(f"🚫 No data collected for cycle {cycle + 1}."))
+                    debug_print(f"No data collected for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+                if self.is_scanning and cycle < num_scan_cycles - 1:
+                    self.app_instance.after(0, lambda: self.console_print_func(f"Waiting {cycle_wait_time} seconds before next cycle..."))
+                    debug_print(f"Waiting {cycle_wait_time} seconds before next cycle.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    time.sleep(cycle_wait_time)
+
+            self.is_scanning = False
+            self.is_paused = False # Ensure paused state is reset
+            self.app_instance.after(0, lambda: self.console_print_func("✅ Scan complete."))
+            debug_print("Scan complete. Re-enabling buttons.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+            # After scan, if there's collected data, update the markers tab
+            if self.app_instance.last_scan_markers:
+                if self.app_instance.last_scan_markers: # Check if list is not empty
+                    headers = list(self.app_instance.last_scan_markers[0].keys())
+                    if hasattr(self.app_instance, 'markers_tab'):
+                        self.app_instance.after(0, lambda h=headers, r=self.app_instance.last_scan_markers: self.app_instance.markers_tab.update_markers_data(h, r))
+                        self.app_instance.after(0, lambda: self.console_print_func(f"📊 Markers data updated in Markers tab with {len(self.app_instance.last_scan_markers)} entries."))
+                        debug_print(f"Markers data updated in Markers tab with {len(self.app_instance.last_scan_markers)} entries.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                else:
+                    self.app_instance.after(0, lambda: self.console_print_func("ℹ️ No markers extracted during scan to update Markers tab."))
+                    debug_print("No markers extracted during scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            
+            self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+
+        except Exception as e:
+            self.is_scanning = False
+            self.is_paused = False
+            self.app_instance.after(0, lambda: self.console_print_func(f"❌ An error occurred during scan: {e}"))
+            debug_print(f"Error during scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+
+    def update_scan_button_states(self):
+        """
+        Updates the state of the Start, Pause, and Stop buttons based on scan status.
+        This function should be called from the main thread using app_instance.after().
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Updating scan button states. Scanning: {self.is_scanning}, Paused: {self.is_paused}, Connected: {self.app_instance.inst is not None}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if self.app_instance.inst is None:
+            # Not connected: all scan buttons disabled
+            self.start_button.config(state=tk.DISABLED)
+            self.pause_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.DISABLED)
+        elif self.is_scanning and not self.is_paused:
+            # Scanning: Start disabled, Pause enabled, Stop enabled
+            self.start_button.config(state=tk.DISABLED)
+            self.pause_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.NORMAL)
+        elif self.is_scanning and self.is_paused:
+            # Paused: Start enabled (to resume), Pause disabled, Stop enabled
+            self.start_button.config(state=tk.NORMAL) # To resume
+            self.pause_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.NORMAL)
+        else:
+            # Connected but not scanning: Start enabled, Pause disabled, Stop disabled
+            self.start_button.config(state=tk.NORMAL)
+            self.pause_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.DISABLED)
+
+        # Update other relevant buttons in the main app and other tabs
+        # This is crucial for maintaining consistent UI state across the application.
+        # Call the app_instance's update_connection_status to propagate changes
+        self.app_instance.update_connection_status(self.app_instance.inst is not None)
+

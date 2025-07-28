@@ -31,365 +31,281 @@ def start_scan_thread_logic(app_instance):
         app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: Please connect to an instrument first."))
         debug_print("Scan start failed: No instrument connected.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
         return
-    
-    if app_instance.scanning:
-        app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: A scan is already running."))
-        debug_print("Scan start failed: Scan already in progress.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+    if app_instance.is_scanning:
+        app_instance.after(0, lambda: app_instance._print_to_gui_console("ℹ️ Info: Scan is already in progress."))
+        debug_print("Scan already in progress.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
         return
 
-    # Save configuration when scan starts (this includes scan name and output folder)
-    save_config(app_instance) # Corrected function call
-    app_instance.after(0, lambda: app_instance._print_to_gui_console("Configuration saved before scan."))
-    debug_print("Configuration saved before scan.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-
-    app_instance.scanning = True
-    app_instance.stop_scan_event.clear()
-    app_instance.pause_scan_event.clear()
-
-    # Disable relevant buttons during scan
+    # Disable buttons during scan
     app_instance.start_scan_button.config(state=tk.DISABLED)
-    app_instance.connect_button.config(state=tk.DISABLED) # Disable connect button
-    app_instance.disconnect_button.config(state=tk.DISABLED) # Disable disconnect button
-    app_instance.apply_button.config(state=tk.DISABLED) # Disable apply settings button
+    app_instance.stop_scan_button.config(state=tk.NORMAL)
     
-    # Disable load preset button via preset_files_tab
-    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
-        app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
-    
-    # Disable query presets button
+    # Disable buttons in InstrumentTab
+    if hasattr(app_instance, 'instrument_tab'):
+        app_instance.instrument_tab.connect_button.config(state=tk.DISABLED)
+        app_instance.instrument_tab.disconnect_button.config(state=tk.DISABLED)
+        app_instance.instrument_tab.apply_settings_button.config(state=tk.DISABLED) # Updated button name
+        app_instance.instrument_tab.query_settings_button.config(state=tk.DISABLED)
+
+    # Disable relevant buttons in other tabs
     if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
         app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)
-    
-    # Disable plot button
+    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+        app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
     if hasattr(app_instance, 'plotting_tab') and hasattr(app_instance.plotting_tab, 'plot_button'):
         app_instance.plotting_tab.plot_button.config(state=tk.DISABLED)
+    if hasattr(app_instance, 'plotting_tab') and hasattr(app_instance.plotting_tab, 'plot_average_button'):
+        app_instance.plotting_tab.plot_average_button.config(state=tk.DISABLED)
 
-    app_instance.pause_scan_button.config(state=tk.NORMAL)
-    app_instance.stop_scan_button.config(state=tk.NORMAL)
 
-    app_instance.after(0, lambda: app_instance._print_to_gui_console("Starting scan..."))
-
-    # Get selected bands
-    selected_bands = [
-        item["band"] for item in app_instance.band_vars if item["var"].get()
-    ]
-    if not selected_bands:
-        app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: No bands selected for scan. Please select at least one band."))
-        debug_print("No bands selected for scan.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-        _reset_scan_buttons(app_instance)
-        return
-
-    # Retrieve settings from Tkinter variables
-    try:
-        scan_rbw_hz = float(app_instance.scan_rbw_hz_var.get())
-        rbw_step_size_hz = float(app_instance.rbw_step_size_hz_var.get())
-        maxhold_time_seconds = float(app_instance.maxhold_time_seconds_var.get())
-        maxhold_enabled = app_instance.maxhold_enabled_var.get()
-        high_sensitivity = app_instance.high_sensitivity_var.get()
-        preamp_on = app_instance.preamp_on_var.get()
-        scan_rbw_segmentation = float(app_instance.scan_rbw_segmentation_var.get())
-        num_scan_cycles = app_instance.num_scan_cycles_var.get()
-        output_folder = app_instance.output_folder_var.get()
-        scan_name = app_instance.scan_name_var.get()
-
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-            app_instance.after(0, lambda: app_instance._print_to_gui_console(f"Created output directory: {output_folder}"))
-            debug_print(f"Created output directory: {output_folder}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-
-    except ValueError as e:
-        app_instance.after(0, lambda: app_instance._print_to_gui_console(f"❌ Error: Invalid input for scan settings: {e}"))
-        debug_print(f"Invalid input for scan settings: {e}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-        _reset_scan_buttons(app_instance)
-        return
-
-    app_instance.collected_scans_dataframes = [] # Clear previous scan data
-
-    # Start the scan in a new thread
-    app_instance.scan_thread = threading.Thread(
-        target=_run_scan,
-        args=(
-            app_instance,
-            selected_bands,
-            scan_rbw_hz,
-            rbw_step_size_hz,
-            maxhold_time_seconds,
-            output_folder,
-            scan_name,
-            app_instance.stop_scan_event,
-            app_instance.pause_scan_event,
-            app_instance._update_console_text, # Pass the direct update function
-            maxhold_enabled,
-            high_sensitivity,
-            preamp_on,
-            scan_rbw_segmentation,
-            num_scan_cycles,
-            app_instance._print_to_gui_console # Pass console_print_func
-        )
-    )
-    app_instance.scan_thread.daemon = True # Allow the thread to exit with the main app
+    app_instance.is_scanning = True
+    app_instance.scan_thread = threading.Thread(target=_run_scan, args=(app_instance,))
+    app_instance.scan_thread.daemon = True # Allow the thread to exit with the main application
     app_instance.scan_thread.start()
-
-
-def _run_scan(app_instance, selected_bands, scan_rbw_hz, rbw_step_size_hz, maxhold_time_seconds,
-              output_folder, scan_name, stop_event, pause_event, update_console_line_func,
-              maxhold_enabled, high_sensitivity, preamp_on, scan_rbw_segmentation, num_scan_cycles, console_print_func):
-    """
-    Internal function to run the scan cycles. Designed to be run in a separate thread.
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print("Executing _run_scan in separate thread...", file=current_file, function=current_function, console_print_func=console_print_func)
-
-    try:
-        for cycle_num in range(num_scan_cycles):
-            if stop_event.is_set():
-                console_print_func(f"Scan stopped during cycle {cycle_num + 1}.")
-                break
-
-            while pause_event.is_set():
-                update_console_line_func("Scan paused. Press 'Resume Scan' to continue.")
-                time.sleep(0.5)
-                if stop_event.is_set():
-                    console_print_func(f"Scan stopped during pause in cycle {cycle_num + 1}.")
-                    break
-            if stop_event.is_set():
-                break
-
-            console_print_func(f"\n--- Starting Scan Cycle {cycle_num + 1}/{num_scan_cycles} ---")
-            debug_print(f"Starting Scan Cycle {cycle_num + 1}", file=current_file, function=current_function, console_print_func=console_print_func)
-
-            last_successful_band_index, output_csv_filename, markers_data = scan_bands( # Added markers_data to return
-                app_instance_ref=app_instance, # Pass the app_instance itself
-                inst=app_instance.inst,
-                selected_bands=selected_bands,
-                rbw_hz=scan_rbw_hz, # Corrected to use local variable
-                ref_level_dbm=float(app_instance.reference_level_dbm_var.get()), # Corrected to use Tkinter var
-                freq_shift_hz=float(app_instance.freq_shift_hz_var.get()), # Corrected to use Tkinter var
-                maxhold_enabled=maxhold_enabled,
-                high_sensitivity=high_sensitivity,
-                preamp_on=preamp_on,
-                rbw_step_size_hz=rbw_step_size_hz, # Corrected to use local variable
-                cycle_wait_time_seconds=float(app_instance.cycle_wait_time_seconds_var.get()), # Corrected to use Tkinter var
-                scan_name=scan_name,
-                output_folder=output_folder,
-                stop_event=stop_event,
-                pause_event=pause_event,
-                log_visa_commands_enabled=app_instance.log_visa_commands_enabled_var.get(),
-                general_debug_enabled=app_instance.general_debug_enabled_var.get(),
-                app_console_update_func=update_console_line_func, # Pass the console update method
-                scan_rbw_segmentation=scan_rbw_segmentation # Pass scan_rbw_segmentation
-            )
-
-            if output_csv_filename:
-                try:
-                    # Load the newly created CSV into a DataFrame
-                    df = pd.read_csv(output_csv_filename)
-                    app_instance.collected_scans_dataframes.append(df)
-                    app_instance.last_scan_markers = markers_data # Store markers for plotting
-                    console_print_func(f"Collected data from '{os.path.basename(output_csv_filename)}' for averaging.")
-                    debug_print(f"Added {os.path.basename(output_csv_filename)} to collected_scans_dataframes.", file=current_file, function=current_function, console_print_func=console_print_func)
-
-                    # Generate single scan plot for the current cycle
-                    current_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    # Filename includes cycle number and timestamp
-                    plot_filename = os.path.join(output_folder, f"{scan_name}_Cycle{cycle_num}_{current_time_str}_scan.html")
-
-                    fig, plot_html_path_return = plot_single_scan_data(
-                        df, # Use the DataFrame for the current cycle
-                        f"{scan_name} - Cycle {cycle_num} Scan",
-                        output_html_path=plot_filename,
-                        include_tv_markers=app_instance.include_tv_markers_var.get(),
-                        include_gov_markers=app_instance.include_gov_markers_var.get(),
-                        include_markers=app_instance.include_markers_var.get(),
-                        last_scan_markers=app_instance.last_scan_markers
-                    )
-                    if fig and app_instance.open_html_after_complete_var.get():
-                        _open_plot_in_browser(plot_html_path_return)
-
-                except Exception as e:
-                    console_print_func(f"❌ Error loading scan data into DataFrame or plotting: {e}")
-                    debug_print(f"Error loading CSV to DataFrame or plotting: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"🚫 No data file generated for cycle {cycle_num}.")
-                debug_print(f"No data file for cycle {cycle_num}.", file=current_file, function=current_function, console_print_func=console_print_func)
-
-            # Wait time between cycles (if not the last cycle and not stopped)
-            if cycle_num < num_scan_cycles and not stop_event.is_set():
-                wait_time = float(app_instance.cycle_wait_time_seconds_var.get()) # Corrected to use Tkinter var
-                console_print_func(f"Cycle {cycle_num} complete. Waiting {wait_time} seconds before next cycle...")
-                time.sleep(wait_time)
-
-    except pyvisa.errors.VisaIOError as e:
-        console_print_func(f"❌ Error: VISA error during scan: {e}")
-        debug_print(f"VISA Error during scan: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-    except Exception as e:
-        console_print_func(f"❌ Error: An unexpected error occurred during scan: {e}")
-        debug_print(f"Unexpected error during scan: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-    finally:
-        app_instance.scanning = False
-        app_instance.after(0, lambda: console_print_func("\n--- Scan process finished ---"))
-        debug_print("Scan process finished.", file=current_file, function=current_function, console_print_func=console_print_func)
-        app_instance.after(0, lambda: _reset_scan_buttons(app_instance)) # Reset buttons on main thread
-
-        # After scan, if data was collected, generate the averaged plot
-        if app_instance.collected_scans_dataframes:
-            app_instance.after(0, lambda: generate_average_plot_logic(
-                app_instance.collected_scans_dataframes,
-                app_instance.scan_name_var,
-                app_instance.output_folder_var,
-                app_instance.open_html_after_complete_var,
-                app_instance.include_tv_markers_var,
-                app_instance.include_gov_markers_var,
-                app_instance.include_markers_var,
-                app_instance._print_to_gui_console # Pass console_print_func
-            ))
-        else:
-            app_instance.after(0, lambda: console_print_func("🚫 No data collected across all cycles for plotting."))
-        
-        # Ensure instrument settings are queried and updated after scan completes
-        if app_instance.inst:
-            query_current_instrument_settings_logic(app_instance, console_print_func) # Call the logic function
-
-
-def pause_scan_logic(app_instance):
-    """
-    Toggles the pause state of the scan.
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    if app_instance.scanning:
-        if app_instance.pause_scan_event.is_set():
-            app_instance.pause_scan_event.clear()
-            app_instance.pause_scan_button.config(text="Pause Scan", style='Orange.TButton')
-            app_instance.after(0, lambda: app_instance._print_to_gui_console("Scan resumed."))
-            debug_print("Scan resumed.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-        else:
-            app_instance.pause_scan_event.set()
-            app_instance.pause_scan_button.config(text="Resume Scan", style='Green.TButton')
-            app_instance.after(0, lambda: app_instance._print_to_gui_console("Scan paused."))
-            debug_print("Scan paused.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-    else:
-        app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: No scan is currently running to pause/resume."))
-        debug_print("No scan to pause/resume.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-
-
-def resume_scan_logic(app_instance):
-    """
-    Resumes a paused scan by clearing the pause event.
-    This function simply calls pause_scan_logic, which handles the toggle.
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print("Attempting to resume scan...", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-    pause_scan_logic(app_instance) # Call the existing toggle function
+    app_instance.after(0, lambda: app_instance._print_to_gui_console("▶️ Scan started..."))
+    debug_print("Scan thread started.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
 
 
 def stop_scan_logic(app_instance):
     """
-    Signals the scan thread to stop.
+    Stops the currently running scan.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    if app_instance.scanning:
-        app_instance.stop_scan_event.set()
-        app_instance.pause_scan_event.clear() # Clear pause in case it was paused
-        app_instance.after(0, lambda: app_instance._print_to_gui_console("Stopping scan... Please wait for current operation to complete."))
-        debug_print("Stop scan event set.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-        # Buttons will be reset by _run_scan's finally block
+    debug_print("Attempting to stop scan...", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+    if app_instance.is_scanning:
+        app_instance.is_scanning = False # Signal the thread to stop
+        # Wait for the thread to finish (optional, but good for cleanup)
+        if app_instance.scan_thread and app_instance.scan_thread.is_alive():
+            app_instance.scan_thread.join(timeout=1.0) # Wait for up to 1 second
+            if app_instance.scan_thread.is_alive():
+                app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: Scan thread did not terminate gracefully."))
+                debug_print("Scan thread did not terminate gracefully.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+        app_instance.after(0, lambda: app_instance._print_to_gui_console("⏹️ Scan stopped by user."))
+        debug_print("Scan stopped by user.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
     else:
-        app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: No scan is currently running to stop."))
-        debug_print("No scan to stop.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+        app_instance.after(0, lambda: app_instance._print_to_gui_console("ℹ️ Info: No scan is currently running."))
+        debug_print("No scan is currently running.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+    
+    # Re-enable buttons after stopping
+    # Pass the InstrumentTab buttons directly
+    if hasattr(app_instance, 'instrument_tab'):
+        app_instance.after(0, lambda: update_connection_status_logic(
+            app_instance,
+            True, # Assuming connection is still active after stopping scan
+            app_instance._print_to_gui_console,
+            connect_btn=app_instance.instrument_tab.connect_button,
+            disconnect_btn=app_instance.instrument_tab.disconnect_button,
+            apply_btn=app_instance.instrument_tab.apply_settings_button,
+            query_btn=app_instance.instrument_tab.query_settings_button
+        ))
 
 
-def _reset_scan_buttons(app_instance):
+def _run_scan(app_instance):
     """
-    Resets the state of scan control buttons after a scan completes or is stopped.
-    This function should be called on the main Tkinter thread using app_instance.after().
+    The main scan loop, run in a separate thread.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    debug_print("Resetting scan buttons...", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-    app_instance.start_scan_button.config(state=tk.NORMAL)
-    app_instance.pause_scan_button.config(state=tk.DISABLED, text="Pause Scan", style='Orange.TButton')
-    app_instance.stop_scan_button.config(state=tk.DISABLED)
-    
-    # Re-enable disconnect and apply buttons
-    app_instance.disconnect_button.config(state=tk.NORMAL)
-    app_instance.apply_button.config(state=tk.NORMAL)
-    
-    # Re-enable load preset button based on instrument model, accessing via preset_files_tab
-    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
-        if app_instance.inst and app_instance.instrument_model != "N9340B":
-            app_instance.preset_files_tab.load_preset_button.config(state=tk.NORMAL)
-        else:
-            app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED) # Disable if no instrument or N9340B
-    
-    # Re-enable query presets button
+    debug_print("Entering _run_scan function.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+    try:
+        selected_bands = [item["band"] for item in app_instance.band_vars if item["var"].get()]
+        if not selected_bands:
+            app_instance.after(0, lambda: app_instance._print_to_gui_console("⚠️ Warning: No frequency bands selected for scan."))
+            debug_print("No frequency bands selected.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+            app_instance.is_scanning = False
+            # Re-enable buttons
+            if hasattr(app_instance, 'instrument_tab'):
+                app_instance.after(0, lambda: update_connection_status_logic(
+                    app_instance, True, app_instance._print_to_gui_console,
+                    connect_btn=app_instance.instrument_tab.connect_button,
+                    disconnect_btn=app_instance.instrument_tab.disconnect_button,
+                    apply_btn=app_instance.instrument_tab.apply_settings_button,
+                    query_btn=app_instance.instrument_tab.query_settings_button
+                ))
+            return
+
+        num_scan_cycles = int(app_instance.num_scan_cycles_var.get())
+        cycle_wait_time = float(app_instance.cycle_wait_time_seconds_var.get()) # Use correct var name
+        scan_name = app_instance.scan_name_var.get()
+        output_dir = app_instance.output_folder_var.get()
+        open_html_after_complete = app_instance.open_html_after_complete_var.get()
+        include_tv_markers = app_instance.include_tv_markers_var.get()
+        include_gov_markers = app_instance.include_gov_markers_var.get()
+        include_markers = app_instance.include_markers_var.get() # Get state of include_markers checkbox
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        debug_print(f"Ensured output directory exists: {output_dir}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+        app_instance.collected_scans_dataframes = [] # Clear previous scan data
+        app_instance.last_scan_markers = [] # Clear previous markers
+
+        for cycle in range(num_scan_cycles):
+            if not app_instance.is_scanning:
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"Scan cycle {cycle + 1}/{num_scan_cycles} interrupted."))
+                debug_print(f"Scan cycle {cycle + 1}/{num_scan_cycles} interrupted.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+                break
+            
+            app_instance.after(0, lambda c=cycle: app_instance._print_to_gui_console(f"Scanning Cycle {c + 1}/{num_scan_cycles}..."))
+            debug_print(f"Starting scan cycle {cycle + 1}/{num_scan_cycles}.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+            # Perform the actual scan
+            last_successful_band_index, scan_df, markers_data = scan_bands(
+                app_instance.inst,
+                selected_bands,
+                app_instance.scan_rbw_hz_var, # Use correct var name
+                app_instance.rbw_segmentation_var,
+                app_instance.reference_level_dbm_var, # Use correct var name
+                app_instance.freq_shift_hz_var, # Use correct var name
+                app_instance.max_hold_enabled_var,
+                app_instance.high_sensitivity_var,
+                app_instance.preamp_on_var,
+                app_instance.cycle_wait_time_seconds_var, # Pass cycle_wait_time_seconds_var
+                app_instance.maxhold_time_seconds_var,    # Pass maxhold_time_seconds_var
+                app_instance._print_to_gui_console, # Pass console_print_func
+                app_instance # Pass app_instance_ref
+            )
+
+            if scan_df is not None and not scan_df.empty:
+                app_instance.collected_scans_dataframes.append(scan_df)
+                app_instance.last_scan_markers = markers_data # Store markers from this scan
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"✅ Data collected for cycle {cycle + 1}."))
+                debug_print(f"Data collected for cycle {cycle + 1}. DataFrame shape: {scan_df.shape}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+                # Generate and save single scan plot
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                plot_filename = os.path.join(output_dir, f"{scan_name}_Scan_{timestamp}.html")
+                
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"Generating plot for cycle {cycle + 1}..."))
+                debug_print(f"Generating plot for cycle {cycle + 1} to {plot_filename}.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+                
+                fig, html_path = plot_single_scan_data(
+                    scan_df,
+                    f"{scan_name} - Cycle {cycle + 1} - {timestamp}",
+                    include_tv_markers,
+                    include_gov_markers,
+                    include_markers, # Pass the include_markers flag
+                    output_html_path=plot_filename,
+                    console_print_func=app_instance._print_to_gui_console
+                )
+                if fig:
+                    app_instance.after(0, lambda: app_instance._print_to_gui_console(f"✅ Plot saved to: {html_path}"))
+                    debug_print(f"Plot saved to: {html_path}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+                    app_instance.plotting_tab.last_plot_path = html_path # Update last plot path in plotting tab
+                    if open_html_after_complete:
+                        app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p, app_instance._print_to_gui_console))
+                else:
+                    app_instance.after(0, lambda: app_instance._print_to_gui_console(f"🚫 Failed to generate plot for cycle {cycle + 1}."))
+                    debug_print(f"Failed to generate plot for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+            else:
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"🚫 No data collected for cycle {cycle + 1}."))
+                debug_print(f"No data collected for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+            if app_instance.is_scanning and cycle < num_scan_cycles - 1:
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"Waiting {cycle_wait_time} seconds before next cycle..."))
+                debug_print(f"Waiting {cycle_wait_time} seconds before next cycle.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+                time.sleep(cycle_wait_time)
+
+        app_instance.is_scanning = False
+        app_instance.after(0, lambda: app_instance._print_to_gui_console("✅ Scan complete."))
+        debug_print("Scan complete. Re-enabling buttons.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+
+        # After scan, if there's collected data, update the markers tab
+        if app_instance.last_scan_markers:
+            # Assuming markers_data is a list of dicts, and plot_single_scan_data returns it correctly
+            # The headers might need to be inferred or passed explicitly if not consistent
+            if app_instance.last_scan_markers: # Check if list is not empty
+                # Assuming all markers have the same keys, take headers from the first marker
+                headers = list(app_instance.last_scan_markers[0].keys())
+                app_instance.after(0, lambda h=headers, r=app_instance.last_scan_markers: app_instance.markers_tab.update_markers_data(h, r))
+                app_instance.after(0, lambda: app_instance._print_to_gui_console(f"📊 Markers data updated in Markers tab with {len(app_instance.last_scan_markers)} entries."))
+                debug_print(f"Markers data updated in Markers tab with {len(app_instance.last_scan_markers)} entries.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+            else:
+                app_instance.after(0, lambda: app_instance._print_to_gui_console("ℹ️ No markers extracted during scan to update Markers tab."))
+                debug_print("No markers extracted during scan.", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+        
+        # Re-enable buttons after scan completes
+        # Pass the InstrumentTab buttons directly
+        if hasattr(app_instance, 'instrument_tab'):
+            app_instance.after(0, lambda: update_connection_status_logic(
+                app_instance,
+                True, # Assuming connection is still active after stopping scan
+                app_instance._print_to_gui_console,
+                connect_btn=app_instance.instrument_tab.connect_button,
+                disconnect_btn=app_instance.instrument_tab.disconnect_button,
+                apply_btn=app_instance.instrument_tab.apply_settings_button,
+                query_btn=app_instance.instrument_tab.query_settings_button
+            ))
+
+    except Exception as e:
+        app_instance.is_scanning = False
+        app_instance.after(0, lambda: app_instance._print_to_gui_console(f"❌ An error occurred during scan: {e}"))
+        debug_print(f"Error during scan: {e}", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
+        # Re-enable buttons on error
+        if hasattr(app_instance, 'instrument_tab'):
+            app_instance.after(0, lambda: update_connection_status_logic(
+                app_instance,
+                True, # Assuming connection is still active despite error
+                app_instance._print_to_gui_console,
+                connect_btn=app_instance.instrument_tab.connect_button,
+                disconnect_btn=app_instance.instrument_tab.disconnect_button,
+                apply_btn=app_instance.instrument_tab.apply_settings_button,
+                query_btn=app_instance.instrument_tab.query_settings_button
+            ))
+
+
+def update_connection_status_logic(app_instance, is_connected, console_print_func,
+                                   connect_btn=None, disconnect_btn=None,
+                                   apply_btn=None, query_btn=None):
+    """
+    Updates the GUI elements based on the instrument connection status.
+    This logic is centralized here.
+    Accepts specific button widgets for InstrumentTab.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print(f"Updating connection status GUI elements. Connected: {is_connected}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    # Main scan control buttons
+    app_instance.start_scan_button.config(state=tk.NORMAL if is_connected and not app_instance.is_scanning else tk.DISABLED)
+    app_instance.stop_scan_button.config(state=tk.NORMAL if is_connected and app_instance.is_scanning else tk.DISABLED)
+
+    # InstrumentTab specific buttons
+    if connect_btn and disconnect_btn and apply_btn and query_btn:
+        if is_connected:
+            connect_btn.grid_remove() # Hide connect button
+            disconnect_btn.config(state=tk.NORMAL)
+            apply_btn.config(state=tk.NORMAL)
+            query_btn.config(state=tk.NORMAL)
+        else: # Instrument is disconnected
+            connect_btn.grid() # Show connect button
+            disconnect_btn.config(state=tk.DISABLED)
+            apply_btn.config(state=tk.DISABLED)
+            query_btn.config(state=tk.DISABLED)
+    else:
+        debug_print("InstrumentTab buttons not provided to update_connection_status_logic.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+
+    # Preset tab buttons
     if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
-        if app_instance.inst:
-            app_instance.preset_files_tab.query_presets_button.config(state=tk.NORMAL)
-        else:
-            app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)
-        
-    # Enable plot button if there's data to plot
+        app_instance.preset_files_tab.query_presets_button.config(state=tk.NORMAL if is_connected else tk.DISABLED)
+    if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
+         app_instance.preset_files_tab.load_preset_button.config(state=tk.NORMAL if is_connected else tk.DISABLED)
+    
+    # Plotting tab buttons
     if hasattr(app_instance, 'plotting_tab') and hasattr(app_instance.plotting_tab, 'plot_button'):
-        if app_instance.collected_scans_dataframes:
+        # Plot buttons should be enabled if there's data OR if connected (to allow plotting new data)
+        # For simplicity, let's enable if connected and not scanning, or if data exists.
+        # The plotting tab itself should manage its button states more precisely based on data.
+        # Here, we just ensure they are disabled if no instrument.
+        if is_connected and not app_instance.is_scanning:
             app_instance.plotting_tab.plot_button.config(state=tk.NORMAL)
+            app_instance.plotting_tab.plot_average_button.config(state=tk.NORMAL)
         else:
             app_instance.plotting_tab.plot_button.config(state=tk.DISABLED)
-
-    # Ensure connect button visibility is correct after scan
-    _update_button_states_on_connection(app_instance)
-
-
-def _update_button_states_on_connection(app_instance):
-    """
-    Updates the state of connection-related buttons based on the instrument's connection status.
-    This function should be called on the main Tkinter thread using app_instance.after().
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print("Updating button states based on connection...", file=current_file, function=current_function, console_print_func=app_instance._print_to_gui_console)
-
-    if app_instance.inst: # Instrument is connected
-        app_instance.connect_button.grid_forget() # Hide connect button
-        app_instance.disconnect_button.config(state=tk.NORMAL)
-        # Ensure disconnect button is visible if it was hidden
-        # This line is redundant if the button is already gridded, but harmless.
-        # app_instance.disconnect_button.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-
-        app_instance.apply_button.config(state=tk.NORMAL)
-        # Enable load preset button based on instrument model, accessing via preset_files_tab
-        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
-            if app_instance.instrument_model != "N9340B":
-                app_instance.preset_files_tab.load_preset_button.config(state=tk.NORMAL)
-            else:
-                app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
-        
-        # Enable query presets button
-        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
-            app_instance.preset_files_tab.query_presets_button.config(state=tk.NORMAL)
-        
-        # Enable plot button if there's data to plot
-        if hasattr(app_instance, 'plotting_tab') and hasattr(app_instance.plotting_tab, 'plot_button'):
-            if app_instance.collected_scans_dataframes:
-                app_instance.plotting_tab.plot_button.config(state=tk.NORMAL)
-            else:
-                app_instance.plotting_tab.plot_button.config(state=tk.DISABLED)
-
-    else: # Instrument is disconnected
-        app_instance.connect_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew") # Show connect button
-        app_instance.disconnect_button.config(state=tk.DISABLED)
-        app_instance.apply_button.config(state=tk.DISABLED)
-        # Disable load preset button if no instrument, accessing via preset_files_tab
-        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'load_preset_button'):
-            app_instance.preset_files_tab.load_preset_button.config(state=tk.DISABLED)
-        # Disable query presets button
-        if hasattr(app_instance, 'preset_files_tab') and hasattr(app_instance.preset_files_tab, 'query_presets_button'):
-            app_instance.preset_files_tab.query_presets_button.config(state=tk.DISABLED)
-        
-        # Disable plot button if no instrument
-        if hasattr(app_instance, 'plotting_tab') and hasattr(app_instance.plotting_tab, 'plot_button'):
-            app_instance.plotting_tab.plot_button.config(state=tk.DISABLED)
+            app_instance.plotting_tab.plot_average_button.config(state=tk.DISABLED)
 

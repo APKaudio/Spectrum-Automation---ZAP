@@ -1,16 +1,18 @@
-# src/marker_logic.py
+# src/marker_tab.py
 import tkinter as tk
-# from tkinter import messagebox, scrolledtext, filedialog, ttk # Removed messagebox
 from tkinter import scrolledtext, filedialog, ttk # Keep other imports
 import os
 import csv
 import inspect
 import json # Import json for serializing/deserializing row data
 
-# Import instrument_logic for setting focus frequency
-from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic
+# Import set_marker_and_trace_modes_logic from marker_utils
+from utils.marker_utils import set_marker_and_trace_modes_logic
 from utils.instrument_control import debug_print # Import debug_print
 from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
+
+# Import new marker utility functions and constants
+from utils.marker_utils import SPAN_OPTIONS, set_span_logic
 
 
 # Removed the hardcoded MARKERS_FILE_PATH, it will now be determined dynamically
@@ -50,6 +52,16 @@ class MarkersDisplayTab(ttk.Frame):
         self.last_selected_span_button = None # To keep track of the last selected span button
         self.current_span_hz = None # To store the currently active span value in Hz
 
+        # Trace mode state variables
+        self.live_mode_var = tk.BooleanVar(self, value=True) # Default to Live
+        self.max_hold_mode_var = tk.BooleanVar(self, value=False)
+        self.min_hold_mode_var = tk.BooleanVar(self, value=False)
+        self.trace_mode_buttons = {} # To store references to trace mode buttons
+
+        # New: For managing selected device button state across selections
+        self.current_selected_device_button = None # Reference to the currently active button widget
+        self.selected_device_unique_id = None # Unique ID of the currently selected device
+
         self._create_widgets()
 
 
@@ -73,6 +85,8 @@ class MarkersDisplayTab(ttk.Frame):
         main_split_frame.grid_columnconfigure(1, weight=1) # Right half
         main_split_frame.grid_rowconfigure(0, weight=1) # Top row for treeview and device buttons
         main_split_frame.grid_rowconfigure(1, weight=0) # Bottom row for span controls (fixed height)
+        main_split_frame.grid_rowconfigure(2, weight=0) # Bottom row for trace mode controls (fixed height)
+
 
         # Left Half: Treeview for Zones and Groups
         tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5), style='Dark.TLabelframe') 
@@ -118,37 +132,66 @@ class MarkersDisplayTab(ttk.Frame):
         # Initially populate with an empty list to clear any previous buttons
         self._populate_device_buttons([]) 
 
-        # --- New: Span Control Buttons Frame (Bottom of main_split_frame) ---
-        span_control_frame = ttk.Frame(main_split_frame, height=50, style="Markers.TFrame") # Fixed height
+        # --- Span Control Buttons Frame (Bottom of main_split_frame) ---
+        span_control_frame = ttk.LabelFrame(main_split_frame, text="Span for Device", padding=(5,5,5,5), style="Dark.TLabelframe") # LabelFrame with title
         span_control_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        span_control_frame.grid_propagate(False) # Prevent frame from resizing to fit contents
 
         # Configure columns for the buttons within span_control_frame
-        for i in range(5): # 5 buttons
+        for i in range(len(SPAN_OPTIONS)): # Use length of SPAN_OPTIONS for column config
             span_control_frame.grid_columnconfigure(i, weight=1)
-
-        # Define span values in Hz
-        self.span_options = {
-            "Ultra Wide": 10_000_000, # 10 MHz
-            "Wide": 5_000_000,     # 5 MHz
-            "Normal": 1_000_000,   # 1 MHz
-            "Tight": 500_000,      # 500 KHz
-            "Microscope": 250_000  # 250 KHz
-        }
 
         # Create buttons
         self.span_buttons = {}
         col = 0
-        for text, span_hz in self.span_options.items():
-            btn = ttk.Button(span_control_frame, text=text, style="Markers.TButton", # Default style
-                             command=lambda s=span_hz, b=None, txt=text: self._on_span_button_click(s, b, txt)) # Pass button and text
+        # Iterate through SPAN_OPTIONS to create buttons
+        for text_key, span_hz_value in SPAN_OPTIONS.items():
+            # Format the second line of the button text
+            display_value = f"{span_hz_value / MHZ_TO_HZ:.3f} MHz" if span_hz_value >= MHZ_TO_HZ else f"{span_hz_value / 1000:.0f} KHz"
+            button_text = f"{text_key}\n{display_value}"
+
+            btn = ttk.Button(span_control_frame, text=button_text, style="Markers.TButton", # Default style for unselected
+                             command=lambda s=span_hz_value, t=text_key: self._on_span_button_click(s, self.span_buttons[t], t)) # Pass span_hz, button_widget, and text_key
+            
+            # Store button reference before gridding to ensure it's in the dict for the lambda
+            self.span_buttons[text_key] = btn
             btn.grid(row=0, column=col, padx=2, pady=2, sticky="nsew")
-            self.span_buttons[text] = btn
             col += 1
         
         # Set "Normal" as the initially selected button and span
-        self._on_span_button_click(self.span_options["Normal"], self.span_buttons["Normal"], "Normal")
-        # --- End New ---
+        # Find the "Normal" button and its span value
+        normal_span_hz = SPAN_OPTIONS["Normal"]
+        normal_button_widget = self.span_buttons["Normal"]
+        self._on_span_button_click(normal_span_hz, normal_button_widget, "Normal")
+
+
+        # --- New: Trace Mode Control Buttons Frame (Below Span Control) ---
+        trace_mode_control_frame = ttk.LabelFrame(main_split_frame, text="Trace Mode", padding=(5,5,5,5), style="Dark.TLabelframe")
+        trace_mode_control_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+
+        # Configure columns for the buttons within trace_mode_control_frame
+        trace_mode_control_frame.grid_columnconfigure(0, weight=1)
+        trace_mode_control_frame.grid_columnconfigure(1, weight=1)
+        trace_mode_control_frame.grid_columnconfigure(2, weight=1)
+
+        # Create Trace Mode buttons
+        # The command will toggle the associated BooleanVar and then call the update logic
+        btn_live = ttk.Button(trace_mode_control_frame, text="Live", style="Markers.TButton",
+                              command=lambda: self._on_trace_mode_button_click("Live"))
+        btn_max_hold = ttk.Button(trace_mode_control_frame, text="Max Hold", style="Markers.TButton",
+                                  command=lambda: self._on_trace_mode_button_click("Max Hold"))
+        btn_min_hold = ttk.Button(trace_mode_control_frame, text="Min Hold", style="Markers.TButton",
+                                  command=lambda: self._on_trace_mode_button_click("Min Hold"))
+
+        self.trace_mode_buttons["Live"] = {"button": btn_live, "var": self.live_mode_var}
+        self.trace_mode_buttons["Max Hold"] = {"button": btn_max_hold, "var": self.max_hold_mode_var}
+        self.trace_mode_buttons["Min Hold"] = {"button": btn_min_hold, "var": self.min_hold_mode_var}
+
+        btn_live.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
+        btn_max_hold.grid(row=0, column=1, padx=2, pady=2, sticky="nsew")
+        btn_min_hold.grid(row=0, column=2, padx=2, pady=2, sticky="nsew")
+
+        # Initialize button colors based on default states (Live is True, others False)
+        self._update_trace_mode_button_styles() # Call this to set initial colors
 
 
     def _populate_zone_group_tree(self):
@@ -232,8 +275,8 @@ class MarkersDisplayTab(ttk.Frame):
     def _populate_device_buttons(self, devices_to_display):
         """
         Populates the right-hand frame with clickable buttons for each device.
-        Buttons will be approximately 1/3 of the window width, orange with black text,
-        and display NAME, DEVICE, and FREQ (in MHz) on three lines.
+        Buttons will be approximately 50% of the device box width, and display
+        NAME, DEVICE, and FREQ (in MHz) on three lines.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
@@ -260,15 +303,28 @@ class MarkersDisplayTab(ttk.Frame):
                 try:
                     frequency_hz = float(freq_mhz) * MHZ_TO_HZ # Convert MHz to Hz for instrument
                     
+                    # Create a unique ID for this device
+                    unique_device_id = f"{device_data.get('ZONE', '')}-{device_data.get('GROUP', '')}-{device_data.get('DEVICE', '')}-{device_data.get('NAME', '')}-{freq_mhz}"
+                    
                     # Format button text for three lines
-                    # Ensure empty strings are handled for name and device
                     display_name = name if name else "N/A Name"
                     display_device = device if device and device.lower() != "none - none - n/a" else "N/A Device"
                     
-                    button_text = f"{display_name}\n{display_device}\n{float(freq_mhz):.3f} MHz"
+                    # Format frequency for display without decimal if it's a whole number
+                    display_freq_mhz = int(float(freq_mhz)) if float(freq_mhz) == int(float(freq_mhz)) else f"{float(freq_mhz):.3f}"
+                    button_text = f"{display_name}\n{display_device}\n{display_freq_mhz} MHz"
                     
-                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="Markers.TButton",
-                                     command=lambda f=frequency_hz, n=name: self._on_device_button_click(f, n))
+                    # Use "DeviceButton.TButton" for the unselected state
+                    btn = ttk.Button(self.inner_buttons_frame, text=button_text, style="DeviceButton.TButton", 
+                                     command=lambda d=device_data, btn_w=None: self._on_device_button_click(d, btn_w))
+                    
+                    # Pass the button widget reference to the lambda after it's created
+                    btn.configure(command=lambda d=device_data, u_id=unique_device_id, b_w=btn: self._on_device_button_click(d, b_w))
+
+                    # Set initial style based on whether this device was previously selected
+                    if unique_device_id == self.selected_device_unique_id:
+                        btn.config(style="SelectedDevice.TButton")
+                        self.current_selected_device_button = btn # Re-establish reference
                     
                     # Use sticky="nsew" to make buttons expand within their grid cells
                     btn.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
@@ -293,44 +349,66 @@ class MarkersDisplayTab(ttk.Frame):
         self.inner_buttons_frame.update_idletasks() # Ensure layout is updated before calculating scrollregion
         self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
 
-    def _on_device_button_click(self, freq_hz, name):
+    def _on_device_button_click(self, device_data, clicked_button_widget):
         """
         Callback for device buttons. Sets the instrument's focus frequency and a marker.
-        Uses the currently selected span from the span buttons, or a default if none selected.
+        Uses the currently selected span from the span buttons, and current trace modes.
+        Manages button selection state.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        self.console_print_func(f"\nSetting instrument to '{name}' at {freq_hz / MHZ_TO_HZ:.3f} MHz...")
-        debug_print(f"Device button clicked: {name} at {freq_hz} Hz", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        freq_hz = float(device_data.get('FREQ')) * MHZ_TO_HZ
+        name = device_data.get('NAME', '')
+        unique_device_id = f"{device_data.get('ZONE', '')}-{device_data.get('GROUP', '')}-{device_data.get('DEVICE', '')}-{device_data.get('NAME', '')}-{device_data.get('FREQ', '')}"
+
+        # Format frequency for display without decimal if it's a whole number
+        display_freq_mhz = int(freq_hz / MHZ_TO_HZ) if (freq_hz / MHZ_TO_HZ) == int(freq_hz / MHZ_TO_HZ) else f"{freq_hz / MHZ_TO_HZ:.3f}"
+        self.console_print_func(f"\nSetting instrument to '{name}' at {display_freq_mhz} MHz...")
+        debug_print(f"Device button clicked: {name} at {freq_hz} Hz (ID: {unique_device_id})", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Handle button visual toggle
+        if self.current_selected_device_button and self.current_selected_device_button != clicked_button_widget:
+            self.current_selected_device_button.config(style="DeviceButton.TButton") # Revert old button to neutral
+        
+        clicked_button_widget.config(style="SelectedDevice.TButton") # Select new button (orange)
+        self.current_selected_device_button = clicked_button_widget
+        self.selected_device_unique_id = unique_device_id
+
 
         if self.app_instance and self.app_instance.inst:
             # Use the currently selected span, or fall back to default focus width
-            span_to_use = self.current_span_hz if self.current_span_hz is not None else \
-                          float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
+            span_to_use_hz = self.current_span_hz if self.current_span_hz is not None else \
+                             float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
             
-            set_focus_frequency_logic(self.app_instance, freq_hz / MHZ_TO_HZ, name, self.console_print_func) # Pass freq in MHz, and console_print_func
-            set_marker_and_trace_modes_logic(self.app_instance, freq_hz, name, self.console_print_func) # Pass freq in Hz, and console_print_func
+            # Call set_span_logic to set frequency, span, and trace modes
+            set_span_logic(self.app_instance.inst, span_to_use_hz, freq_hz, 
+                           self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
+                           self.console_print_func)
+            
+            # Keep set_marker_and_trace_modes_logic for marker setup (if it does more than just trace modes)
+            set_marker_and_trace_modes_logic(self.app_instance, freq_hz, name, self.console_print_func) 
         else:
             self.console_print_func("⚠️ Warning: Cannot set focus frequency: Instrument not connected.")
             debug_print("Cannot set focus frequency: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
-    def _on_span_button_click(self, span_hz, button_widget=None, button_text=None):
+    def _on_span_button_click(self, span_hz, button_widget, button_text_key):
         """
         Callback for span control buttons. Changes the instrument's span and toggles button color/font.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         self.console_print_func(f"Setting span to {span_hz / MHZ_TO_HZ:.3f} MHz...")
-        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text_key})", file=current_file, function=current_function, console_print_func=self.console_print_func)
         
         # Update the stored current span
         self.current_span_hz = span_hz
 
-        # Toggle button styles for visual feedback (bold/red text or orange background)
-        for text, btn in self.span_buttons.items():
+        # Toggle button styles for visual feedback (orange/blue accordingly)
+        for text_key, btn in self.span_buttons.items():
             if btn == button_widget:
-                # Apply the style that includes orange background, red foreground, and bold font
+                # Apply the style that includes orange background
                 btn.config(style="SelectedSpan.TButton") 
             else:
                 # Revert to the default style for unselected buttons
@@ -338,38 +416,64 @@ class MarkersDisplayTab(ttk.Frame):
         
         # If the instrument is connected, send the commands
         if self.app_instance and self.app_instance.inst:
-            try:
-                # Direct SCPI command to set span
-                if not self.app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
-                    debug_print(f"Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                    self.console_print_func("❌ Error: Failed to set instrument span.")
-                    return False
-                debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                self.console_print_func(f"✅ Instrument span set to {span_hz / MHZ_TO_HZ:.3f} MHz.")
-
-                # Send additional trace mode commands (blank then set)
-                # Ensure all traces are blanked first
-                if not self.app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                
-                # Then set the desired trace modes
-                if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                
-                self.console_print_func("✅ Trace modes set: TRAC1:WRITE, TRAC2:MAXHOLD, TRAC3:MINHOLD, TRAC4:BLANK.")
-
-            except pyvisa.errors.VisaIOError as e:
-                self.console_print_func(f"❌ VISA error while setting span: {e}")
-                debug_print(f"VISA Error setting span: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                return False
-            except Exception as e:
-                self.console_print_func(f"❌ An unexpected error occurred while setting span: {e}")
-                debug_print(f"An unexpected error occurred while setting span: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                return False
+            # Call the centralized set_span_logic from marker_utils
+            # No specific frequency to set when only a span button is clicked, so pass None for center_freq_hz
+            set_span_logic(self.app_instance.inst, span_hz, None, 
+                           self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
+                           self.console_print_func)
         else:
             self.console_print_func("⚠️ Warning: Cannot set span: Instrument not connected.")
             debug_print("Cannot set span: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             
+
+    def _on_trace_mode_button_click(self, mode_name):
+        """
+        Callback for trace mode buttons. Toggles the state of the clicked button's
+        associated BooleanVar and updates the instrument's trace modes.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Trace mode button clicked: {mode_name}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Toggle the state of the clicked button's variable
+        # Since these are independent toggles, just invert the current state
+        if mode_name == "Live":
+            self.live_mode_var.set(not self.live_mode_var.get())
+        elif mode_name == "Max Hold":
+            self.max_hold_mode_var.set(not self.max_hold_mode_var.get())
+        elif mode_name == "Min Hold":
+            self.min_hold_mode_var.set(not self.min_hold_mode_var.get())
+
+        # Update button styles
+        self._update_trace_mode_button_styles()
+
+        # If instrument is connected, send the updated trace mode commands
+        if self.app_instance and self.app_instance.inst:
+            # Get the current span (or default) to pass to set_span_logic
+            span_to_use_hz = self.current_span_hz if self.current_span_hz is not None else \
+                             float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
+            
+            # Call set_span_logic with current span and updated trace modes
+            # Note: We are not changing frequency here, so pass None for center_freq_hz
+            set_span_logic(self.app_instance.inst, span_to_use_hz, None,
+                           self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
+                           self.console_print_func)
+        else:
+            self.console_print_func("⚠️ Warning: Cannot set trace mode: Instrument not connected.")
+            debug_print("Cannot set trace mode: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _update_trace_mode_button_styles(self):
+        """
+        Updates the visual style of the trace mode buttons based on their BooleanVar states.
+        """
+        for mode_name, data in self.trace_mode_buttons.items():
+            button = data["button"]
+            var = data["var"]
+            if var.get():
+                button.config(style="SelectedSpan.TButton") # Use orange for selected
+            else:
+                button.config(style="Markers.TButton") # Use default blue for unselected
 
 
     def update_markers_data(self, headers, rows):
