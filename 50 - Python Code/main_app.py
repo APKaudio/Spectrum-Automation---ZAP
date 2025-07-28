@@ -44,6 +44,7 @@ from src.instrument_preset_tab import PresetFilesTab # Import the new tab class
 from src.marker_logic import MarkersDisplayTab # Import the MarkersDisplayTab
 from src.plotting_tab import PlottingTab # Import the PlottingTab
 from src.report_converter_tab import ReportConverterTab # Import the ReportConverterTab
+from src.scan_tab import ScanTab # Import the new ScanTab
 
 # Import constants from frequency_bands.py
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
@@ -165,7 +166,21 @@ class App(tk.Tk):
         Initializes Tkinter variables for all application settings,
         mapping them to their corresponding keys in config.ini.
         """
-        # General Settings
+        # Session Description Variables (Remain in App)
+        self.scan_name_var = tk.StringVar(self, value="MyScan")
+        self.output_folder_var = tk.StringVar(self, value="scan_data")
+
+        # Debugging variables (Remain in App, but GUI elements moved)
+        self.general_debug_enabled_var = tk.BooleanVar(self, value=False)
+        self.log_visa_commands_enabled_var = tk.BooleanVar(self, value=False)
+
+        # Plotting variables (Remain in App, but GUI elements moved)
+        self.include_gov_markers_var = tk.BooleanVar(self, value=True)
+        self.include_tv_markers_var = tk.BooleanVar(self, value=True)
+        self.include_markers_var = tk.BooleanVar(self, value=True) # For custom markers from CSV
+        self.open_html_after_complete_var = tk.BooleanVar(self, value=True)
+
+        # Scan Configuration Variables (Moved to ScanTab, but vars remain in App for global access)
         self.rbw_step_size_hz_var = tk.StringVar(self, value="1000000")
         self.cycle_wait_time_seconds_var = tk.StringVar(self, value="0.5")
         self.maxhold_time_seconds_var = tk.StringVar(self, value="3")
@@ -177,17 +192,7 @@ class App(tk.Tk):
         self.preamp_on_var = tk.BooleanVar(self, value=True)
         self.scan_rbw_segmentation_var = tk.StringVar(self, value="1000000.0")
         self.desired_default_focus_width_var = tk.StringVar(self, value="10000.0") # In MHz
-        self.include_gov_markers_var = tk.BooleanVar(self, value=True)
-        self.include_tv_markers_var = tk.BooleanVar(self, value=True)
-        self.include_markers_var = tk.BooleanVar(self, value=True) # For custom markers from CSV
-        self.open_html_after_complete_var = tk.BooleanVar(self, value=True)
-        self.general_debug_enabled_var = tk.BooleanVar(self, value=False)
-        self.log_visa_commands_enabled_var = tk.BooleanVar(self, value=False)
         self.num_scan_cycles_var = tk.IntVar(self, value=1)
-
-        # Session Description Variables
-        self.scan_name_var = tk.StringVar(self, value="MyScan")
-        self.output_folder_var = tk.StringVar(self, value="scan_data")
 
 
         # Map Tkinter variables to config.ini keys for easy loading/saving
@@ -254,21 +259,19 @@ class App(tk.Tk):
         self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         # Create frames for the new tabs
-        main_settings_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
-        scan_config_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
-
+        main_settings_tab_frame = ttk.Frame(self.left_notebook, style='Dark.TFrame')
+        
         # Add the new frames as tabs to the left notebook
-        self.left_notebook.add(main_settings_frame, text="Main Settings")
-        self.left_notebook.add(scan_config_frame, text="Scan Configuration")
+        self.left_notebook.add(main_settings_tab_frame, text="Main Settings")
+        
+        # Configure grid for main_settings_tab_frame
+        main_settings_tab_frame.grid_columnconfigure(0, weight=1)
+        main_settings_tab_frame.grid_rowconfigure(0, weight=0) # Session Description
+        main_settings_tab_frame.grid_rowconfigure(1, weight=1) # Instrument Connection (expands)
 
-        # Configure grid for main_settings_frame
-        main_settings_frame.grid_columnconfigure(0, weight=1)
-        main_settings_frame.grid_rowconfigure(0, weight=0) # Session Description
-        main_settings_frame.grid_rowconfigure(1, weight=0) # Instrument Connection
-        main_settings_frame.grid_rowconfigure(2, weight=1) # Bands to Scan (stretch)
 
         # --- Session Description Frame (Moved into Main Settings tab) ---
-        session_description_frame = ttk.LabelFrame(main_settings_frame, text="Session Description", style='Dark.TLabelframe')
+        session_description_frame = ttk.LabelFrame(main_settings_tab_frame, text="Session Description", style='Dark.TLabelframe')
         session_description_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new")
         session_description_frame.grid_columnconfigure(1, weight=1) # Allow entry fields to expand
 
@@ -284,8 +287,8 @@ class App(tk.Tk):
 
 
         # --- Instrument Connection Frame (Moved into Main Settings tab) ---
-        instrument_frame = ttk.LabelFrame(main_settings_frame, text="Instrument Connection", style='Dark.TLabelframe')
-        instrument_frame.grid(row=1, column=0, padx=5, pady=5, sticky="new")
+        instrument_frame = ttk.LabelFrame(main_settings_tab_frame, text="Instrument Connection", style='Dark.TLabelframe')
+        instrument_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Now expands vertically
         instrument_frame.grid_columnconfigure(1, weight=1) # Allow combobox to expand
 
         ttk.Label(instrument_frame, text="VISA Resource:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -308,83 +311,14 @@ class App(tk.Tk):
         self.load_preset_button = ttk.Button(instrument_frame, text="Load Selected Preset", command=self._load_selected_preset, state=tk.DISABLED, style='Purple.TButton')
         self.load_preset_button.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
-
-        # --- Bands to Scan (Moved into Main Settings tab) ---
-        bands_frame = ttk.LabelFrame(main_settings_frame, text="Select Bands to Scan:", style='Dark.TLabelframe')
-        bands_frame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
-        bands_frame.grid_columnconfigure(0, weight=1) # Allow band checkboxes to expand
-        
-        # Use a canvas and scrollbar for the bands if there are many
-        bands_canvas = tk.Canvas(bands_frame, background="#1e1e1e", highlightthickness=0)
-        bands_canvas.grid(row=0, column=0, sticky="nsew")
-        
-        bands_scrollbar = ttk.Scrollbar(bands_frame, orient="vertical", command=bands_canvas.yview)
-        bands_scrollbar.grid(row=0, column=1, sticky="ns")
-        
-        bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
-        bands_canvas.bind('<Configure>', lambda e: bands_canvas.configure(scrollregion = bands_canvas.bbox("all")))
-
-        band_checkbox_frame = ttk.Frame(bands_canvas, style='Dark.TFrame')
-        bands_canvas.create_window((0, 0), window=band_checkbox_frame, anchor="nw")
-        
-        band_checkbox_frame.grid_columnconfigure(0, weight=1) # Allow checkboxes to expand
-        
-        for i, band_item in enumerate(self.band_vars):
-            cb = ttk.Checkbutton(band_checkbox_frame, text=band_item["band"]["Band Name"], variable=band_item["var"], style='TCheckbutton')
-            cb.grid(row=i, column=0, sticky="w", padx=2, pady=1)
+        # Debugging checkboxes (Moved here from Scan Configuration)
+        ttk.Checkbutton(instrument_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style='TCheckbutton').grid(row=4, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(instrument_frame, text="Log VISA Commands", variable=self.log_visa_commands_enabled_var, style='TCheckbutton').grid(row=5, column=0, columnspan=3, sticky="w", padx=5, pady=2)
 
 
-        # --- Scan Configuration Frame (Content moved into new Scan Configuration tab) ---
-        scan_config_frame.grid_columnconfigure(0, weight=1) # Allow elements to expand
-        scan_config_frame.grid_columnconfigure(1, weight=1)
-
-        # Other scan settings
-        ttk.Label(scan_config_frame, text="RBW Step Size (Hz):", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.rbw_step_size_hz_var, style='TEntry').grid(row=0, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Cycle Wait Time (s):", style='TLabel').grid(row=1, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.cycle_wait_time_seconds_var, style='TEntry').grid(row=1, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Max Hold Time (s):", style='TLabel').grid(row=2, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.maxhold_time_seconds_var, style='TEntry').grid(row=2, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Scan RBW (Hz):", style='TLabel').grid(row=3, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_hz_var, style='TEntry').grid(row=3, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Reference Level (dBm):", style='TLabel').grid(row=4, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.reference_level_dbm_var, style='TEntry').grid(row=4, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Frequency Shift (Hz):", style='TLabel').grid(row=5, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.freq_shift_hz_var, style='TEntry').grid(row=5, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Checkbutton(scan_config_frame, text="Max Hold Enabled", variable=self.maxhold_enabled_var, style='TCheckbutton').grid(row=6, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(scan_config_frame, text="High Sensitivity", variable=self.high_sensitivity_var, style='TCheckbutton').grid(row=7, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(scan_config_frame, text="Preamp On", variable=self.preamp_on_var, style='TCheckbutton').grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=2)
-        
-        ttk.Label(scan_config_frame, text="RBW Segmentation (Hz):", style='TLabel').grid(row=9, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.scan_rbw_segmentation_var, style='TEntry').grid(row=9, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Default Focus Width (MHz):", style='TLabel').grid(row=10, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.desired_default_focus_width_var, style='TEntry').grid(row=10, column=1, padx=2, pady=2, sticky="ew")
-
-        ttk.Label(scan_config_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=11, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(scan_config_frame, textvariable=self.num_scan_cycles_var, style='TEntry').grid(row=11, column=1, padx=2, pady=2, sticky="ew")
-
-
-        # Debug and Plotting Options
-        debug_plot_frame = ttk.LabelFrame(scan_config_frame, text="Debug & Plotting Options", style='Dark.TLabelframe')
-        debug_plot_frame.grid(row=12, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
-        debug_plot_frame.grid_columnconfigure(0, weight=1)
-
-        ttk.Checkbutton(debug_plot_frame, text="Enable General Debug", variable=self.general_debug_enabled_var, style='TCheckbutton').grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(debug_plot_frame, text="Log VISA Commands", variable=self.log_visa_commands_enabled_var, style='TCheckbutton').grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(debug_plot_frame, text="Include Gov Markers", variable=self.include_gov_markers_var, style='TCheckbutton').grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(debug_plot_frame, text="Include TV Markers", variable=self.include_tv_markers_var, style='TCheckbutton').grid(row=3, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(debug_plot_frame, text="Include Custom Markers", variable=self.include_markers_var, style='TCheckbutton').grid(row=4, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(debug_plot_frame, text="Open HTML Plot After Scan", variable=self.open_html_after_complete_var, style='TCheckbutton').grid(row=5, column=0, sticky="w", padx=5, pady=2)
-        
-        # Restore Defaults Button
-        ttk.Button(scan_config_frame, text="Restore Default Settings", command=self._restore_default_settings, style='Orange.TButton').grid(row=13, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        # --- ScanTab (New tab for Scan Configuration and Bands to Scan) ---
+        self.scan_tab = ScanTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.scan_tab, text="Scan Configuration")
 
 
         # --- Existing Notebook (Tabs) for Instrument Presets, Markers, Plotting, Report Converter ---
@@ -726,8 +660,10 @@ class App(tk.Tk):
     def _restore_default_settings(self):
         """
         Restores all settings to their default values as defined in config.ini.
+        This function is now primarily handled by the ScanTab's button,
+        but this method remains for consistency if needed elsewhere.
         """
-        debug_print("Restoring default settings...", file=__file__, function=inspect.currentframe().f_code.co_name)
+        debug_print("Restoring default settings (from App)...", file=__file__, function=inspect.currentframe().f_code.co_name)
         restore_default_settings_logic(self)
 
 
@@ -753,8 +689,14 @@ class App(tk.Tk):
                     # Attempt to find the entry widget by iterating through children
                     # This is not guaranteed to work for all layouts
                     for widget in self.winfo_children():
-                        if isinstance(widget, (ttk.LabelFrame, tk.Frame)):
+                        if isinstance(widget, (ttk.LabelFrame, tk.Frame, ttk.Notebook)):
                             for child in widget.winfo_children():
+                                if isinstance(child, ttk.Frame): # Check frames within notebooks/labelframes
+                                    for grand_child in child.winfo_children():
+                                        if isinstance(grand_child, ttk.Entry) and grand_child.cget('textvariable') == str(tk_var_instance):
+                                            grand_child.config(style='TEntry') # Reset to default style
+                                            debug_print(f"Reset color for {tk_var_name}", file=__file__, function=inspect.currentframe().f_code.co_name)
+                                            break
                                 if isinstance(child, ttk.Entry) and child.cget('textvariable') == str(tk_var_instance):
                                     child.config(style='TEntry') # Reset to default style
                                     debug_print(f"Reset color for {tk_var_name}", file=__file__, function=inspect.currentframe().f_code.co_name)
