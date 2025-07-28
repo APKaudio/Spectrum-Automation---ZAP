@@ -1,0 +1,53 @@
+Command Type Description,VISA Command
+System/Identification,*IDN?
+System/Identification,*RST
+System/Identification,:SYSTem:ERRor?
+System/Identification,:SYSTem:DISPlay:UPDate
+Frequency/Span/Sweep,:SENSe:FREQuency:CENTer
+Frequency/Span/Sweep,:SENSe:FREQuency:CENTer?
+Frequency/Span/Sweep,:SENSe:FREQuency:SPAN
+Frequency/Span/Sweep,:SENSe:FREQuency:SPAN?
+Frequency/Span/Sweep,:FREQuency:STARt?
+Frequency/Span/Sweep,:FREQuency:STOP?
+Frequency/Span/Sweep,:SENSe:SWEep:POINts?
+Frequency/Span/Sweep,:SENSe:SWEep:TIME:AUTO ON
+Frequency/Span/Sweep,:SENSe:X:SPACing LINear
+Frequency/Span/Sweep,:FREQuency:OFFSet?
+Frequency/Span/Sweep,:INPut:RFSense:FREQuency:SHIFt?
+Frequency/Span/Sweep,:INPut:RFSense:FREQuency:SHIFt
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:RESolution
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:RESolution?
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:VIDeo
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:VIDeo?
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:RESolution:AUTO ON
+Bandwidth (RBW/VBW),:SENSe:BANDwidth:VIDeo:AUTO ON
+Amplitude/Level/Gain,:DISPlay:WINDow:TRACe:Y:RLEVel
+Amplitude/Level/Gain,:DISPlay:WINDow:TRACe:Y:RLEVel?
+Amplitude/Level/Gain,:INPut:ATTenuation:AUTO
+Amplitude/Level/Gain,:INPut:ATTenuation:AUTO?
+Amplitude/Level/Gain,:INPut:GAIN:STATe
+Amplitude/Level/Gain,:INPut:GAIN:STATe?
+Amplitude/Level/Gain,:POWer:ATTenuation:AUTO ON
+Amplitude/Level/Gain,:POWer:ATTenuation 0
+Amplitude/Level/Gain,:POWer:ATTenuation 10
+Amplitude/Level/Gain,:POWer:GAIN ON
+Amplitude/Level/Gain,:POWer:GAIN OFF
+Amplitude/Level/Gain,:POWer:GAIN 1
+Amplitude/Level/Gain,:POWer:HSENsitive ON
+Amplitude/Level/Gain,:POWer:HSENsitive OFF
+Trace/Display,:TRACe:DATA? TRACE1
+Trace/Display,:TRACe1:MODE WRITe
+Trace/Display,:TRAC2:MODE MAXHold
+Trace/Display,:TRAC2:MODE AVERage
+Trace/Display,:TRAC3:MODE MINHold
+Trace/Display,:DISPlay:WINDow:TRACe:TYPE?
+Trace/Display,:DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic
+Trace/Display,:TRACe:FORMat:DATA ASCii
+Trace/Display,:FORMat:DATA ASCii
+Marker,:CALCulate:MARKer1:MAX
+Marker,:CALCulate:MARKer1:STATe
+Marker,:CALCulate:MARKer1:X?
+Marker,:CALCulate:MARKer1:Y?
+Memory/Preset,:MMEMory:CATalog:STATe?
+Memory/Preset,:MMEMory:LOAD:STATe
+Memory/Preset,:MMEMory:STORe:STATe

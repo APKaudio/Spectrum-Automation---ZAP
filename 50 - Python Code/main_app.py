@@ -47,6 +47,7 @@ from src.report_converter_tab import ReportConverterTab # Import the ReportConve
 from src.scan_tab import ScanTab # Import the new ScanTab
 from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
 from src.instrument_tab import InstrumentTab # Import the InstrumentTab
+from src.visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
 
 # Import constants from frequency_bands.py
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
@@ -296,6 +297,11 @@ class App(tk.Tk):
         self.report_converter_tab = ReportConverterTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.report_converter_tab, text="Report Converter")
 
+        # --- NEW: VISA Interpreter Tab ---
+        self.visa_interpreter_tab = VisaInterpreterTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.visa_interpreter_tab, text="VISA Interpreter")
+
+
         # Bind tab selection event to update specific tab contents for the left notebook
         self.left_notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
 
@@ -408,7 +414,7 @@ class App(tk.Tk):
                 foreground=[('selected', 'white')],
                 expand=[('selected', [1, 1, 1, 0])]) # Expand selected tab slightly
 
-        # Treeview (for MarkersDisplayTab)
+        # Treeview (for MarkersDisplayTab and VisaInterpreterTab)
         style.configure('Treeview',
                         background="#3b3b3b", # Darker grey for treeview background
                         foreground="#ffffff", # White text
