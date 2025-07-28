@@ -6,12 +6,13 @@ import os
 import inspect # Import inspect module for debug_print
 
 from utils.instrument_control import debug_print # Import debug_print
+from utils.Yak_Visa import execute_visa_command # Import the new utility function
 
 class VisaInterpreterTab(ttk.Frame):
     """
     A Tkinter Frame that provides a user-editable cell editor for VISA commands.
-    It displays command types and the commands themselves, allowing users to
-    modify, add, or remove entries.
+    It displays model names, command types, actions, and the commands themselves,
+    allowing users to modify, add, or remove entries, and execute selected commands.
     """
     def __init__(self, master=None, app_instance=None, console_print_func=None, **kwargs):
         super().__init__(master, **kwargs)
@@ -19,6 +20,10 @@ class VisaInterpreterTab(ttk.Frame):
         self.console_print_func = console_print_func if console_print_func else print
 
         self.data_file = "visa_commands.csv" # File to save/load user-edited commands
+
+        # Tkinter variable for the model selection dropdown (for filtering/defaulting new rows)
+        self.selected_model = tk.StringVar(self)
+        self.selected_model.set("N9340B") # Default value for the dropdown filter
 
         self._create_widgets()
         self._load_data() # Load existing data when the tab is initialized
@@ -41,37 +46,55 @@ class VisaInterpreterTab(ttk.Frame):
         debug_print("Creating VisaInterpreterTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1) # Treeview takes most space
-        self.grid_rowconfigure(1, weight=0) # Buttons row
+        self.grid_rowconfigure(0, weight=0) # Row for model dropdown
+        self.grid_rowconfigure(1, weight=1) # Treeview takes most space
+        self.grid_rowconfigure(2, weight=0) # Buttons row (Add, Delete, Save)
+        self.grid_rowconfigure(3, weight=0) # New row for YAK buttons
+
+        # Model Selection Dropdown (for filtering/defaulting new rows)
+        model_frame = ttk.Frame(self, style='Dark.TFrame')
+        model_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        model_frame.grid_columnconfigure(1, weight=1) # Allow dropdown to expand
+
+        ttk.Label(model_frame, text="Select Instrument Model:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        model_options = ["N9340B", "Agilent/Keysight", "Rohde & Schwarz"] # Added N9340B as a specific option
+        self.model_dropdown = ttk.OptionMenu(model_frame, self.selected_model, self.selected_model.get(), *model_options)
+        self.model_dropdown.config(width=25)
+        self.model_dropdown.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
 
         # Treeview for displaying and editing commands
-        # Changed columns to include "Command Type" and "Variable"
-        columns = ("Command Type", "VISA Command", "Variable")
+        # Updated columns to include "Model" at the beginning
+        columns = ("Model", "Command Type", "Action", "VISA Command", "Variable")
         self.tree = ttk.Treeview(self, columns=columns, show="headings", style='Treeview')
-        self.tree.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.tree.grid(row=1, column=0, sticky="nsew", padx=5, pady=5) # Shifted to row 1
 
         # Configure column headings
+        self.tree.heading("Model", text="Model", anchor=tk.W) # New heading for Model
         self.tree.heading("Command Type", text="Command Type", anchor=tk.W)
+        self.tree.heading("Action", text="Action", anchor=tk.W)
         self.tree.heading("VISA Command", text="VISA Command", anchor=tk.W)
-        self.tree.heading("Variable", text="Variable", anchor=tk.W) # New heading for Variable
+        self.tree.heading("Variable", text="Variable", anchor=tk.W)
 
         # Configure column widths (adjust as needed)
-        self.tree.column("Command Type", width=120, minwidth=100, stretch=False) # Fixed width for type
-        self.tree.column("VISA Command", width=350, minwidth=250, stretch=True)
-        self.tree.column("Variable", width=100, minwidth=80, stretch=True) # New column width for Variable
+        self.tree.column("Model", width=100, minwidth=80, stretch=False) # Fixed width for Model
+        self.tree.column("Command Type", width=120, minwidth=100, stretch=False)
+        self.tree.column("Action", width=80, minwidth=60, stretch=False)
+        self.tree.column("VISA Command", width=250, minwidth=150, stretch=True)
+        self.tree.column("Variable", width=100, minwidth=80, stretch=True)
 
         # Scrollbars
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
-        vsb.grid(row=0, column=1, sticky="ns")
+        vsb.grid(row=1, column=1, sticky="ns") # Shifted to row 1
         self.tree.configure(yscrollcommand=vsb.set)
 
         hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
-        hsb.grid(row=1, column=0, sticky="ew")
+        hsb.grid(row=2, column=0, sticky="ew") # Shifted to row 2
         self.tree.configure(xscrollcommand=hsb.set)
 
-        # Button Frame
+        # Button Frame (Add, Delete, Save)
         button_frame = ttk.Frame(self, style='Dark.TFrame')
-        button_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        button_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # Shifted to row 3
         button_frame.grid_columnconfigure(0, weight=1)
         button_frame.grid_columnconfigure(1, weight=1)
         button_frame.grid_columnconfigure(2, weight=1)
@@ -80,54 +103,72 @@ class VisaInterpreterTab(ttk.Frame):
         ttk.Button(button_frame, text="Delete Selected Row", command=self._delete_row, style='Red.TButton').grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         ttk.Button(button_frame, text="Save Commands", command=self._save_data, style='Green.TButton').grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
+        # --- YAK Button Row (Execute Selected Command) ---
+        yak_frame = ttk.LabelFrame(self, text="YAK (Execute Selected Command)", style='Dark.TLabelframe')
+        yak_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # New row 4
+        yak_frame.grid_columnconfigure(0, weight=1) # Single column to center the button
+
+        # YAK button to execute the selected VISA command (2x taller)
+        ttk.Button(yak_frame, text="YAK - Execute Selected", command=self._yak_button_action, style='Purple.TButton', padding=[20, 10]).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
         self.editor = None # To hold the Entry widget for editing
 
         debug_print("VisaInterpreterTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-    def _load_data(self):
+    def _yak_button_action(self):
         """
-        Loads VISA commands from a CSV file or uses default commands if the file doesn't exist.
-        Handles both old 2-column and new 3-column CSV formats.
+        Action to perform when the YAK button is clicked.
+        Queries or sets the VISA command of the selected row using the utility function.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print(f"Loading data from {self.data_file}...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("YAK button clicked. Attempting to execute selected VISA command.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        selected_item = self.tree.focus() # Get the currently focused/selected item
+        if not selected_item:
+            self.console_print_func("⚠️ No row selected to execute.")
+            debug_print("No row selected for YAK action.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        if not self.app_instance.inst:
+            self.console_print_func("❌ No instrument connected. Cannot execute VISA command.")
+            debug_print("No instrument connected for YAK action.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        values = self.tree.item(selected_item, 'values')
+        # Columns: (Model, Command Type, Action, VISA Command, Variable)
+        # Note: Model is at index 0, Command Type at 1, Action at 2, VISA Command at 3, Variable at 4
+        action_type = values[2] # "Action" column
+        visa_command = values[3] # "VISA Command" column
+        variable_value = values[4] # "Variable" column
+
+        # Call the new utility function to execute the VISA command
+        execute_visa_command(
+            self.app_instance.inst,
+            action_type,
+            visa_command,
+            variable_value,
+            self.console_print_func
+        )
+
+
+    def _load_data(self):
+        """
+        Loads VISA commands from default commands.
+        Temporarily ignores CSV file as per user request for debugging.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Loading default data...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         self.tree.delete(*self.tree.get_children()) # Clear existing data
 
-        commands = []
-        if os.path.exists(self.data_file):
-            try:
-                with open(self.data_file, 'r', newline='', encoding='utf-8') as f:
-                    reader = csv.reader(f)
-                    header = next(reader) # Skip header row
-                    for row in reader:
-                        if len(row) == 3: # New format: Command Type, VISA Command, Variable
-                            commands.append(row)
-                        elif len(row) == 2: # Old format: Command Type Description, VISA Command
-                            # Infer Command Type and add empty Variable column
-                            command_text = row[1]
-                            command_type_prefix = "GET" if command_text.strip().endswith("?") else ("DO" if command_text.strip() in ["*RST", ":SYSTem:DISPlay:UPDate"] else "SET")
-                            description = row[0].replace(" - GET", "").replace(" - SET", "").replace(" - DO", "").strip()
-                            commands.append([f"{description} - {command_type_prefix}", command_text, ""])
-                        else:
-                            self.console_print_func(f"⚠️ Skipping malformed row in {self.data_file}: {row}")
-                            debug_print(f"Skipping malformed row: {row}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        commands = self._get_default_commands() # Always load defaults for now
 
-                self.console_print_func(f"✅ Loaded {len(commands)} commands from {self.data_file}.")
-                debug_print(f"Loaded {len(commands)} commands from {self.data_file}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            except Exception as e:
-                self.console_print_func(f"❌ Error loading commands from {self.data_file}: {e}. Loading defaults.")
-                debug_print(f"Error loading {self.data_file}: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                commands = self._get_default_commands()
-        else:
-            self.console_print_func(f"ℹ️ {self.data_file} not found. Loading default commands.")
-            debug_print(f"{self.data_file} not found. Loading default commands.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            commands = self._get_default_commands()
-
-        for cmd_type, command, variable in commands:
-            self.tree.insert("", "end", values=(cmd_type, command, variable))
-        debug_print(f"Displayed {len(commands)} commands in Treeview.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        for model_name, cmd_type, action, command, variable in commands:
+            self.tree.insert("", "end", values=(model_name, cmd_type, action, command, variable))
+        self.console_print_func(f"✅ Loaded {len(commands)} default commands.")
+        debug_print(f"Displayed {len(commands)} default commands in Treeview.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
     def _save_data(self):
@@ -146,8 +187,8 @@ class VisaInterpreterTab(ttk.Frame):
         try:
             with open(self.data_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                # Updated header to include 'Variable'
-                writer.writerow(["Command Type", "VISA Command", "Variable"])
+                # Updated header to include 'Model'
+                writer.writerow(["Model", "Command Type", "Action", "VISA Command", "Variable"])
                 writer.writerows(data_to_save)
             self.console_print_func(f"✅ Saved {len(data_to_save)} commands to {self.data_file}.")
             debug_print(f"Saved {len(data_to_save)} commands to {self.data_file}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -161,8 +202,8 @@ class VisaInterpreterTab(ttk.Frame):
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        # New rows will have empty strings for all three columns
-        self.tree.insert("", "end", values=("Set", "", "")) # Default to "Set" for new rows
+        # New rows will have default model ("N9340B"), "General" type, "SET" action, empty command, empty variable
+        self.tree.insert("", "end", values=("N9340B", "General", "SET", "", ""))
         self.console_print_func("✅ Added a new empty row.")
         debug_print("Added new row.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
@@ -201,7 +242,7 @@ class VisaInterpreterTab(ttk.Frame):
             debug_print("No item or column identified for editing.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
-        # Get column index (e.g., #1 for first column, #2 for second, #3 for third)
+        # Get column index (0-indexed)
         col_idx = int(column[1:]) - 1 
         
         # Get current value
@@ -225,7 +266,7 @@ class VisaInterpreterTab(ttk.Frame):
     def _save_and_destroy_editor(self):
         """
         Saves the edited content from the Entry widget back to the Treeview
-        and destroys the Entry widget. Automatically updates "Command Type"
+        and destroys the Entry widget. Automatically updates "Action"
         if the "VISA Command" column is edited.
         """
         current_function = inspect.currentframe().f_code.co_name
@@ -239,13 +280,12 @@ class VisaInterpreterTab(ttk.Frame):
             current_values = list(self.tree.item(item, 'values'))
             current_values[col_idx] = new_value
 
-            # If the edited column is the VISA Command column (index 1), update the Command Type (index 0)
-            if col_idx == 1: # This is the "VISA Command" column
+            # If the edited column is the VISA Command column (index 3), update the Action (index 2)
+            # The "Command Type" column (index 1) should NOT be updated here.
+            if col_idx == 3: # This is the "VISA Command" column
                 visa_command = new_value
-                command_type_prefix = "GET" if visa_command.strip().endswith("?") else ("DO" if visa_command.strip() in ["*RST", ":SYSTem:DISPlay:UPDate"] else "SET")
-                # Preserve the original description part if it exists
-                original_description = current_values[0].split(" - ")[0] if " - " in current_values[0] else ""
-                current_values[0] = f"{original_description} - {command_type_prefix}".strip()
+                action_type = "GET" if visa_command.strip().endswith("?") else ("DO" if visa_command.strip() in ["*RST", ":SYSTem:DISPlay:UPDate"] else "SET")
+                current_values[2] = action_type # Update the 'Action' column
 
             self.tree.item(item, values=current_values)
             self.editor.destroy()
@@ -273,90 +313,138 @@ class VisaInterpreterTab(ttk.Frame):
 
     def _get_default_commands(self):
         """
-        Returns a list of default VISA commands with their automatically determined
-        type ("GET", "SET", or "DO") and an empty variable column.
+        Returns a list of default VISA commands.
+        Each entry is a tuple: (Model, Category, Action, VISA Command, Default Value for Variable).
         """
-        default_categorized_commands = [
+        default_raw_commands = [
             # System/Identification
-            ("System/Identification", "*IDN?"),
-            ("System/Identification", "*RST"),
-            ("System/Identification", ":SYSTem:ERRor?"),
-            ("System/Identification", ":SYSTem:DISPlay:UPDate"),
+            ("N9340B", "System/ID", "GET", "*IDN?", ""),
+            ("N9340B", "System/Reset", "DO", "*RST", ""),
+            ("N9340B", "System/Errors", "GET", ":SYSTem:ERRor?", ""),
+            ("N9340B", "System/Display Update", "DO", ":SYSTem:DISPlay:UPDate", ""),
+            
+            # Memory/Preset
+            ("N9340B", "Memory/Preset/Catalog", "GET", ":MMEMory:CATalog:STATe?", ""),
+            ("N9340B", "Memory/Preset/Load", "SET", ":MMEMory:LOAD:STATe", "0"),
+            ("N9340B", "Memory/Preset/Store", "SET", ":MMEMory:STORe:STATe", "0"),
 
             # Frequency/Span/Sweep
-            ("Frequency/Span/Sweep", ":SENSe:FREQuency:CENTer"),
-            ("Frequency/Span/Sweep", ":SENSe:FREQuency:CENTer?"),
-            ("Frequency/Span/Sweep", ":SENSe:FREQuency:SPAN"),
-            ("Frequency/Span/Sweep", ":SENSe:FREQuency:SPAN?"),
-            ("Frequency/Span/Sweep", ":FREQuency:STARt?"),
-            ("Frequency/Span/Sweep", ":FREQuency:STOP?"),
-            ("Frequency/Span/Sweep", ":SENSe:SWEep:POINts?"),
-            ("Frequency/Span/Sweep", ":SENSe:SWEep:TIME:AUTO ON"),
-            ("Frequency/Span/Sweep", ":SENSe:X:SPACing LINear"),
-            ("Frequency/Span/Sweep", ":FREQuency:OFFSet?"),
-            ("Frequency/Span/Sweep", ":INPut:RFSense:FREQuency:SHIFt?"),
-            ("Frequency/Span/Sweep", ":INPut:RFSense:FREQuency:SHIFt"),
+            ("N9340B", "Frequency/Center", "SET", ":SENSe:FREQuency:CENTer", "1000"),
+            ("N9340B", "Frequency/Center", "GET", ":SENSe:FREQuency:CENTer?", ""),
+            ("N9340B", "Frequency/Span", "SET", ":SENSe:FREQuency:SPAN", "1000"),
+            ("N9340B", "Frequency/Span", "GET", ":SENSe:FREQuency:SPAN?", ""),
+            ("N9340B", "Frequency/Start", "GET", ":FREQuency:STARt?", ""),
+            ("N9340B", "Frequency/Stop", "GET", ":FREQuency:STOP?", ""),
+            ("N9340B", "Frequency/Sweep/Points", "GET", ":SENSe:SWEep:POINts?", ""),
+            ("N9340B", "Frequency/Sweep/Time", "SET", ":SENSe:SWEep:TIME:AUTO", "ON"),
+            ("N9340B", "Frequency/Sweep/Spacing", "SET", ":SENSe:X:SPACing LINear", "LINear"),
+            ("N9340B", "Frequency/Offset", "GET", ":FREQuency:OFFSet?", ""),
+            ("N9340B", "Frequency/Shift", "GET", ":INPut:RFSense:FREQuency:SHIFt?", ""),
+            ("N9340B", "Frequency/Shift", "SET", ":INPut:RFSense:FREQuency:SHIFt", "0"),
 
 
             # Bandwidth (RBW/VBW)
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:RESolution"),
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:RESolution?"),
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:VIDeo"),
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:VIDeo?"),
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:RESolution:AUTO ON"),
-            ("Bandwidth (RBW/VBW)", ":SENSe:BANDwidth:VIDeo:AUTO ON"),
+            ("N9340B", "Bandwidth/Resolution", "SET", ":SENSe:BANDwidth:RESolution", "1000"),
+            ("N9340B", "Bandwidth/Resolution", "GET", ":SENSe:BANDwidth:RESolution?", ""),
+            ("N9340B", "Bandwidth/Video", "SET", ":SENSe:BANDwidth:VIDeo", "100"),
+            ("N9340B", "Bandwidth/Video", "GET", ":SENSe:BANDwidth:VIDeo?", ""),
+            ("N9340B", "Bandwidth/Resolution/Auto", "SET", ":SENSe:BANDwidth:RESolution:AUTO", "ON"),
+            ("N9340B", "Bandwidth/Video/Auto", "SET", ":SENSe:BANDwidth:VIDeo:AUTO", "ON"),
 
             # Amplitude/Reference Level/Attenuation/Gain
-            ("Amplitude/Level/Gain", ":DISPlay:WINDow:TRACe:Y:RLEVel"),
-            ("Amplitude/Level/Gain", ":DISPlay:WINDow:TRACe:Y:RLEVel?"),
-            ("Amplitude/Level/Gain", ":INPut:ATTenuation:AUTO"),
-            ("Amplitude/Level/Gain", ":INPut:ATTenuation:AUTO?"),
-            ("Amplitude/Level/Gain", ":INPut:GAIN:STATe"),
-            ("Amplitude/Level/Gain", ":INPut:GAIN:STATe?"),
-            ("Amplitude/Level/Gain", ":POWer:ATTenuation:AUTO ON"),
-            ("Amplitude/Level/Gain", ":POWer:ATTenuation 0"),
-            ("Amplitude/Level/Gain", ":POWer:ATTenuation 10"),
-            ("Amplitude/Level/Gain", ":POWer:GAIN ON"),
-            ("Amplitude/Level/Gain", ":POWer:GAIN OFF"),
-            ("Amplitude/Level/Gain", ":POWer:GAIN 1"),
-            ("Amplitude/Level/Gain", ":POWer:HSENsitive ON"),
-            ("Amplitude/Level/Gain", ":POWer:HSENsitive OFF"),
+            ("N9340B", "Amplitude/Reference Level", "SET", ":DISPlay:WINDow:TRACe:Y:RLEVel", "-20"),
+            ("N9340B", "Amplitude/Reference Level", "GET", ":DISPlay:WINDow:TRACe:Y:RLEVel?", ""),
+            ("N9340B", "Amplitude/Attenuation/Auto", "SET", ":INPut:ATTenuation:AUTO", "ON"),
+            ("N9340B", "Amplitude/Attenuation/Auto", "GET", ":INPut:ATTenuation:AUTO?", ""),
+            ("N9340B", "Amplitude/Gain/State", "SET", ":INPut:GAIN:STATe", "ON"),
+            ("N9340B", "Amplitude/Gain/State", "GET", ":INPut:GAIN:STATe?", ""),
+            ("N9340B", "Amplitude/Power/Attenuation/Auto", "SET", ":POWer:ATTenuation:AUTO", "ON"),
+            ("N9340B", "Amplitude/Power/Attenuation/0dB", "SET", ":POWer:ATTenuation", "0"),
+            ("N9340B", "Amplitude/Power/Attenuation/10dB", "SET", ":POWer:ATTenuation", "10"),
+            ("N9340B", "Amplitude/Power/Gain/On", "SET", ":POWer:GAIN", "ON"),
+            ("N9340B", "Amplitude/Power/Gain/Off", "SET", ":POWer:GAIN", "OFF"),
+            ("N9340B", "Amplitude/Power/Gain/1", "SET", ":POWer:GAIN", "1"),
+            ("N9340B", "Amplitude/Power/High Sensitive/On", "SET", ":POWer:HSENsitive", "ON"),
+            ("N9340B", "Amplitude/Power/High Sensitive/Off", "SET", ":POWer:HSENsitive", "OFF"),
 
-            # Trace/Display
-            ("Trace/Display", ":TRACe:DATA? TRACE1"),
-            ("Trace/Display", ":TRACe1:MODE WRITe"), # Specific mode added for clarity
-            ("Trace/Display", ":TRAC2:MODE MAXHold"),
-            ("Trace/Display", ":TRAC2:MODE AVERage"),
-            ("Trace/Display", ":TRAC3:MODE MINHold"),
-            ("Trace/Display", ":DISPlay:WINDow:TRACe:TYPE?"),
-            ("Trace/Display", ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing LOGarithmic"),
-            ("Trace/Display", ":TRACe:FORMat:DATA ASCii"), # For N9340B
-            ("Trace/Display", ":FORMat:DATA ASCii"), # General
 
-            # Marker
-            ("Marker", ":CALCulate:MARKer1:MAX"),
-            ("Marker", ":CALCulate:MARKer1:STATe"),
-            ("Marker", ":CALCulate:MARKer1:X?"),
-            ("Marker/Display", ":CALCulate:MARKer1:Y?"),
+            # Trace/Display - and format
+            ("N9340B", "Trace/Display/Type", "GET", ":DISPlay:WINDow:TRACe:TYPE?", ""),
+            ("N9340B", "Trace/Display/Y Scale/Spacing", "SET", ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing", "LOGarithmic"),
+            ("N9340B", "Trace/Format/Data/ASCII (N9340B)", "SET", ":TRACe:FORMat:DATA", "ASCii"), # For N9340B
+            ("N9340B", "Trace/Format/Data/ASCII (General)", "SET", ":FORMat:DATA", "ASCii"), # General
 
-            # Memory/Preset
-            ("Memory/Preset", ":MMEMory:CATalog:STATe?"),
-            ("Memory/Preset", ":MMEMory:LOAD:STATe"),
-            ("Memory/Preset", ":MMEMory:STORe:STATe"),
+
+            # Trace/Display - Expanded for 4 traces
+            # Trace Data Query
+            ("N9340B", "Trace/1/Data", "GET", ":TRACe:DATA? TRACE1", ""),
+            ("N9340B", "Trace/2/Data", "GET", ":TRACe:DATA? TRACE2", ""),
+            ("N9340B", "Trace/3/Data", "GET", ":TRACe:DATA? TRACE3", ""),
+            ("N9340B", "Trace/4/Data", "GET", ":TRACe:DATA? TRACE4", ""),
+
+            # Trace Mode Write
+            ("N9340B", "Trace/1/Mode/Write", "SET", ":TRAC1:MODE", "WRITe"),
+            ("N9340B", "Trace/2/Mode/Write", "SET", ":TRAC2:MODE", "WRITe"),
+            ("N9340B", "Trace/3/Mode/Write", "SET", ":TRAC3:MODE", "WRITe"),
+            ("N9340B", "Trace/4/Mode/Write", "SET", ":TRAC4:MODE", "WRITe"),
+
+            # Trace Mode MaxHold
+            ("N9340B", "Trace/1/Mode/MaxHold", "SET", ":TRAC1:MODE", "MAXHold"),
+            ("N9340B", "Trace/2/Mode/MaxHold", "SET", ":TRAC2:MODE", "MAXHold"),
+            ("N9340B", "Trace/3/Mode/MaxHold", "SET", ":TRAC3:MODE", "MAXHold"),
+            ("N9340B", "Trace/4/Mode/MaxHold", "SET", ":TRAC4:MODE", "MAXHold"),
+
+            # Trace Mode Average
+            ("N9340B", "Trace/1/Mode/Average", "SET", ":TRAC1:MODE", "AVERage"),
+            ("N9340B", "Trace/2/Mode/Average", "SET", ":TRAC2:MODE", "AVERage"),
+            ("N9340B", "Trace/3/Mode/Average", "SET", ":TRAC3:MODE", "AVERage"),
+            ("N9340B", "Trace/4/Mode/Average", "SET", ":TRAC4:MODE", "AVERage"),
+
+            # Trace Mode MinHold
+            ("N9340B", "Trace/1/Mode/MinHold", "SET", ":TRAC1:MODE", "MINHold"),
+            ("N9340B", "Trace/2/Mode/MinHold", "SET", ":TRAC2:MODE", "MINHold"),
+            ("N9340B", "Trace/3/Mode/MinHold", "SET", ":TRAC3:MODE", "MINHold"),
+            ("N9340B", "Trace/4/Mode/MinHold", "SET", ":TRAC4:MODE", "MINHold"),
+
+            # Marker - Expanded for 6 markers
+            # Marker Calculate Max
+            ("N9340B", "Marker/1/Calculate/Max", "DO", ":CALCulate:MARKer1:MAX", ""),
+            ("N9340B", "Marker/2/Calculate/Max", "DO", ":CALCulate:MARKer2:MAX", ""),
+            ("N9340B", "Marker/3/Calculate/Max", "DO", ":CALCulate:MARKer3:MAX", ""),
+            ("N9340B", "Marker/4/Calculate/Max", "DO", ":CALCulate:MARKer4:MAX", ""),
+            ("N9340B", "Marker/5/Calculate/Max", "DO", ":CALCulate:MARKer5:MAX", ""),
+            ("N9340B", "Marker/6/Calculate/Max", "DO", ":CALCulate:MARKer6:MAX", ""),
+
+            # Marker Calculate State
+            ("N9340B", "Marker/1/Calculate/State", "SET", ":CALCulate:MARKer1:STATe", "ON"),
+            ("N9340B", "Marker/2/Calculate/State", "SET", ":CALCulate:MARKer2:STATe", "ON"),
+            ("N9340B", "Marker/3/Calculate/State", "SET", ":CALCulate:MARKer3:STATe", "ON"),
+            ("N9340B", "Marker/4/Calculate/State", "SET", ":CALCulate:MARKer4:STATe", "ON"),
+            ("N9340B", "Marker/5/Calculate/State", "SET", ":CALCulate:MARKer5:STATe", "ON"),
+            ("N9340B", "Marker/6/Calculate/State", "SET", ":CALCulate:MARKer6:STATe", "ON"),
+
+            # Marker Calculate X (Frequency)
+            ("N9340B", "Marker/1/Calculate/X", "GET", ":CALCulate:MARKer1:X?", ""),
+            ("N9340B", "Marker/2/Calculate/X", "GET", ":CALCulate:MARKer2:X?", ""),
+            ("N9340B", "Marker/3/Calculate/X", "GET", ":CALCulate:MARKer3:X?", ""),
+            ("N9340B", "Marker/4/Calculate/X", "GET", ":CALCulate:MARKer4:X?", ""),
+            ("N9340B", "Marker/5/Calculate/X", "GET", ":CALCulate:MARKer5:X?", ""),
+            ("N9340B", "Marker/6/Calculate/X", "GET", ":CALCulate:MARKer6:X?", ""),
+
+            # Marker Calculate Y (Amplitude)
+            ("N9340B", "Marker/1/Calculate/Y", "GET", ":CALCulate:MARKer1:Y?", ""),
+            ("N9340B", "Marker/2/Calculate/Y", "GET", ":CALCulate:MARKer2:Y?", ""),
+            ("N9340B", "Marker/3/Calculate/Y", "GET", ":CALCulate:MARKer3:Y?", ""),
+            ("N9340B", "Marker/4/Calculate/Y", "GET", ":CALCulate:MARKer4:Y?", ""),
+            ("N9340B", "Marker/5/Calculate/Y", "GET", ":CALCulate:MARKer5:Y?", ""),
+            ("N9340B", "Marker/6/Calculate/Y", "GET", ":CALCulate:MARKer6:Y?", ""),
+
+
         ]
 
         processed_commands = []
-        for category, cmd in default_categorized_commands:
-            command_type_prefix = ""
-            if cmd.strip().endswith("?"):
-                command_type_prefix = "GET"
-            elif cmd.strip() in ["*RST", ":SYSTem:DISPlay:UPDate"]:
-                command_type_prefix = "DO"
-            else:
-                command_type_prefix = "SET"
-            
-            full_command_type = f"{category} - {command_type_prefix}"
-            processed_commands.append((full_command_type, cmd, "")) # Add empty string for Variable
+        for model, category, action, cmd, default_var_value in default_raw_commands:
+            processed_commands.append((model, category, action, cmd, default_var_value))
         return processed_commands
 
     def _on_tab_selected(self, event):

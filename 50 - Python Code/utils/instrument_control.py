@@ -287,7 +287,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
                 console_print_func("✅ Preamplifier ON.")
             debug_print("Preamplifier ON.", file=current_file, function=current_function, console_print_func=console_print_func)
             # Note: The original code re-set RLEVel here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func):
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}", console_print_func):
                 debug_print(f"Failed to re-set reference level to {ref_level_dbm} dBm after preamp config.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
             if console_print_func:
@@ -304,7 +304,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
         # Set high sensitivity (preamplifier)
         if high_sensitivity_on:
             # Note: The original code set RLEVel to -50 here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50D", console_print_func):
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50", console_print_func):
                 debug_print("Failed to set reference level to -50 dBm for high sensitivity.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
             if not write_safe(inst, ":POWer:ATTenuation 0", console_print_func):
@@ -327,7 +327,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
                 debug_print("Failed to set :POWer:ATTenuation 10.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
             # Note: The original code re-set RLEVel here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func):
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}", console_print_func):
                 debug_print(f"Failed to re-set reference level to {ref_level_dbm} dBm after high sensitivity config.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
             if console_print_func:
