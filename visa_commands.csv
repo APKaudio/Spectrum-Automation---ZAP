@@ -17,9 +17,9 @@ N9340B,Frequency/Sweep/Spacing,SET,:SENSe:X:SPACing LINear,LINear
 N9340B,Frequency/Offset,GET,:FREQuency:OFFSet?,
 N9340B,Frequency/Shift,GET,:INPut:RFSense:FREQuency:SHIFt?,
 N9340B,Frequency/Shift,SET,:INPut:RFSense:FREQuency:SHIFt,0
-N9340B,Bandwidth/Resolution,SET,:SENSe:BANDwidth:RESolution,1000000
+N9340B,Bandwidth/Resolution,SET,:SENSe:BANDwidth:RESolution,1000
 N9340B,Bandwidth/Resolution,GET,:SENSe:BANDwidth:RESolution?,
-N9340B,Bandwidth/Video,SET,:SENSe:BANDwidth:VIDeo,10000
+N9340B,Bandwidth/Video,SET,:SENSe:BANDwidth:VIDeo,100
 N9340B,Bandwidth/Video,GET,:SENSe:BANDwidth:VIDeo?,
 N9340B,Bandwidth/Resolution/Auto,SET,:SENSe:BANDwidth:RESolution:AUTO,ON
 N9340B,Bandwidth/Video/Auto,SET,:SENSe:BANDwidth:VIDeo:AUTO,ON

@@ -26,7 +26,7 @@ def convert_html_report_to_csv(html_content, console_print_func=None):
     All frequencies are converted to MHz for consistency.
 
     Inputs:
-        html_content (str): The full HTML content of the report.
+        html_content (str): The full H TML content of the report.
         console_print_func (function, optional): A function to use for printing messages
                                                  to the console. If None, uses standard print.
 

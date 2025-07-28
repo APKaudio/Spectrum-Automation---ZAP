@@ -311,37 +311,48 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
 
         # Set high sensitivity (preamplifier)
         if high_sensitivity_on:
-            # Note: The original code set RLEVel to -50 here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50", console_print_func):
-                debug_print("Failed to set reference level to -50 dBm for high sensitivity.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if not write_safe(inst, ":POWer:ATTenuation 0", console_print_func):
-                debug_print("Failed to set :POWer:ATTenuation 0.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if not write_safe(inst, ":POWer:GAIN 1", console_print_func):
-                debug_print("Failed to set :POWer:GAIN 1.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if not write_safe(inst, ":POWer:HSENsitive ON", console_print_func):
-                debug_print("Failed to set :POWer:HSENsitive ON.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if console_print_func:
-                console_print_func("✅ High sensitivity turned ON.")
-            debug_print("High sensitivity turned ON.", file=current_file, function=current_function, console_print_func=console_print_func)
+            # Apply :POWer:HSENsitive ON only for N9342CN
+            if model_match == "N9342CN":
+                if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50", console_print_func):
+                    debug_print("Failed to set reference level to -50 dBm for high sensitivity (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if not write_safe(inst, ":POWer:ATTenuation 0", console_print_func):
+                    debug_print("Failed to set :POWer:ATTenuation 0 (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if not write_safe(inst, ":POWer:GAIN 1", console_print_func):
+                    debug_print("Failed to set :POWer:GAIN 1 (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if not write_safe(inst, ":POWer:HSENsitive ON", console_print_func):
+                    debug_print("Failed to set :POWer:HSENsitive ON (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if console_print_func:
+                    console_print_func("✅ High sensitivity turned ON for N9342CN.")
+                debug_print("High sensitivity turned ON for N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                if console_print_func:
+                    console_print_func(f"ℹ️ High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.")
+                debug_print(f"High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
         else:
-            if not write_safe(inst, ":POWer:HSENsitive OFF", console_print_func):
-                debug_print("Failed to set :POWer:HSENsitive OFF.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if not write_safe(inst, ":POWer:ATTenuation 10", console_print_func):
-                debug_print("Failed to set :POWer:ATTenuation 10.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            # Note: The original code re-set RLEVel here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}", console_print_func):
-                debug_print(f"Failed to re-set reference level to {ref_level_dbm} dBm after high sensitivity config.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-            if console_print_func:
-                console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
-                console_print_func("✅ High sensitivity turned OFF.")
-            debug_print("High sensitivity turned OFF.", file=current_file, function=current_function, console_print_func=console_print_func)
+            # Apply :POWer:HSENsitive OFF only for N9342CN
+            if model_match == "N9342CN":
+                if not write_safe(inst, ":POWer:HSENsitive OFF", console_print_func):
+                    debug_print("Failed to set :POWer:HSENsitive OFF (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if not write_safe(inst, ":POWer:ATTenuation 10", console_print_func):
+                    debug_print("Failed to set :POWer:ATTenuation 10 (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                # Note: The original code re-set RLEVel here, preserving that behavior
+                if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}", console_print_func):
+                    debug_print(f"Failed to re-set reference level to {ref_level_dbm} dBm after high sensitivity config (N9342CN).", file=current_file, function=current_function, console_print_func=console_print_func)
+                    return False
+                if console_print_func:
+                    console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
+                    console_print_func("✅ High sensitivity turned OFF for N9342CN.")
+                debug_print("High sensitivity turned OFF for N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                if console_print_func:
+                    console_print_func(f"ℹ️ High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.")
+                debug_print(f"High Sensitivity (HSENsitive) command skipped for model {model_match}. It's specific to N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
         
         # Configure Trace Modes
         if not write_safe(inst, ":TRAC1:MODE WRITe", console_print_func):
@@ -384,18 +395,27 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             console_print_func("✅ VBW and Sweep time set to AUTO.")
         debug_print("VBW and Sweep time set to AUTO.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-        # Set trace data format
-        if model_match == "N9340B":
+        # --- MODIFIED: Set trace data format based on model ---
+        if model_match == "N9342CN":
             if not write_safe(inst, ":TRACe:FORMat:DATA ASCii", console_print_func):
-                debug_print("Failed to set :TRACe:FORMat:DATA ASCii for N9340B.", file=current_file, function=current_function, console_print_func=console_print_func)
+                debug_print("Failed to set :TRACe:FORMat:DATA ASCii for N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
+            if console_print_func:
+                console_print_func("✅ Set trace data format to ASCII for N9342CN.")
+            debug_print("Trace data format set to ASCII for N9342CN.", file=current_file, function=current_function, console_print_func=console_print_func)
+        elif model_match == "N9340B":
+            # Corrected command for N9340B
+            if not write_safe(inst, ":TRACe:FORMat ASCii", console_print_func):
+                debug_print("Failed to set :TRACe:FORMat ASCii for N9340B.", file=current_file, function=current_function, console_print_func=console_print_func)
+                return False
+            if console_print_func:
+                console_print_func("✅ Set trace data format to ASCII for N9340B.")
+            debug_print("Trace data format set to ASCII for N9340B.", file=current_file, function=current_function, console_print_func=console_print_func)
         else:
-            if not write_safe(inst, ":FORMat:DATA ASCii", console_print_func):
-                debug_print("Failed to set :FORMat:DATA ASCii for non-N9340B.", file=current_file, function=current_function, console_print_func=console_print_func)
-                return False
-        if console_print_func:
-            console_print_func("✅ Set trace data format to ASCII for data transfer.")
-        debug_print("Trace data format set to ASCII.", file=current_file, function=current_function, console_print_func=console_print_func)
+            if console_print_func:
+                console_print_func(f"ℹ️ Trace data format command skipped for model {model_match}. No specific command defined.")
+            debug_print(f"Trace data format command skipped for model {model_match}. No specific command defined.", file=current_file, function=current_function, console_print_func=console_print_func)
+        # --- END MODIFIED ---
        
         if console_print_func:
             console_print_func("🎉 Instrument initialized successfully with desired settings.")

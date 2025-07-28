@@ -64,7 +64,13 @@ class App(tk.Tk):
     and manage the overall application flow, including GUI setup, instrument
     communication, and data processing.
     """
-    CONFIG_FILE = 'config.ini'
+    # --- MODIFIED: Ensure CONFIG_FILE points to the same directory as main_app.py ---
+    # Get the directory where this script (main_app.py) is located
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Define the CONFIG_FILE path directly within the script's directory
+    CONFIG_FILE = os.path.join(_script_dir, 'config.ini')
+    # --- END MODIFIED ---
+
     DEFAULT_WINDOW_GEOMETRY = "1400x780+100+100" # Default size and position
 
     def __init__(self):
@@ -729,4 +735,3 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
-

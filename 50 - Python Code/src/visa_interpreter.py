@@ -410,7 +410,7 @@ class VisaInterpreterTab(ttk.Frame):
 
             ("N9340B", "Trace/Display/Type", "GET", ":DISPlay:WINDow:TRACe:TYPE?", ""),
             ("N9340B", "Trace/Display/Y Scale/Spacing", "SET", ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing", "LOGarithmic"),
-            ("N9340B", "Trace/Format/Data/ASCII (N9340B)", "SET", ":TRACe:FORMat:DATA", "ASCii"), # For N9340B
+            ("N9342CN", "Trace/Format/Data/ASCII (N9340B)", "SET", ":TRACe:FORMat:DATA", "ASCii"), # For N9340B
             ("N9340B", "Trace/Format/Data/ASCII (General)", "SET", ":FORMat:DATA", "ASCii"), # General
 
             # Marker - Expanded for 6 markers
