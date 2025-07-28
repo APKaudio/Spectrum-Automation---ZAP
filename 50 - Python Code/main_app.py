@@ -19,45 +19,40 @@ from tkinter import messagebox, scrolledtext, filedialog, TclError, ttk
 import os
 import sys
 import threading
-import time # For time.sleep in _run_scan logic if it remains here or is moved
+import time
 import pyvisa
 import configparser
-import pandas as pd # If pandas is still used directly in App, otherwise move import
-import csv # Added for loading existing markers.csv
-import subprocess # For BeautifulSoup installation check
-import inspect # Import inspect module
+# import pandas as pd # Removed: Pandas is now primarily used in scan_stitch.py and scan_controler_button_logic.py
+# import csv # Removed: CSV writing is now encapsulated in csv_utils.py
+import subprocess
+import inspect
 
 
 # Import local modules
 from src.config_manager import load_config, save_config
-from src.gui_elements import TextRedirector, print_art # Corrected import from print_logo to print_art
+from src.gui_elements import TextRedirector, print_art
 from src.instrument_logic import (
     populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
     apply_settings_logic,
     query_current_instrument_settings_logic, query_device_presets_logic,
     load_selected_preset_logic
 )
-# Import the logic function directly, it will be called by a method in App
 from src.scan_logic import update_connection_status_logic
 from src.settings_logic import restore_default_settings_logic
-from src.scan_controler_button_logic import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
+from src.scan_controler_button_logic import ScanControlTab
 
-from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode, debug_print # Import debug_print
-from tabs.tab_instrument_preset import PresetFilesTab # Import the new tab class
-from tabs.tab_marker_display import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
-from tabs.tab_plotting import PlottingTab # Import the PlottingTab
-from tabs.tab_report_converter import ReportConverterTab # Import the ReportConverterTab
-from tabs.tab_scan_configuration import ScanTab # Import the new ScanTab
+from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode, debug_print
+from tabs.tab_instrument_preset import PresetFilesTab
+from tabs.tab_marker_display import MarkersDisplayTab
+from tabs.tab_plotting import PlottingTab
+from tabs.tab_report_converter import ReportConverterTab
+from tabs.tab_scan_configuration import ScanTab
 
-from tabs.tab_instrument_connection import InstrumentTab # Import the InstrumentTab
-from tabs.tab_visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
+from tabs.tab_instrument_connection import InstrumentTab
+from tabs.tab_visa_interpreter import VisaInterpreterTab
 
 # Import constants from frequency_bands.py
 from ref.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
-
-
-# Global flag for debug mode (can be controlled by GUI checkbox)
-# DEBUG_MODE = False # Now controlled by instrument_control.py's global variable
 
 
 class App(tk.Tk):
@@ -67,14 +62,10 @@ class App(tk.Tk):
     and manage the overall application flow, including GUI setup, instrument
     communication, and data processing.
     """
-    # --- MODIFIED: Ensure CONFIG_FILE points to the same directory as main_app.py ---
-    # Get the directory where this script (main_app.py) is located
     _script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Define the CONFIG_FILE path directly within the script's directory
     CONFIG_FILE = os.path.join(_script_dir, 'config.ini')
-    # --- END MODIFIED ---
 
-    DEFAULT_WINDOW_GEOMETRY = "1400x780+100+100" # Default size and position
+    DEFAULT_WINDOW_GEOMETRY = "1400x780+100+100"
 
     def __init__(self):
         """
@@ -82,76 +73,52 @@ class App(tk.Tk):
         """
         super().__init__()
         self.title("RF Spectrum Analyzer Controller")
-        self.protocol("WM_DELETE_WINDOW", self._on_closing) # Handle window close event
+        self.protocol("WM_DELETE_WINDOW", self._on_closing)
         
         self.config = configparser.ConfigParser()
-        self.config.read(self.CONFIG_FILE) # Read config early
+        self.config.read(self.CONFIG_FILE)
 
-        # Initialize a flag to indicate if the application is fully initialized and ready to save
-        self.is_ready_to_save = False # NEW FLAG: Set to False initially
+        self.is_ready_to_save = False
 
-        # Ensure necessary Python packages are installed
         self._check_and_install_dependencies()
 
-        # Initialize instrument and connection variables
-        self.rm = None # Resource Manager
-        self.inst = None # Instrument instance
-        self.instrument_model = None # To store the instrument model (e.g., N9340B)
+        self.rm = None
+        self.inst = None
+        self.instrument_model = None
 
-        # Store collected scan dataframes for plotting and analysis
         self.collected_scans_dataframes = []
+        self.last_scan_markers = [] # Ensure this is initialized
 
-        # Scan state variables
         self.scanning = False
         self.scan_thread = None
         self.stop_scan_event = threading.Event()
         self.pause_scan_event = threading.Event()
 
-        # Define SCAN_BAND_RANGES from frequency_bands.py
         self.SCAN_BAND_RANGES = SCAN_BAND_RANGES
         self.MHZ_TO_HZ = MHZ_TO_HZ
         self.VBW_RBW_RATIO = VBW_RBW_RATIO
 
-        # Tkinter variables for settings (linked to config.ini)
-        self._setup_tkinter_vars() # Initialize Tkinter variables FIRST
+        self._setup_tkinter_vars()
 
-        # Load configuration and apply geometry
-        load_config(self) # Pass self to load_config
-        self._apply_saved_geometry() # Apply geometry after loading config
+        load_config(self)
+        self._apply_saved_geometry()
 
-        # Set initial debug mode based on config
         set_debug_mode(self.general_debug_enabled_var.get())
         set_log_visa_commands_mode(self.log_visa_commands_enabled_var.get())
 
-        # Set up GUI elements
         self._create_widgets()
-        self._setup_styles() # Apply custom styles
-        self._redirect_stdout_to_console() # Redirect print statements to GUI console
-
-        # Initial population of resources and button states
-        # The actual population of resources is now handled by the InstrumentTab's
-        # _populate_resources method, which is called after the tab is created.
-        # This line is no longer needed here as it will be called by the tab itself.
-        # self._populate_resources() 
+        self._setup_styles()
+        self._redirect_stdout_to_console()
         
-        # Corrected: Call the new App method update_connection_status
         self.update_connection_status(self.inst is not None)
         
-        # Print the ASCII art logo to the console
         print_art()
 
-        # --- FIX FOR LAST_SELECTED_BANDS ISSUE ---
-        # After all tabs are created and config is loaded,
-        # explicitly call _load_band_selections_from_config on the ScanTab.
-        # This ensures the checkboxes are updated on startup regardless of which
-        # tab is initially displayed.
         if hasattr(self, 'scan_tab'):
             self.scan_tab._load_band_selections_from_config()
             debug_print("Called _load_band_selections_from_config on ScanTab during startup.", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # --- END FIX ---
 
-        # Set the flag to True only after all initialization is complete
-        self.is_ready_to_save = True # NEW FLAG: Set to True after full initialization
+        self.is_ready_to_save = True
         debug_print("Application fully initialized and ready to save configuration.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
@@ -293,12 +260,8 @@ class App(tk.Tk):
 
         # --- Left Column: Notebook for Settings and Tabs ---
         self.left_notebook = ttk.Notebook(self)
-        # The notebook will now occupy row 0, column 0 and expand to fill the available space.
         self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
-        # Removed the redundant Session Description Frame from here.
-        # Its widgets (Scan Name, Output Directory) are now expected to be handled within ScanTab.
-
         # Instantiate InstrumentTab and add it to the notebook
         self.instrument_tab = InstrumentTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.instrument_tab, text="Instrument Connection")
@@ -310,7 +273,6 @@ class App(tk.Tk):
 
 
         # --- Existing Notebook (Tabs) for Instrument Presets, Markers, Plotting, Report Converter ---
-        # These tabs are now added to the same left_notebook
         self.preset_files_tab = PresetFilesTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.preset_files_tab, text="Instrument Presets")
 
@@ -333,30 +295,27 @@ class App(tk.Tk):
 
 
         # --- Right Column Container Frame ---
-        # This frame will hold the Scan Control and Application Console
         right_column_container = ttk.Frame(self, style='Dark.TFrame')
-        right_column_container.grid(row=0, column=1, rowspan=1, padx=5, pady=5, sticky="nsew") # Place in main window's grid, span 1 row (full height of right column)
-        right_column_container.grid_columnconfigure(0, weight=1) # Single column within this container
-        right_column_container.grid_rowconfigure(0, weight=0) # Scan Control row (fixed height)
-        right_column_container.grid_rowconfigure(1, weight=1) # Application Console row (expands)
+        right_column_container.grid(row=0, column=1, rowspan=1, padx=5, pady=5, sticky="nsew")
+        right_column_container.grid_columnconfigure(0, weight=1)
+        right_column_container.grid_rowconfigure(0, weight=0)
+        right_column_container.grid_rowconfigure(1, weight=1)
 
 
         # --- Scan Control Buttons Frame (Moved into right_column_container) ---
-        # Instantiate ScanControlTab here and pass self (app_instance) to it
         self.scan_control_tab = ScanControlTab(right_column_container, app_instance=self, console_print_func=self._print_to_gui_console)
-        self.scan_control_tab.grid(row=0, column=0, padx=5, pady=5, sticky="new") # Place in right column container
+        self.scan_control_tab.grid(row=0, column=0, padx=5, pady=5, sticky="new")
 
 
         # --- Application Console Frame (Moved into right_column_container) ---
         console_frame = ttk.LabelFrame(right_column_container, text="Application Console", style='Dark.TLabelframe')
-        console_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Below scan control in right column container
+        console_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         console_frame.grid_rowconfigure(0, weight=1)
         console_frame.grid_columnconfigure(0, weight=1)
 
-        # Removed fixed height to allow grid weight to control height
         self.console_text = scrolledtext.ScrolledText(console_frame, wrap="word", bg="#2b2b2b", fg="#cccccc", insertbackground="white")
         self.console_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        self.console_text.config(state=tk.DISABLED) # Make it read-only
+        self.console_text.config(state=tk.DISABLED)
         
         debug_print("Main application widgets created.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
@@ -369,28 +328,28 @@ class App(tk.Tk):
         style = ttk.Style(self)
 
         # Overall theme
-        style.theme_use('clam') # 'clam', 'alt', 'default', 'classic'
+        style.theme_use('clam')
 
         # General background and foreground colors
-        BG_DARK = "#1e1e1e" # Very dark grey
-        FG_LIGHT = "#cccccc" # Light grey
-        ACCENT_BLUE = "#007bff" # Bootstrap primary blue
-        ACCENT_GREEN = "#28a745" # Bootstrap success green
-        ACCENT_RED = "#dc3545" # Bootstrap danger red
-        ACCENT_ORANGE = "#ffc107" # Bootstrap warning orange (for pause/apply)
-        ACCENT_PURPLE = "#6f42c1" # Bootstrap purple
+        BG_DARK = "#1e1e1e"
+        FG_LIGHT = "#cccccc"
+        ACCENT_BLUE = "#007bff"
+        ACCENT_GREEN = "#28a745"
+        ACCENT_RED = "#dc3545"
+        ACCENT_ORANGE = "#ffc107"
+        ACCENT_PURPLE = "#6f42c1"
 
         style.configure('.', background=BG_DARK, foreground=FG_LIGHT, font=('Helvetica', 10))
         style.configure('TFrame', background=BG_DARK)
         style.configure('TLabel', background=BG_DARK, foreground=FG_LIGHT)
         style.configure('TEntry', fieldbackground="#3b3b3b", foreground="#ffffff", borderwidth=1, relief="flat")
-        style.map('TEntry', fieldbackground=[('focus', '#4a4a4a')]) # Slightly lighter on focus
+        style.map('TEntry', fieldbackground=[('focus', '#4a4a4a')])
         style.configure('TCombobox', fieldbackground="#3b3b3b", foreground="#ffffff", selectbackground=ACCENT_BLUE, selectforeground="white")
         style.map('TCombobox', fieldbackground=[('readonly', '#3b3b3b')], arrowcolor=[('!disabled', FG_LIGHT)])
 
         # Buttons
         style.configure('TButton',
-                        background="#4a4a4a", # Darker grey for buttons
+                        background="#4a4a4a",
                         foreground="white",
                         font=('Helvetica', 10, 'bold'),
                         borderwidth=0,
@@ -411,7 +370,7 @@ class App(tk.Tk):
         style.configure('Red.TButton', background=ACCENT_RED, foreground="white")
         style.map('Red.TButton', background=[('active', '#c82333'), ('disabled', '#bd2130')])
 
-        style.configure('Orange.TButton', background=ACCENT_ORANGE, foreground="#333333") # Dark text for contrast
+        style.configure('Orange.TButton', background=ACCENT_ORANGE, foreground="#333333")
         style.map('Orange.TButton', background=[('active', '#e0a800'), ('disabled', '#d39e00')])
 
         style.configure('Purple.TButton', background=ACCENT_PURPLE, foreground="white")
@@ -421,16 +380,16 @@ class App(tk.Tk):
         # Checkbuttons
         style.configure('TCheckbutton', background=BG_DARK, foreground=FG_LIGHT, indicatorcolor="#4a4a4a")
         style.map('TCheckbutton',
-                background=[('active', BG_DARK)], # Keep background same on active
+                background=[('active', BG_DARK)],
                 foreground=[('disabled', '#808080')],
-                indicatorcolor=[('selected', ACCENT_BLUE)]) # Blue checkmark when selected
+                indicatorcolor=[('selected', ACCENT_BLUE)])
 
         # LabelFrame
         style.configure('TLabelFrame', background=BG_DARK, foreground=FG_LIGHT, borderwidth=1, relief="solid")
         style.configure('TLabelFrame.Label', background=BG_DARK, foreground=FG_LIGHT, font=('Helvetica', 10, 'bold'))
-        style.configure('Dark.TLabelframe', background="#1e1e1e", foreground="#cccccc") # Consistent dark background and light text
-        style.configure('Dark.TLabelframe.Label', background="#1e1e1e", foreground="#cccccc") # Ensure label matches
-        style.configure('Dark.TFrame', background="#1e1e1e") # For inner frames
+        style.configure('Dark.TLabelframe', background="#1e1e1e", foreground="#cccccc")
+        style.configure('Dark.TLabelframe.Label', background="#1e1e1e", foreground="#cccccc")
+        style.configure('Dark.TFrame', background="#1e1e1e")
 
         # Notebook (Tabs)
         style.configure('TNotebook', background=BG_DARK, borderwidth=0)
@@ -438,75 +397,72 @@ class App(tk.Tk):
         style.map('TNotebook.Tab',
                 background=[('selected', ACCENT_BLUE), ('active', '#4a4a4a')],
                 foreground=[('selected', 'white')],
-                expand=[('selected', [1, 1, 1, 0])]) # Expand selected tab slightly
+                expand=[('selected', [1, 1, 1, 0])])
 
         # Treeview (for MarkersDisplayTab and VisaInterpreterTab)
         style.configure('Treeview',
-                        background="#3b3b3b", # Darker grey for treeview background
-                        foreground="#ffffff", # White text
-                        fieldbackground="#3b3b3b", # Same as background
-                        rowheight=25) # Adjust row height for better spacing
+                        background="#3b3b3b",
+                        foreground="#ffffff",
+                        fieldbackground="#3b3b3b",
+                        rowheight=25)
         style.map('Treeview',
-                background=[('selected', ACCENT_BLUE)], # Blue highlight for selected item
-                foreground=[('selected', 'white')]) # White text on selected item
+                background=[('selected', ACCENT_BLUE)],
+                foreground=[('selected', 'white')])
         
         style.configure('Treeview.Heading',
-                        background="#4a4a4a", # Darker grey for headings
+                        background="#4a4a4a",
                         foreground="white",
                         font=('Helvetica', 10, "bold"))
         style.map('Treeview.Heading',
-                background=[('active', '#606060')]) # Lighter grey on active heading
+                background=[('active', '#606060')])
 
         # Markers Tab Specific Styles
-        style.configure("Markers.TFrame", background="#1e1e1e") # Main frame background
+        style.configure("Markers.TFrame", background="#1e1e1e")
         style.configure("Markers.TLabel", background="#1e1e1e", foreground="#cccccc")
         style.configure("Markers.TButton",
-                        background="#6a5acd", # Medium purple
+                        background="#6a5acd",
                         foreground="white",
                         font=("Helvetica", 10, "bold"),
                         padding=[10, 5])
         style.map("Markers.TButton",
-                background=[('active', '#8a7ad0')]) # Lighter purple on active
+                background=[('active', '#8a7ad0')])
 
-        style.configure("SelectedSpan.TButton", # Style for selected span button
-                        background="#ff6347", # Tomato red/orange
+        style.configure("SelectedSpan.TButton",
+                        background="#ff6347",
                         foreground="white",
                         font=("Helvetica", 10, "bold"),
                         padding=[10, 5])
         style.map("SelectedSpan.TButton",
-                background=[('active', '#e05038')]) # Darker red/orange on active
+                background=[('active', '#e05038')])
 
         style.configure("Markers.Inner.Treeview",
-                    background="#2b2b2b", # Darker grey
-                    foreground="#cccccc", # Light grey text
-                    fieldbackground="#2b2b2b") # Darker grey
+                    background="#2b2b2b",
+                    foreground="#cccccc",
+                    fieldbackground="#2b2b2b")
         style.map("Markers.Inner.Treeview",
-              background=[("selected", "#0056b3")], # Darker blue highlight for treeview
+              background=[("selected", "#0056b3")],
               foreground=[("selected", "white")])
     
-        # Configure the base TLabelFrame style and its label part
-        style.configure("TLabelFrame", background="#1e1e1e", foreground="#cccccc") # Consistent dark background and light text
-        style.configure("TLabelFrame.Label", background="#1e1e1e", foreground="#cccccc") # Ensure label matches
+        style.configure("TLabelFrame", background="#1e1e1e", foreground="#cccccc")
+        style.configure("TLabelFrame.Label", background="#1e1e1e", foreground="#cccccc")
         
-        # Update font size for preset buttons to 14pt (smaller than 20pt)
         style.configure("LargePreset.TButton",
-                        background="#4a4a4a", # Darker grey for buttons
+                        background="#4a4a4a",
                         foreground="white",
-                        font=("Helvetica", 14, "bold"), # Set font size to 14
-                        padding=[30, 15, 30, 15]) # Adjust padding as needed
+                        font=("Helvetica", 14, "bold"),
+                        padding=[30, 15, 30, 15])
         style.map("LargePreset.TButton",
-                background=[('active', '#606060')]) # Lighter grey on active
+                background=[('active', '#606060')])
 
         style.configure("SelectedPreset.TButton",
-                        background="#007bff", # A nice blue color (consistent with Blue.TButton)
+                        background="#007bff",
                         foreground="white",
-                        font=("Helvetica", 14, "bold"), # Keep the 14-point font
+                        font=("Helvetica", 14, "bold"),
                         padding=[30, 15, 30, 15])
         style.map("SelectedPreset.TButton",
-                background=[('active', '#0056b3')]) # Darker blue on active
+                background=[('active', '#0056b3')])
 
-        # Style for the large YAK button (defined globally in main_app.py)
-        YAK_ORANGE = "#ff8c00" # A vibrant orange color for YAK button
+        YAK_ORANGE = "#ff8c00"
         style.configure('LargeYAK.TButton',
                         font=('Helvetica', 100, 'bold'),
                         background=YAK_ORANGE,
@@ -526,8 +482,7 @@ class App(tk.Tk):
         debug_print("Redirecting stdout/stderr to GUI console...", file=__file__, function=inspect.currentframe().f_code.co_name)
         sys.stdout = TextRedirector(self.console_text, "stdout")
         sys.stderr = TextRedirector(self.console_text, "stderr")
-        print("Application console initialized.") # This will now print to the GUI console
-
+        print("Application console initialized.")
 
     def _print_to_gui_console(self, message, overwrite=False):
         """
@@ -544,14 +499,11 @@ class App(tk.Tk):
         """
         self.console_text.config(state=tk.NORMAL)
         if overwrite:
-            # Get the start and end of the last line
-            # "end-1c" means the character before the very end (which is the newline)
-            # "linestart" moves to the beginning of that line
             last_line_start = self.console_text.index("end-1c linestart")
             self.console_text.delete(last_line_start, tk.END)
         
         self.console_text.insert(tk.END, message + "\n")
-        self.console_text.see(tk.END) # Scroll to the end
+        self.console_text.see(tk.END)
         self.console_text.config(state=tk.DISABLED)
 
 
@@ -609,7 +561,7 @@ class App(tk.Tk):
         """
         debug_print("Delegating apply instrument settings to InstrumentTab...", file=__file__, function=inspect.currentframe().f_code.co_name)
         if hasattr(self, 'instrument_tab'):
-            self.instrument_tab._apply_settings() # Call the _apply_settings method on InstrumentTab
+            self.instrument_tab._apply_settings()
         else:
             self._print_to_gui_console("⚠️ Warning: InstrumentTab not initialized. Cannot apply settings.")
             debug_print("InstrumentTab not initialized for _apply_instrument_settings.", file=__file__, function=inspect.currentframe().f_code.co_name)
@@ -623,7 +575,6 @@ class App(tk.Tk):
         """
         debug_print("Loading selected preset...", file=__file__, function=inspect.currentframe().f_code.co_name)
         if hasattr(self, 'preset_files_tab'):
-            # Call the _load_selected_preset method on the preset_files_tab instance
             self.preset_files_tab._load_selected_preset()
         else:
             self._print_to_gui_console("⚠️ Warning: Preset Files tab not initialized.")
@@ -635,7 +586,6 @@ class App(tk.Tk):
         Initiates the scan process in a separate thread.
         """
         debug_print("Starting scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Call the method on the scan_control_tab instance
         if hasattr(self, 'scan_control_tab'):
             self.scan_control_tab._start_scan()
         else:
@@ -648,7 +598,6 @@ class App(tk.Tk):
         Pauses the active scan.
         """
         debug_print("Pausing scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Call the method on the scan_control_tab instance
         if hasattr(self, 'scan_control_tab'):
             self.scan_control_tab._pause_scan()
         else:
@@ -697,29 +646,20 @@ class App(tk.Tk):
         any visual indication of unsaved changes.
         """
         debug_print("Resetting setting colors...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Iterate through all Tkinter variables in the map
         for tk_var_name, (_, _, tk_var_instance) in self.setting_var_map.items():
-            # Find the corresponding widget. This is a generic approach;
-            # a more robust solution might involve storing widget references.
-            # For now, we'll assume entry widgets are the primary ones needing color reset.
             if isinstance(tk_var_instance, (tk.StringVar, tk.IntVar, tk.DoubleVar)):
-                # This is a bit hacky, but tries to find the entry widget associated
-                # with the variable. A better design would be to store widget references.
-                # For now, we'll just print a debug message if it doesn't find every single widget.
                 try:
-                    # Attempt to find the entry widget by iterating through children
-                    # This is not guaranteed to work for all layouts
                     for widget in self.winfo_children():
                         if isinstance(widget, (ttk.LabelFrame, tk.Frame, ttk.Notebook)):
                             for child in widget.winfo_children():
-                                if isinstance(child, ttk.Frame): # Check frames within notebooks/labelframes
+                                if isinstance(child, ttk.Frame):
                                     for grand_child in child.winfo_children():
                                         if isinstance(grand_child, ttk.Entry) and grand_child.cget('textvariable') == str(tk_var_instance):
-                                            grand_child.config(style='TEntry') # Reset to default style
+                                            grand_child.config(style='TEntry')
                                             debug_print(f"Reset color for {tk_var_name}", file=__file__, function=inspect.currentframe().f_code.co_name)
                                             break
                                 if isinstance(child, ttk.Entry) and child.cget('textvariable') == str(tk_var_instance):
-                                    child.config(style='TEntry') # Reset to default style
+                                    child.config(style='TEntry')
                                     debug_print(f"Reset color for {tk_var_name}", file=__file__, function=inspect.currentframe().f_code.co_name)
                                     break
                 except Exception as e:
@@ -733,19 +673,16 @@ class App(tk.Tk):
         """
         debug_print("Application closing. Performing cleanup...", file=__file__, function=inspect.currentframe().f_code.co_name)
         
-        # Only save configuration if the application has been fully initialized
         if self.is_ready_to_save:
-            # --- NEW DEBUG: Print state of band_vars before saving ---
             debug_print("--- State of band_vars before saving ---", file=__file__, function=inspect.currentframe().f_code.co_name)
             for i, band_item in enumerate(self.band_vars):
                 debug_print(f"  Band {band_item['band']['Band Name']}: {band_item['var'].get()}", file=__file__, function=inspect.currentframe().f_code.co_name)
             debug_print("--- End state of band_vars ---", file=__file__, function=inspect.currentframe().f_code.co_name)
-            # --- END NEW DEBUG ---
-            save_config(self) # Save current settings to config.ini
+            save_config(self)
         else:
             debug_print("Application closing prematurely or not fully initialized. Skipping config save.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
-        self.destroy() # Close the application
+        self.destroy()
 
 
     def _on_tab_change(self, event):
@@ -753,11 +690,9 @@ class App(tk.Tk):
         Handles tab change events in the Notebook.
         Calls _on_tab_selected for the newly selected tab if available.
         """
-        # Get the currently selected tab's widget from the left_notebook
         selected_tab_id = self.left_notebook.select()
         selected_tab_widget = self.left_notebook.nametowidget(selected_tab_id)
         
-        # Check if the selected tab has an _on_tab_selected method and call it
         if hasattr(selected_tab_widget, '_on_tab_selected'):
             selected_tab_widget._on_tab_selected(event)
             debug_print(f"Tab changed to {selected_tab_widget.winfo_class()}. Calling _on_tab_selected.", file=__file__, function=inspect.currentframe().f_code.co_name)
@@ -775,3 +710,4 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+

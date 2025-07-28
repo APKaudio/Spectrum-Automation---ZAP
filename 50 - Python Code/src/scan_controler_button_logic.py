@@ -5,11 +5,12 @@ import threading
 import time
 import os
 from datetime import datetime
-import pandas as pd
+import pandas as pd # Keep pandas for DataFrame operations on stitched data
 import inspect
 
 # Import scan-related logic
-from utils.scan_instrument import scan_bands
+from utils.scan_instrument import scan_bands # Simplified scan_bands
+from process_math.scan_stitch import process_and_stitch_scan_data # New import for data stitching
 from ref.frequency_bands import MHZ_TO_HZ
 from utils.instrument_control import debug_print
 from src.plot_logic import plot_single_scan_data, _open_plot_in_browser
@@ -129,7 +130,9 @@ class ScanControlTab(ttk.Frame):
             self.is_paused = False # Ensure paused state is reset
             # Wait for the thread to finish (optional, but good for cleanup)
             if self.scan_thread and self.scan_thread.is_alive():
-                self.scan_thread.join(timeout=1.0) # Wait for up to 1 second
+                # Setting the stop event will allow the scan_bands function to exit gracefully
+                self.app_instance.stop_scan_event.set()
+                self.scan_thread.join(timeout=2.0) # Give it a bit more time to clean up
                 if self.scan_thread.is_alive():
                     self.console_print_func("⚠️ Warning: Scan thread did not terminate gracefully.")
                     debug_print("Scan thread did not terminate gracefully.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -144,7 +147,8 @@ class ScanControlTab(ttk.Frame):
 
     def _run_scan(self):
         """
-        The main scan loop, run in a separate thread.
+        The main scan loop, run in a separate thread. This orchestrates
+        the segment sweeps and then stitches the data.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
@@ -156,7 +160,7 @@ class ScanControlTab(ttk.Frame):
                 self.app_instance.after(0, lambda: self.console_print_func("⚠️ Warning: No frequency bands selected for scan."))
                 debug_print("No frequency bands selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                 self.is_scanning = False
-                self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None) # Update buttons on main thread
+                self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
                 return
 
             num_scan_cycles = int(self.app_instance.num_scan_cycles_var.get())
@@ -169,16 +173,14 @@ class ScanControlTab(ttk.Frame):
             include_markers = self.app_instance.include_markers_var.get()
 
             # Convert Tkinter StringVar values to appropriate types
-            # These values are retrieved from the GUI elements (likely Entry widgets)
-            # and need to be converted to numerical types for calculations or instrument commands.
             rbw_hz_val = float(self.app_instance.scan_rbw_hz_var.get())
             ref_level_dbm_val = float(self.app_instance.reference_level_dbm_var.get())
             freq_shift_hz_val = float(self.app_instance.freq_shift_hz_var.get())
-            maxhold_enabled_val = self.app_instance.maxhold_enabled_var.get() # This is already a boolean from Checkbutton
-            high_sensitivity_val = self.app_instance.high_sensitivity_var.get() # This is already a boolean from Checkbutton
-            preamp_on_val = self.app_instance.preamp_on_var.get() # This is already a boolean from Checkbutton
+            maxhold_enabled_val = self.app_instance.maxhold_enabled_var.get()
+            high_sensitivity_val = self.app_instance.high_sensitivity_var.get()
+            preamp_on_val = self.app_instance.preamp_on_var.get()
             rbw_step_size_hz_val = float(self.app_instance.rbw_step_size_hz_var.get())
-
+            max_hold_time_seconds_val = float(self.app_instance.maxhold_time_seconds_var.get()) # Get max hold time
 
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
@@ -187,13 +189,18 @@ class ScanControlTab(ttk.Frame):
             self.app_instance.collected_scans_dataframes = [] # Clear previous scan data
             self.app_instance.last_scan_markers = [] # Clear previous markers
 
-            for cycle in range(num_scan_cycles):
-                while self.is_paused:
-                    # Call the main app's update_connection_status which will then update all tabs
-                    self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
-                    time.sleep(0.1) # Small sleep to avoid busy-waiting
+            overall_start_freq_hz = min(band["Start MHz"] for band in selected_bands) * MHZ_TO_HZ
+            overall_stop_freq_hz = max(band["Stop MHz"] for band in selected_bands) * MHZ_TO_HZ
 
-                if not self.is_scanning: # Check again after potential pause
+            for cycle in range(num_scan_cycles):
+                # Reset stop event for each new cycle
+                self.app_instance.stop_scan_event.clear()
+
+                while self.is_paused:
+                    self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
+                    time.sleep(0.1)
+
+                if not self.is_scanning:
                     self.app_instance.after(0, lambda c=cycle: self.console_print_func(f"Scan cycle {c + 1}/{num_scan_cycles} interrupted."))
                     debug_print(f"Scan cycle {cycle + 1}/{num_scan_cycles} interrupted.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                     break
@@ -201,19 +208,19 @@ class ScanControlTab(ttk.Frame):
                 self.app_instance.after(0, lambda c=cycle: self.console_print_func(f"Scanning Cycle {c + 1}/{num_scan_cycles}..."))
                 debug_print(f"Starting scan cycle {cycle + 1}/{num_scan_cycles}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-                # Perform the actual scan
-                last_successful_band_index, scan_df, markers_data = scan_bands(
-                    app_instance_ref=self.app_instance, # Pass app_instance_ref as keyword argument
+                # Call the simplified scan_bands to collect raw data
+                last_successful_band_index, raw_scan_data, markers_data = scan_bands(
+                    app_instance_ref=self.app_instance,
                     inst=self.app_instance.inst,
                     selected_bands=selected_bands,
-                    rbw_hz=rbw_hz_val, # Use the converted float value
-                    ref_level_dbm=ref_level_dbm_val, # Use the converted float value
-                    freq_shift_hz=freq_shift_hz_val, # Use the converted float value
-                    maxhold_enabled=maxhold_enabled_val, # Use the converted boolean value
-                    high_sensitivity=high_sensitivity_val, # Use the converted boolean value
-                    preamp_on=preamp_on_val, # Use the converted boolean value
-                    rbw_step_size_hz=rbw_step_size_hz_val, # Use the converted float value
-                    cycle_wait_time_seconds=cycle_wait_time,
+                    rbw_hz=rbw_hz_val,
+                    ref_level_dbm=ref_level_dbm_val,
+                    freq_shift_hz=freq_shift_hz_val,
+                    maxhold_enabled=maxhold_enabled_val,
+                    high_sensitivity=high_sensitivity_val,
+                    preamp_on=preamp_on_val,
+                    rbw_step_size_hz=rbw_step_size_hz_val,
+                    max_hold_time_seconds=max_hold_time_seconds_val, # Pass max_hold_time_seconds
                     scan_name=scan_name,
                     output_folder=output_dir,
                     stop_event=self.app_instance.stop_scan_event,
@@ -223,56 +230,74 @@ class ScanControlTab(ttk.Frame):
                     app_console_update_func=self.console_print_func
                 )
 
-                if scan_df is not None and not scan_df.empty:
-                    self.app_instance.collected_scans_dataframes.append(scan_df)
-                    self.app_instance.last_scan_markers = markers_data # Store markers from this scan
-                    self.app_instance.after(0, lambda: self.console_print_func(f"✅ Data collected for cycle {cycle + 1}."))
-                    debug_print(f"Data collected for cycle {cycle + 1}. DataFrame shape: {scan_df.shape}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                if raw_scan_data is not None and len(raw_scan_data) > 0:
+                    self.app_instance.after(0, lambda: self.console_print_func(f"Processing raw data for cycle {cycle + 1}..."))
+                    debug_print(f"Processing {len(raw_scan_data)} raw points for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-                    # Generate and save single scan plot
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    plot_filename = os.path.join(output_dir, f"{scan_name}_Scan_{timestamp}.html")
-                    
-                    self.app_instance.after(0, lambda: self.console_print_func(f"Generating plot for cycle {cycle + 1}..."))
-                    debug_print(f"Generating plot for cycle {cycle + 1} to {plot_filename}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                    
-                    fig, html_path = plot_single_scan_data(
-                        scan_df,
-                        f"{scan_name} - Cycle {cycle + 1} - {timestamp}",
-                        include_tv_markers,
-                        include_gov_markers,
-                        include_markers, # Pass the include_markers flag
-                        output_html_path=plot_filename,
-                        console_print_func=self.console_print_func
+                    # Use the new process_and_stitch_scan_data function
+                    scan_df = process_and_stitch_scan_data(
+                        raw_scan_data,
+                        overall_start_freq_hz,
+                        overall_stop_freq_hz,
+                        self.console_print_func
                     )
-                    if fig:
-                        self.app_instance.after(0, lambda: self.console_print_func(f"✅ Plot saved to: {html_path}"))
-                        debug_print(f"Plot saved to: {html_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                        # Update last plot path in plotting tab if it exists
-                        if hasattr(self.app_instance, 'plotting_tab') and hasattr(self.app_instance.plotting_tab, 'last_plot_path'):
-                            self.app_instance.plotting_tab.last_plot_path = html_path
-                        if open_html_after_complete:
-                            self.app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p, self.console_print_func))
-                    else:
-                        self.app_instance.after(0, lambda: self.console_print_func(f"🚫 Failed to generate plot for cycle {cycle + 1}."))
-                        debug_print(f"Failed to generate plot for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                else:
-                    self.app_instance.after(0, lambda: self.console_print_func(f"🚫 No data collected for cycle {cycle + 1}."))
-                    debug_print(f"No data collected for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-                if self.is_scanning and cycle < num_scan_cycles - 1:
+                    if not scan_df.empty:
+                        self.app_instance.collected_scans_dataframes.append(scan_df)
+                        self.app_instance.last_scan_markers = markers_data # Store markers from this scan (still placeholder)
+                        self.app_instance.after(0, lambda: self.console_print_func(f"✅ Data collected and stitched for cycle {cycle + 1}. ({scan_df.shape[0]} points)"))
+                        debug_print(f"Data collected and stitched for cycle {cycle + 1}. DataFrame shape: {scan_df.shape}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+                        # Generate and save single scan plot
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        plot_filename = os.path.join(output_dir, f"{scan_name}_Scan_{timestamp}.html")
+                        
+                        self.app_instance.after(0, lambda: self.console_print_func(f"Generating plot for cycle {cycle + 1}..."))
+                        debug_print(f"Generating plot for cycle {cycle + 1} to {plot_filename}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                        
+                        fig, html_path = plot_single_scan_data(
+                            scan_df,
+                            f"{scan_name} - Cycle {cycle + 1} - {timestamp}",
+                            include_tv_markers,
+                            include_gov_markers,
+                            include_markers,
+                            output_html_path=plot_filename,
+                            console_print_func=self.console_print_func
+                        )
+                        if fig:
+                            self.app_instance.after(0, lambda: self.console_print_func(f"✅ Plot saved to: {html_path}"))
+                            debug_print(f"Plot saved to: {html_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                            if hasattr(self.app_instance, 'plotting_tab') and hasattr(self.app_instance.plotting_tab, 'last_plot_path'):
+                                self.app_instance.plotting_tab.last_plot_path = html_path
+                            if open_html_after_complete:
+                                self.app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p, self.console_print_func))
+                        else:
+                            self.app_instance.after(0, lambda: self.console_print_func(f"🚫 Failed to generate plot for cycle {cycle + 1}."))
+                            debug_print(f"Failed to generate plot for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    else:
+                        self.app_instance.after(0, lambda: self.console_print_func(f"🚫 No data after stitching for cycle {cycle + 1}."))
+                        debug_print(f"No data after stitching for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                else:
+                    self.app_instance.after(0, lambda: self.console_print_func(f"🚫 No raw data collected for cycle {cycle + 1}."))
+                    debug_print(f"No raw data collected for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+                if not self.is_scanning: # Check if stop was requested during the scan_bands call
+                    self.app_instance.after(0, lambda c=cycle: self.console_print_func(f"Scan cycle {c + 1}/{num_scan_cycles} interrupted after data collection."))
+                    debug_print(f"Scan cycle {cycle + 1}/{num_scan_cycles} interrupted after data collection.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    break
+
+                if cycle < num_scan_cycles - 1:
                     self.app_instance.after(0, lambda: self.console_print_func(f"Waiting {cycle_wait_time} seconds before next cycle..."))
                     debug_print(f"Waiting {cycle_wait_time} seconds before next cycle.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                     time.sleep(cycle_wait_time)
 
             self.is_scanning = False
-            self.is_paused = False # Ensure paused state is reset
+            self.is_paused = False
             self.app_instance.after(0, lambda: self.console_print_func("✅ Scan complete."))
             debug_print("Scan complete. Re-enabling buttons.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
             # After scan, if there's collected data, update the markers tab
             if self.app_instance.last_scan_markers:
-                # Check if markers_display_tab exists before calling its method
                 if hasattr(self.app_instance, 'markers_display_tab') and self.app_instance.last_scan_markers:
                     headers = list(self.app_instance.last_scan_markers[0].keys())
                     self.app_instance.after(0, lambda h=headers, r=self.app_instance.last_scan_markers: self.app_instance.markers_display_tab.update_markers_data(h, r))
