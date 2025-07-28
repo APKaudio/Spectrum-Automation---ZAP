@@ -401,14 +401,20 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ, console_print_func=None):
     rbw_hz = None
 
     try:
+        if console_print_func:
+            console_print_func("ℹ️ Querying Center Frequency...")
         center_freq_str = query_safe(inst, ":SENSe:FREQuency:CENTer?", console_print_func)
         if center_freq_str is not None:
             center_freq_hz = float(center_freq_str)
         
+        if console_print_func:
+            console_print_func("ℹ️ Querying Span...")
         span_str = query_safe(inst, ":SENSe:FREQuency:SPAN?", console_print_func)
         if span_str is not None:
             span_hz = float(span_str)
         
+        if console_print_func:
+            console_print_func("ℹ️ Querying RBW...")
         rbw_str = query_safe(inst, ":BAND:RES?", console_print_func)
         if rbw_str is not None:
             rbw_hz = float(rbw_str)
@@ -431,99 +437,3 @@ def query_current_instrument_settings(inst, MHZ_TO_HZ, console_print_func=None):
             console_print_func(error_msg)
         debug_print(error_msg, file=current_file, function=current_function, console_print_func=console_print_func)
         return None, None, None
-
-
-def query_device_presets(inst, console_print_func=None):
-    """
-    Queries the instrument for a list of available preset (.sta) files.
-    This command is specific to certain Keysight/Agilent instruments.
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print("Querying device presets from instrument...", file=current_file, function=current_function, console_print_func=console_print_func)
-    
-    presets = []
-    try:
-        # Query the directory of .sta files. The exact command might vary by instrument.
-        # This is a common command for Keysight/Agilent.
-        response = query_safe(inst, ":MMEMory:CATalog? \"C:\\PRESETS\\*.STA\"", console_print_func)
-        
-        if response:
-            # The response typically looks like: '"C:\PRESETS\PRESET1.STA","C:\PRESETS\PRESET2.STA"'
-            # or '1,"C:\PRESETS\",1,"PRESET1.STA",1,"PRESET2.STA"' depending on instrument firmware.
-            # We need to parse this to get just the filenames.
-            
-            # Remove quotes and split by comma
-            cleaned_response = response.strip().strip('"')
-            
-            # Attempt to parse based on common formats
-            if "," in cleaned_response:
-                parts = cleaned_response.split(',')
-                for part in parts:
-                    # Remove any leading/trailing quotes and backslashes
-                    filename = part.strip().strip('"').replace('\\', '/')
-                    if filename.lower().endswith(".sta"):
-                        # Extract just the filename from the path
-                        base_filename = os.path.basename(filename)
-                        presets.append(base_filename)
-            elif cleaned_response.lower().endswith(".sta"):
-                # Single preset returned
-                base_filename = os.path.basename(cleaned_response.replace('\\', '/'))
-                presets.append(base_filename)
-            
-            debug_print(f"Parsed device presets: {presets}", file=current_file, function=current_function, console_print_func=console_print_func)
-            return presets
-        else:
-            debug_print("No response received for preset catalog query.", file=current_file, function=current_function, console_print_func=console_print_func)
-            return []
-    except Exception as e:
-        error_msg = f"❌ Error querying device presets: {e}"
-        if console_print_func:
-            console_print_func(error_msg)
-        debug_print(error_msg, file=current_file, function=current_function, console_print_func=console_print_func)
-        return []
-
-
-def load_selected_preset(inst, selected_preset_name, console_print_func=None):
-    """
-    Loads a specified preset file onto the connected instrument.
-    Returns True on success, False on failure, and the instrument's
-    current center frequency, span, and RBW after loading.
-    """
-    current_function = inspect.currentframe().f_code.co_name
-    current_file = __file__
-    debug_print(f"Loading preset '{selected_preset_name}' to instrument.", file=current_file, function=current_function, console_print_func=console_print_func)
-
-    if not inst:
-        if console_print_func:
-            console_print_func("⚠️ Warning: No instrument connected. Cannot load preset.")
-        debug_print("No instrument connected for loading preset.", file=current_file, function=current_function, console_print_func=console_print_func)
-        return False, None, None, None
-
-    # Ensure the path is correctly formatted for the instrument.
-    # Instruments typically expect backslashes and quotes escaped.
-    # Example: C:\PRESETS\MYPRESET.STA -> "C:\\PRESETS\\MYPRESET.STA"
-    preset_path = f"C:\\\\PRESETS\\\\{selected_preset_name}"
-    command = f':MMEMory:LOAD STA,\"{preset_path}\"'
-    
-    if console_print_func:
-        console_print_func(f"\nAttempting to load preset: {selected_preset_name}")
-    try:
-        if write_safe(inst, command, console_print_func):
-            if console_print_func:
-                console_print_func(f"✅ Preset '{selected_preset_name}' loaded successfully.")
-            
-            # Import MHZ_TO_HZ locally for this function to avoid circular dependency
-            from utils.frequency_bands import MHZ_TO_HZ 
-            
-            # Query and display current instrument settings after loading preset
-            center_freq, span, rbw = query_current_instrument_settings(inst, MHZ_TO_HZ, console_print_func)
-            return True, center_freq, span, rbw
-        else:
-            debug_print(f"Failed to load preset '{selected_preset_name}'.", file=current_file, function=current_function, console_print_func=console_print_func)
-            return False, None, None, None
-    except Exception as e:
-        debug_print(f"An unexpected error occurred while loading preset: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-        if console_print_func:
-            console_print_func(f"❌ Error loading preset '{selected_preset_name}': {e}")
-        return False, None, None, None
