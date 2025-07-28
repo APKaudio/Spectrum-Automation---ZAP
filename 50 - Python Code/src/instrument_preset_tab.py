@@ -19,9 +19,10 @@ class PresetFilesTab(ttk.Frame):
     """
     A Tkinter Frame that displays available instrument preset files and allows loading them.
     """
-    def __init__(self, master=None, app_instance=None, **kwargs):
+    def __init__(self, master=None, app_instance=None, console_print_func=None, **kwargs):
         super().__init__(master, **kwargs)
         self.app_instance = app_instance
+        self.console_print_func = console_print_func if console_print_func else print # Use provided func or default print
         self.preset_files = [] # To store list of .sta files (either local or device)
         self.selected_preset = None # To store the currently selected preset name
         self.source_of_displayed_presets = "local" # "local" or "device"
@@ -30,273 +31,252 @@ class PresetFilesTab(ttk.Frame):
 
         self._create_widgets()
         # Initial population will happen in _on_tab_selected,
-        # which is called when the tab is first displayed.
+        # which is called when the tab is first shown.
 
     def _create_widgets(self):
         """
         Creates and arranges the widgets for the Preset Files tab.
         """
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0) # For buttons
-        self.grid_rowconfigure(1, weight=1) # For preset display
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Creating PresetFilesTab widgets.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        # Control buttons for presets
-        control_frame = ttk.Frame(self)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1) # Row for preset buttons frame
+
+        # Control Frame for buttons (Load from Device, Open Folder)
+        control_frame = ttk.Frame(self, style='TFrame')
         control_frame.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         control_frame.grid_columnconfigure(0, weight=1)
         control_frame.grid_columnconfigure(1, weight=1)
 
-        ttk.Button(control_frame, text="Load Local Presets", command=self._populate_local_preset_list, style='GreyText.TButton').grid(row=0, column=0, padx=2, pady=2, sticky="ew")
-        
-        # Store a reference to query_presets_button for external control
-        self.query_presets_button = ttk.Button(control_frame, text="Query Presets from Device", command=self._query_presets_from_device, state=tk.DISABLED, style='GreyText.TButton')
-        self.query_presets_button.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        self.query_presets_button = ttk.Button(control_frame, text="Query Presets from Device", command=self._query_device_presets_threaded, style='Blue.TButton')
+        self.query_presets_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        self.query_presets_button.config(state=tk.DISABLED) # Initially disabled until connected
 
-        # Frame to hold the preset buttons (scrollable)
-        preset_display_frame = ttk.Frame(self, style='Dark.TFrame')
-        preset_display_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        preset_display_frame.grid_columnconfigure(0, weight=1)
-        preset_display_frame.grid_rowconfigure(0, weight=1)
+        self.open_folder_button = ttk.Button(control_frame, text="Open Preset Folder", command=self._open_preset_folder, style='Blue.TButton')
+        self.open_folder_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-        # Use a canvas with a scrollbar for the preset buttons
-        self.preset_canvas = tk.Canvas(preset_display_frame, borderwidth=0, highlightthickness=0, bg='#1e1e1e')
-        self.preset_canvas.grid(row=0, column=0, sticky="nsew")
+        # Frame to hold preset buttons (will be populated dynamically)
+        self.preset_buttons_frame = ttk.LabelFrame(self, text="Available Presets", style='Dark.TLabelframe')
+        self.preset_buttons_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        self.preset_buttons_frame.grid_columnconfigure(0, weight=1) # Allow buttons to expand horizontally
 
-        preset_scrollbar = ttk.Scrollbar(preset_display_frame, orient="vertical", command=self.preset_canvas.yview)
-        preset_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.preset_canvas.config(yscrollcommand=preset_scrollbar.set)
+        # Canvas and Scrollbar for preset buttons
+        self.preset_canvas = tk.Canvas(self.preset_buttons_frame, borderwidth=0, highlightthickness=0, bg="#1e1e1e")
+        self.preset_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.preset_scrollbar = ttk.Scrollbar(self.preset_buttons_frame, orient="vertical", command=self.preset_canvas.yview)
+        self.preset_scrollbar.pack(side=tk.RIGHT, fill="y")
+
+        self.preset_canvas.configure(yscrollcommand=self.preset_scrollbar.set)
+        self.preset_canvas.bind('<Configure>', lambda e: self.preset_canvas.configure(scrollregion = self.preset_canvas.bbox("all")))
 
         self.inner_preset_frame = ttk.Frame(self.preset_canvas, style='Dark.TFrame')
         self.preset_canvas.create_window((0, 0), window=self.inner_preset_frame, anchor="nw")
 
-        self.inner_preset_frame.bind("<Configure>", lambda e: self.preset_canvas.config(scrollregion=self.preset_canvas.bbox("all")))
-        self.preset_canvas.bind('<Enter>', self._bind_preset_mouse_wheel)
-        self.preset_canvas.bind('<Leave>', self._unbind_preset_mouse_wheel)
-
-    def _bind_preset_mouse_wheel(self, event):
-        """Binds mouse wheel events for the preset canvas."""
-        event.widget.bind_all("<MouseWheel>", self._on_preset_mouse_wheel)
-        event.widget.bind_all("<Button-4>", self._on_preset_mouse_wheel) # For Linux
-        event.widget.bind_all("<Button-5>", self._on_preset_mouse_wheel) # For Linux
-
-    def _unbind_preset_mouse_wheel(self, event):
-        """Unbinds mouse wheel events for the preset canvas."""
-        event.widget.unbind_all("<MouseWheel>")
-        event.widget.unbind_all("<Button-4>")
-        event.widget.unbind_all("<Button-5>")
-
-    def _on_preset_mouse_wheel(self, event):
-        """Handles mouse wheel scrolling for the preset canvas."""
-        if sys.platform == "darwin":
-            self.preset_canvas.yview_scroll(-1 * int(event.delta), "units")
-        elif event.num == 4: # Linux scroll up
-            self.preset_canvas.yview_scroll(-1, "units")
-        elif event.num == 5: # Linux scroll down
-            self.preset_canvas.yview_scroll(1, "units")
-        else: # Windows
-            self.preset_canvas.yview_scroll(-1 * int(event.delta/120), "units")
-
-    def _populate_local_preset_list(self):
-        """
-        Scans the local C:\PRESETS directory for .sta files and populates the display.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-
-        preset_folder = "C:\\PRESETS" # Hardcoded local preset folder
-        if not os.path.isdir(preset_folder):
-            print(f"🚫 Local preset folder not found: {preset_folder}")
-            debug_print(f"Local preset folder not found: {preset_folder}", file=current_file, function=current_function)
-            self.populate_preset_buttons([], source="local") # Clear display
-            return
-
-        local_presets = []
-        try:
-            for filename in os.listdir(preset_folder):
-                if filename.lower().endswith(".sta"):
-                    local_presets.append(filename)
-            print(f"✅ Found {len(local_presets)} local presets in {preset_folder}")
-            debug_print(f"Found {len(local_presets)} local presets.", file=current_file, function=current_function)
-            self.populate_preset_buttons(local_presets, source="local")
-        except Exception as e:
-            print(f"❌ Error listing local presets: {e}")
-            debug_print(f"Error listing local presets: {e}", file=current_file, function=current_function)
-            self.populate_preset_buttons([], source="local") # Clear display on error
-
-    def populate_preset_buttons(self, presets_list, source):
-        """
-        Populates the GUI with buttons for each preset.
-        Clears existing buttons first.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-
-        self.clear_preset_buttons()
-        self.source_of_displayed_presets = source
-        self.preset_files = presets_list
-        self.preset_buttons = {} # Reset the dictionary
-
-        if not presets_list:
-            ttk.Label(self.inner_preset_frame, text=f"No {source} presets found.", foreground="#cccccc", background="#1e1e1e").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-            debug_print(f"No {source} presets to display.", file=current_file, function=current_function)
-            return
-
-        # Sort presets alphabetically
-        sorted_presets = sorted(presets_list, key=lambda x: x.lower())
-
-        row_idx = 0
-        col_idx = 0
-        # Display presets in a 3-column grid
-        for i, preset_name in enumerate(sorted_presets):
-            # Special handling for "MON" presets
-            if preset_name.upper().startswith("MON"):
-                button_text = f"MON\n{preset_name.replace('.sta', '')}"
-                button_style = "SelectedPreset.TButton" if preset_name == self.selected_preset else "LargePreset.TButton"
-            else:
-                button_text = preset_name.replace('.sta', '')
-                button_style = "SelectedPreset.TButton" if preset_name == self.selected_preset else "LargePreset.TButton"
-            
-            # Create a frame for each button to hold button and info label
-            button_frame = ttk.Frame(self.inner_preset_frame, style='Dark.TFrame')
-            button_frame.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
-            button_frame.grid_columnconfigure(0, weight=1)
-
-            btn = ttk.Button(button_frame, text=button_text,
-                             command=lambda p=preset_name: self._on_preset_button_click(p),
-                             style=button_style)
-            btn.grid(row=0, column=0, sticky="ew")
-            self.preset_buttons[preset_name] = {"button": btn, "info_label": None} # Store button reference
-
-            # Add an info label below the button, initially empty
-            info_label = ttk.Label(button_frame, text="", background="#1e1e1e", foreground="#cccccc", font=("Helvetica", 10))
-            info_label.grid(row=1, column=0, sticky="ew")
-            self.preset_buttons[preset_name]["info_label"] = info_label
-
-            col_idx += 1
-            if col_idx >= 3: # 3 columns per row
-                col_idx = 0
-                row_idx += 1
-        debug_print(f"Populated {len(presets_list)} {source} preset buttons.", file=current_file, function=current_function)
-
-    def _on_preset_button_click(self, preset_name):
-        """
-        Handles a click on a preset button, loads the preset, and updates button styles.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-
-        if self.current_selected_button:
-            # Reset the style of the previously selected button
-            prev_preset_name = None
-            for name, data in self.preset_buttons.items():
-                if data["button"] == self.current_selected_button:
-                    prev_preset_name = name
-                    break
-            if prev_preset_name:
-                # Determine original style based on MON prefix
-                if prev_preset_name.upper().startswith("MON"):
-                    self.current_selected_button.config(style="LargePreset.TButton")
-                else:
-                    self.current_selected_button.config(style="LargePreset.TButton")
-            self.current_selected_button = None
-
-        # Set the new selected preset and update its style
-        self.selected_preset = preset_name
-        if preset_name in self.preset_buttons:
-            self.current_selected_button = self.preset_buttons[preset_name]["button"]
-            if preset_name.upper().startswith("MON"):
-                self.current_selected_button.config(style="SelectedPreset.TButton")
-            else:
-                self.current_selected_button.config(style="SelectedPreset.TButton")
-        
-        print(f"Selected preset: {preset_name}")
-        debug_print(f"Selected preset: {preset_name}", file=current_file, function=current_function)
-
-        # Enable load preset button in main_app if an instrument is connected
-        if self.app_instance.inst:
-            self.app_instance.load_preset_button.config(state=tk.NORMAL)
-        else:
-            print("🚫 No instrument connected to load preset.")
-            debug_print("No instrument connected to load preset.", file=current_file, function=current_function)
-            self.app_instance.load_preset_button.config(state=tk.DISABLED)
-
-    def update_preset_button_info(self, preset_name, center_freq_hz, span_hz, rbw_hz):
-        """
-        Updates the info label of a specific preset button with its current settings.
-        """
-        if preset_name in self.preset_buttons and self.preset_buttons[preset_name]["info_label"]:
-            info_label = self.preset_buttons[preset_name]["info_label"]
-            if center_freq_hz is not None and span_hz is not None and rbw_hz is not None:
-                info_text = (f"Center: {center_freq_hz / MHZ_TO_HZ:.3f} MHz\n"
-                             f"Span: {span_hz / MHZ_TO_HZ:.3f} MHz\n"
-                             f"RBW: {rbw_hz:.0f} Hz")
-                info_label.config(text=info_text)
-            else:
-                info_label.config(text="Info: N/A")
-
-    def get_selected_preset(self):
-        """Returns the name of the currently selected preset."""
-        return self.selected_preset
-
-    def _query_presets_from_device(self):
-        """
-        Calls the logic to query presets directly from the connected instrument.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-
-        if not self.app_instance.inst:
-            print("🚫 Not connected to instrument. Cannot query presets.")
-            debug_print("Not connected to instrument, cannot query presets.", file=current_file, function=current_function)
-            # tk.messagebox.showwarning("Not Connected", "Please connect to an instrument first to query presets.") # Removed messagebox
-            return
-        
-        # Call the logic from instrument_logic.py
-        query_device_presets_logic(self.app_instance)
-
-    def clear_preset_buttons(self):
-        """
-        Removes all dynamically created preset buttons from the display.
-        """
-        for widget in self.inner_preset_frame.winfo_children():
-            widget.destroy()
-        self.preset_buttons = {}
-        self.selected_preset = None
-        self.current_selected_button = None
-        debug_print("Cleared all preset buttons.", file=__file__, function=inspect.currentframe().f_code.co_name)
+        self._populate_local_presets() # Initial population with local files
 
     def _on_tab_selected(self, event):
         """
-        Callback for when this tab is selected in the main notebook.
-        Refreshes the local preset list and updates the query button state.
+        Callback for when this tab is selected.
+        Refreshes the list of local presets.
         """
-        debug_print("Instrument Presets Tab selected.", file=__file__, function=inspect.currentframe().f_code.co_name)
-        self._populate_local_preset_list() # Always refresh local list when tab is selected
-
-        # Update the state of the query presets button
-        if self.app_instance.inst:
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Preset Files Tab selected. Refreshing local presets.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        self._populate_local_presets()
+        # Update the state of the query_presets_button based on instrument connection
+        if self.app_instance and self.app_instance.inst:
             self.query_presets_button.config(state=tk.NORMAL)
         else:
             self.query_presets_button.config(state=tk.DISABLED)
+
+
+    def _populate_local_presets(self):
+        """
+        Populates the display with .sta files found in the local preset directory.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        self.source_of_displayed_presets = "local"
+        
+        preset_folder = os.path.join(os.getcwd(), "presets") # Assuming a 'presets' folder in the app directory
+        if not os.path.exists(preset_folder):
+            os.makedirs(preset_folder, exist_ok=True)
+            self.console_print_func(f"Created local preset folder: {preset_folder}")
+            debug_print(f"Created local preset folder: {preset_folder}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self.preset_files = []
+        try:
+            for f_name in os.listdir(preset_folder):
+                if f_name.lower().endswith(".sta"):
+                    self.preset_files.append(f_name)
+            self.preset_files.sort() # Sort alphabetically
+            debug_print(f"Found {len(self.preset_files)} local presets.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        except Exception as e:
+            self.console_print_func(f"❌ Error listing local presets: {e}")
+            debug_print(f"Error listing local presets: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        self._create_clickable_buttons()
+
+
+    def _query_device_presets_threaded(self):
+        """
+        Starts a thread to query presets from the connected device.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Starting thread to query device presets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        if not self.app_instance.inst:
+            self.console_print_func("⚠️ Warning: No instrument connected to query presets from.")
+            debug_print("No instrument connected for device preset query.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        self.console_print_func("Querying presets from device... This may take a moment.")
+        # Disable button to prevent multiple queries
+        self.query_presets_button.config(state=tk.DISABLED)
+        
+        query_thread = threading.Thread(target=self._run_device_preset_query)
+        query_thread.daemon = True
+        query_thread.start()
+
+    def _run_device_preset_query(self):
+        """
+        Executes the device preset query logic in a separate thread.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Running device preset query in thread.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        try:
+            device_presets = query_device_presets_logic(self.app_instance, self.console_print_func)
+            self.app_instance.after(0, lambda: self._update_preset_display_from_device(device_presets))
+        except Exception as e:
+            self.app_instance.after(0, lambda: self.console_print_func(f"❌ Error querying device presets: {e}"))
+            debug_print(f"Error in _run_device_preset_query: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        finally:
+            self.app_instance.after(0, lambda: self.query_presets_button.config(state=tk.NORMAL)) # Re-enable button
+
+
+    def _update_preset_display_from_device(self, presets):
+        """
+        Updates the GUI to display presets queried from the device.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Updating preset display with {len(presets)} device presets.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self.source_of_displayed_presets = "device"
+        self.preset_files = presets
+        self.preset_files.sort() # Ensure sorted display
+        self._create_clickable_buttons()
+        self.console_print_func(f"Displaying {len(self.preset_files)} presets from the device.")
+
+
+    def _create_clickable_buttons(self):
+        """
+        Clears existing preset buttons and creates new ones based on self.preset_files.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Creating clickable preset buttons...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Clear existing buttons
+        for widget in self.inner_preset_frame.winfo_children():
+            widget.destroy()
+        self.preset_buttons = {}
+        self.current_selected_button = None
+
+        if not self.preset_files:
+            ttk.Label(self.inner_preset_frame, text="No presets found.", style='Markers.TLabel').grid(row=0, column=0, padx=5, pady=5)
+            debug_print("No preset files to create buttons for.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        for i, preset_name in enumerate(self.preset_files):
+            button = ttk.Button(self.inner_preset_frame, text=preset_name,
+                                command=lambda p=preset_name: self._on_preset_button_click(p),
+                                style='Markers.TButton') # Use a generic button style
+            button.grid(row=i, column=0, sticky="ew", padx=2, pady=2)
+            self.preset_buttons[preset_name] = button
+        
+        # Update scroll region after adding buttons
+        self.inner_preset_frame.update_idletasks()
+        self.preset_canvas.config(scrollregion=self.preset_canvas.bbox("all"))
+        debug_print(f"Created {len(self.preset_files)} preset buttons.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _on_preset_button_click(self, preset_name):
+        """
+        Handles a click on a preset button. Loads the selected preset to the instrument.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        self.console_print_func(f"\nAttempting to load preset: {preset_name}...")
+        debug_print(f"Preset button clicked: {preset_name}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not self.app_instance.inst:
+            self.console_print_func("⚠️ Warning: No instrument connected. Cannot load preset.")
+            debug_print("No instrument connected for loading preset.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        # Visually indicate selection
+        if self.current_selected_button:
+            self.current_selected_button.config(style='Markers.TButton') # Revert old button style
+        
+        clicked_button = self.preset_buttons.get(preset_name)
+        if clicked_button:
+            clicked_button.config(style='SelectedSpan.TButton') # Apply selected style
+            self.current_selected_button = clicked_button
+            self.selected_preset = preset_name
+        
+        # Start loading in a new thread to keep GUI responsive
+        load_thread = threading.Thread(target=self._load_preset_threaded, args=(preset_name,))
+        load_thread.daemon = True
+        load_thread.start()
+
+
+    def _load_preset_threaded(self, preset_name):
+        """
+        Loads the selected preset to the instrument in a separate thread.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Loading preset '{preset_name}' in thread.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        success, center_freq, span, rbw = load_selected_preset_logic(self.app_instance, preset_name, self.console_print_func) # Pass console_print_func
+
+        if success:
+            self.app_instance.after(0, lambda: self.console_print_func(f"✅ Preset '{preset_name}' loaded successfully."))
+            # Update main app's instrument settings display
+            self.app_instance.after(0, lambda: self.app_instance.current_center_freq_var.set(f"{center_freq:.3f} MHz" if center_freq else "N/A"))
+            self.app_instance.after(0, lambda: self.app_instance.current_span_var.set(f"{span:.3f} MHz" if span else "N/A"))
+            self.app_instance.after(0, lambda: self.app_instance.current_rbw_var.set(f"{rbw / 1000:.1f} kHz" if rbw else "N/A"))
+        else:
+            self.app_instance.after(0, lambda: self.console_print_func(f"❌ Error: Failed to load preset '{preset_name}'."))
+        debug_print(f"Preset loading thread for '{preset_name}' finished. Success: {success}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
 
     def _open_preset_folder(self):
         """
         Opens the local preset folder in the system's file explorer.
         """
-        current_file = inspect.currentframe().f_code.co_name
         current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to open preset folder...", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        preset_folder = "C:\\PRESETS" # Hardcoded local preset folder
+        preset_folder = os.path.join(os.getcwd(), "presets") # Assuming 'presets' folder in app directory
         
         # Ensure the directory exists before trying to open it
         if not os.path.exists(preset_folder):
             try:
                 os.makedirs(preset_folder, exist_ok=True)
-                print(f"Created preset folder: {preset_folder}")
-                debug_print(f"Created preset folder: {preset_folder}", file=current_file, function=current_function)
+                self.console_print_func(f"Created preset folder: {preset_folder}")
+                debug_print(f"Created preset folder: {preset_folder}", file=current_file, function=current_function, console_print_func=self.console_print_func)
             except Exception as e:
-                print(f"❌ Failed to create preset folder: {e}") # Changed messagebox to print
-                debug_print(f"Failed to create preset folder: {e}", file=current_file, function=current_function)
+                self.console_print_func(f"❌ Failed to create preset folder: {e}")
+                debug_print(f"Failed to create preset folder: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
                 return
 
         try:
@@ -307,9 +287,9 @@ class PresetFilesTab(ttk.Frame):
                 subprocess.Popen(["open", preset_folder])
             else: # Linux
                 subprocess.Popen(["xdg-open", preset_folder])
-            print(f"Opened preset folder: {preset_folder}")
-            debug_print(f"Opened preset folder: {preset_folder}", file=current_file, function=current_function)
+            self.console_print_func(f"Opened preset folder: {preset_folder}")
+            debug_print(f"Opened preset folder: {preset_folder}", file=current_file, function=current_function, console_print_func=self.console_print_func)
         except Exception as e:
-            print(f"❌ Could not open preset folder: {e}") # Changed messagebox to print
-            debug_print(f"Error opening preset folder '{preset_folder}': {e}", file=current_file, function=current_function)
+            self.console_print_func(f"❌ Could not open preset folder: {e}")
+            debug_print(f"Error opening preset folder '{preset_folder}': {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 

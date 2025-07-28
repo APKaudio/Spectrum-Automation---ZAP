@@ -110,7 +110,10 @@ def load_config(app_instance):
             tk_var.set(_get_config_value('LAST_USED_SETTINGS', last_key, default_key, ''))
 
     # Special handling for output_folder_var which maps to scan_directory_var's config keys
-    app_instance.output_folder_var.set(app_instance.scan_directory_var.get())
+    # Corrected: Use output_folder_var directly and get value from config
+    app_instance.output_folder_var.set(
+        _get_config_value('LAST_USED_SETTINGS', 'last_scan_directory', 'default_scan_directory', 'scan_data')
+    )
 
     debug_print("Configuration loaded.", file=current_file, function=current_function)
 
@@ -165,3 +168,4 @@ def save_config(app_instance):
         debug_print(f"❌ Error saving configuration to {app_instance.CONFIG_FILE}: {e}", file=current_file, function=current_function)
     except Exception as e:
         debug_print(f"❌ An unexpected error occurred while saving configuration: {e}", file=current_file, function=current_function)
+

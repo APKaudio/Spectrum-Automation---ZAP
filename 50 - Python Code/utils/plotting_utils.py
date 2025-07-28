@@ -20,7 +20,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import webbrowser
 import os
-import tkinter as tk # For messagebox - KEEP for _open_plot_in_browser if it uses it
+# import tkinter as tk # For messagebox - KEEP for _open_plot_in_browser if it uses it # Removed
 # from tkinter import messagebox # Removed messagebox import
 import re # Added import for regular expressions
 import csv # New: Import csv for MARKERS.CSV
@@ -34,437 +34,304 @@ try:
         GOV_PLOT_BAND_MARKERS
     )
 except ImportError:
-    print("Error: frequency_bands.py not found. Please ensure it's in the same directory.")
-    # Define dummy values to prevent errors if file is missing
+    # Fallback for direct script execution outside the package structure
+    print("Could not import frequency_bands.py directly. Ensure it's in PYTHONPATH or run from project root.")
     MHZ_TO_HZ = 1_000_000
     TV_PLOT_BAND_MARKERS = []
     GOV_PLOT_BAND_MARKERS = []
 
 # Import debug_print from instrument_control
-from utils.instrument_control import debug_print # Import debug_print
+from utils.instrument_control import debug_print
 
 
-def _open_plot_in_browser(file_path):
+def _open_plot_in_browser(html_file_path, console_print_func):
     """
     Opens the generated HTML plot in the default web browser.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+    debug_print(f"Attempting to open plot in browser: {html_file_path}", file=current_file, function=current_function, console_print_func=console_print_func)
     try:
-        if os.path.exists(file_path):
-            webbrowser.open_new_tab(f"file:///{os.path.abspath(file_path)}")
-            debug_print(f"Opened plot in browser: {file_path}", file=current_file, function=current_function)
-        else:
-            print(f"🚫 Error: Plot file not found at {file_path}")
-            debug_print(f"Plot file not found: {file_path}", file=current_file, function=current_function)
-            # messagebox.showerror("File Not Found", f"Plot file not found: {file_path}") # Removed messagebox
+        webbrowser.open(f'file://{os.path.realpath(html_file_path)}')
+        console_print_func(f"✅ Plot opened in browser: {os.path.basename(html_file_path)}")
     except Exception as e:
-        print(f"❌ Error opening plot in browser: {e}")
-        debug_print(f"Error opening plot in browser: {e}", file=current_file, function=current_function)
-        # messagebox.showerror("Browser Error", f"Could not open plot in browser: {e}") # Removed messagebox
+        console_print_func(f"❌ Error opening plot in browser: {e}")
+        debug_print(f"Error opening plot in browser: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+        # tk.messagebox.showerror("Browser Error", f"Could not open plot in browser: {e}") # Removed
 
 
-def plot_single_scan_data(df, title, include_tv_markers, include_gov_markers, include_custom_markers, output_folder_for_markers, output_html_path=None):
+def _load_markers_from_csv_for_plotting(output_folder, console_print_func):
     """
-    Generates an interactive Plotly HTML plot for a single scan DataFrame.
-    Can include TV channel, Government band, and custom markers.
-
-    Inputs:
-        df (pd.DataFrame): DataFrame with 'Frequency (MHz)' and 'Level (dBm)' columns.
-        title (str): Title of the plot.
-        include_tv_markers (bool): Whether to include TV channel markers.
-        include_gov_markers (bool): Whether to include Government band markers.
-        include_custom_markers (bool): Whether to include custom markers from MARKERS.CSV.
-        output_folder_for_markers (str): The base output folder to look for MARKERS.CSV.
-        output_html_path (str, optional): Full path to save the HTML plot. If None, returns figure.
-
-    Returns:
-        tuple: (plotly.graph_objects.Figure, str) if output_html_path is provided,
-               (plotly.graph_objects.Figure, None) if not.
+    Loads marker data from the MARKERS.CSV file for plotting purposes.
+    The MARKERS.CSV is expected to be in the output_folder.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+    
+    markers_file_path = os.path.join(output_folder, "MARKERS.CSV")
+    debug_print(f"Attempting to load markers from: {markers_file_path}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    markers = []
+    if os.path.exists(markers_file_path):
+        try:
+            with open(markers_file_path, 'r', newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    try:
+                        # Ensure FREQ is converted to float (MHz)
+                        row['FREQ'] = float(row['FREQ'])
+                        markers.append(row)
+                    except ValueError:
+                        console_print_func(f"⚠️ Warning: Invalid frequency value in MARKERS.CSV row: {row}. Skipping this marker.")
+                        debug_print(f"Invalid FREQ in MARKERS.CSV: {row}", file=current_file, function=current_function, console_print_func=console_print_func)
+            debug_print(f"Loaded {len(markers)} markers from MARKERS.CSV.", file=current_file, function=current_function, console_print_func=console_print_func)
+        except Exception as e:
+            console_print_func(f"❌ Error loading MARKERS.CSV for plotting: {e}")
+            debug_print(f"Error loading MARKERS.CSV: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+            # tk.messagebox.showerror("File Error", f"Could not load MARKERS.CSV: {e}") # Removed
+    else:
+        debug_print(f"MARKERS.CSV not found at {markers_file_path}. No custom markers will be plotted.", file=current_file, function=current_function, console_print_func=console_print_func)
+    return markers
+
+
+def plot_single_scan_data(df, title, output_html_path=None, console_print_func=None):
+    """
+    Generates an interactive Plotly HTML plot for a single scan.
+
+    Inputs:
+        df (pd.DataFrame): DataFrame containing 'Frequency (MHz)' and 'Power Level (dBm)'.
+        title (str): Title of the plot.
+        output_html_path (str, optional): Path to save the HTML plot. If None, plot is not saved.
+        console_print_func (function, optional): Function to use for console output.
+    Returns:
+        plotly.graph_objects.Figure: The Plotly figure object.
+        str: The path where the HTML plot was saved (or None if not saved).
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print(f"Plotting single scan data with title: {title}", file=current_file, function=current_function, console_print_func=console_print_func)
 
     if df.empty:
-        print("🚫 Cannot plot: DataFrame is empty.")
-        debug_print("Cannot plot: DataFrame is empty.", file=current_file, function=current_function)
+        console_print_func("⚠️ Warning: DataFrame is empty. Cannot generate plot.")
+        debug_print("Empty DataFrame for single scan plot.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None, None
 
-    fig = go.Figure()
+    # Ensure column names are correct
+    if 'Frequency (MHz)' not in df.columns or 'Power Level (dBm)' not in df.columns:
+        console_print_func("❌ Error: DataFrame must contain 'Frequency (MHz)' and 'Power Level (dBm)' columns.")
+        debug_print("Missing required columns in DataFrame for single scan plot.", file=current_file, function=current_function, console_print_func=console_print_func)
+        return None, None
 
-    # Add the main scan trace
-    fig.add_trace(go.Scatter(x=df['Frequency (MHz)'], y=df['Level (dBm)'],
-                             mode='lines', name='Scan Trace',
-                             line=dict(color='cyan', width=1)))
-
-    shapes = []
-    annotations = []
-
-    # Function to add markers
-    def add_markers(markers, color, name_prefix, line_dash='dot'):
-        for i, marker in enumerate(markers):
-            start_freq = marker["Start MHz"]
-            stop_freq = marker["Stop MHz"]
-            band_name = marker["Band Name"]
-
-            # Add shaded rectangle for the band
-            shapes.append(
-                dict(
-                    type="rect",
-                    xref="x", yref="paper",
-                    x0=start_freq, y0=0,
-                    x1=stop_freq, y1=1,
-                    fillcolor=color,
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                )
-            )
-            # Add annotation for the band name
-            annotations.append(
-                dict(
-                    x=(start_freq + stop_freq) / 2,
-                    y=1.02, # Position above the plot area
-                    xref="x", yref="paper",
-                    text=band_name,
-                    showarrow=False,
-                    font=dict(size=8, color=color),
-                    xanchor="center", yanchor="bottom",
-                    bgcolor="rgba(0,0,0,0.5)", # Semi-transparent background
-                    bordercolor=color,
-                    borderwidth=0.5,
-                    borderpad=1
-                )
-            )
-
-    # Add TV channel markers
-    if include_tv_markers:
-        debug_print("Including TV markers in plot.", file=current_file, function=current_function)
-        add_markers(TV_PLOT_BAND_MARKERS, 'lightgreen', 'TV Channel')
-
-    # Add Government band markers
-    if include_gov_markers:
-        debug_print("Including Government markers in plot.", file=current_file, function=current_function)
-        add_markers(GOV_PLOT_BAND_MARKERS, 'pink', 'Gov Band')
-
-    # Add custom markers from MARKERS.CSV
-    if include_custom_markers:
-        debug_print("Including custom markers from MARKERS.CSV in plot.", file=current_file, function=current_function)
-        markers_file_path = os.path.join(output_folder_for_markers, "MARKERS.CSV")
-        if os.path.exists(markers_file_path):
-            try:
-                custom_markers = []
-                with open(markers_file_path, 'r', newline='', encoding='utf-8') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    for row in reader:
-                        try:
-                            freq_mhz = float(row.get("FREQ"))
-                            name = row.get("NAME", "Custom Marker")
-                            custom_markers.append({"Band Name": name, "Start MHz": freq_mhz, "Stop MHz": freq_mhz})
-                        except (ValueError, TypeError):
-                            print(f"⚠️ Warning: Skipping invalid custom marker row: {row}")
-                            debug_print(f"Skipping invalid custom marker row: {row}", file=current_file, function=current_function)
-                            continue
-                
-                if custom_markers:
-                    add_markers(custom_markers, 'yellow', 'Custom Marker')
-                    debug_print(f"Added {len(custom_markers)} custom markers from MARKERS.CSV.", file=current_file, function=current_function)
-                else:
-                    print("ℹ️ MARKERS.CSV found but contains no valid custom marker data.")
-                    debug_print("MARKERS.CSV found but contains no valid custom marker data.", file=current_file, function=current_function)
-
-            except Exception as e:
-                print(f"❌ Error loading custom markers from MARKERS.CSV: {e}")
-                debug_print(f"Error loading custom markers from MARKERS.CSV: {e}", file=current_file, function=current_function)
-        else:
-            print(f"ℹ️ MARKERS.CSV not found at {markers_file_path}. Skipping custom markers.")
-            debug_print(f"MARKERS.CSV not found at {markers_file_path}. Skipping custom markers.", file=current_file, function=current_function)
-
-
-    # Determine x-axis range
-    x_range_min = df['Frequency (MHz)'].min()
-    x_range_max = df['Frequency (MHz)'].max()
-
-    # Determine y-axis range (add some padding)
-    y_range_min = df['Level (dBm)'].min() - 5
-    y_range_max = df['Level (dBm)'].max() + 5
+    fig = px.line(df, x='Frequency (MHz)', y='Power Level (dBm)', 
+                  title=title,
+                  labels={'Frequency (MHz)': 'Frequency (MHz)', 'Power Level (dBm)': 'Power Level (dBm)'})
 
     fig.update_layout(
-        title={
-            'text': title,
-            'y':0.95,
-            'x':0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': dict(color='white') # Dark mode title color
-        },
-        xaxis=dict(
-            title='Frequency (MHz)',
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.1)', # Light grid for dark mode
-            zeroline=False,
-            range=[x_range_min, x_range_max] if x_range_min is not None and x_range_max is not None else None
-        ),
-        yaxis=dict(
-            title='Level (dBm)',
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.1)',
-            zeroline=False,
-            autorange=True,
-            range=[y_range_min, y_range_max]
-        ),
-        plot_bgcolor='black', # Dark mode plot background
-        paper_bgcolor='black', # Dark mode paper background
-        font=dict(color='white'), # Default font color for labels, etc.
-        legend=dict(
-            orientation="v", # Vertical orientation
-            yanchor="top",   # Anchor to the top
-            y=0.98,          # Position near the top right, adjusted slightly down
-            xanchor="right", # Anchor to the right
-            x=0.98,          # Position near the right edge
-            bgcolor="rgba(0,0,0,0.5)", # Semi-transparent background for readability
-            bordercolor="white",
-            borderwidth=1,
-            font=dict(size=9) # Slightly smaller font for compactness
-        ),
-        # Add collected shapes and annotations to the layout
-        shapes=shapes,
-        annotations=annotations
+        template="plotly_dark", # Dark theme
+        hovermode="x unified",
+        xaxis_title="Frequency (MHz)",
+        yaxis_title="Power Level (dBm)",
+        font=dict(family="Inter, sans-serif"),
+        margin=dict(l=40, r=40, t=80, b=40),
+        height=600 # Fixed height for consistency
     )
-    debug_print("Plotly layout updated with traces, shapes, and annotations.", file=current_file, function=current_function)
+    debug_print("Plotly figure created for single scan.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # If an output path is provided, save the figure
     if output_html_path:
         # Ensure the directory exists
         output_dir = os.path.dirname(output_html_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            debug_print(f"Created directory for plot: {output_dir}", file=current_file, function=current_function)
-        debug_print(f"Saving plot to: {output_html_path}", file=current_file, function=current_function)
+            debug_print(f"Created directory for single scan plot: {output_dir}", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Saving single scan plot to: {output_html_path}", file=current_file, function=current_function, console_print_func=console_print_func)
         fig.write_html(output_html_path, auto_open=False)
-        debug_print(f"✅ Plot saved to: {output_html_path}", file=current_file, function=current_function)
+        debug_print(f"✅ Single scan plot saved to: {output_html_path}", file=current_file, function=current_function, console_print_func=console_print_func)
         return fig, output_html_path
     else:
-        debug_print("No output_html_path provided, returning Plotly figure directly.", file=current_file, function=current_function)
+        debug_print("No output_html_path provided for single scan plot. Not saving to file.", file=current_file, function=current_function, console_print_func=console_print_func)
         return fig, None
 
 
-def plot_multi_trace_data(aggregated_df, title, include_tv_markers, include_gov_markers, include_custom_markers, output_folder_for_markers, historical_dfs_with_names=None, output_html_path=None):
+def plot_multi_trace_data(aggregated_df, title, include_tv_markers, include_gov_markers, include_markers, historical_dfs_with_names=None, output_html_path=None, console_print_func=None):
     """
-    Generates an interactive Plotly HTML plot for multiple traces (e.g., average, median, historical).
+    Generates an interactive Plotly HTML plot for aggregated scan data,
+    with options for historical overlays and various markers.
 
     Inputs:
-        aggregated_df (pd.DataFrame): DataFrame with aggregated data (e.g., 'Frequency (MHz)', 'Average Level (dBm)').
+        aggregated_df (pd.DataFrame): DataFrame containing aggregated data (e.g., 'Frequency (MHz)',
+                                     'Average Power (dBm)', 'Median Power (dBm)', 'Range (dB)',
+                                     'Standard Deviation (dB)', 'Variance (dB^2)', 'PSD (dBm/Hz)').
         title (str): Title of the plot.
         include_tv_markers (bool): Whether to include TV channel markers.
         include_gov_markers (bool): Whether to include Government band markers.
-        include_custom_markers (bool): Whether to include custom markers from MARKERS.CSV.
-        output_folder_for_markers (str): The base output folder to look for MARKERS.CSV.
-        historical_dfs_with_names (list of tuples): List of (DataFrame, name) for historical overlays.
-        output_html_path (str, optional): Full path to save the HTML plot. If None, returns figure.
-
+        include_markers (bool): Whether to include markers loaded from MARKERS.CSV.
+        historical_dfs_with_names (list of dict, optional): List of dictionaries, each with
+                                                            'name', 'df', 'x_col', 'y_col' for historical overlays.
+        output_html_path (str, optional): Path to save the HTML plot. If None, plot is not saved.
+        console_print_func (function, optional): Function to use for console output.
     Returns:
-        tuple: (plotly.graph_objects.Figure, str) if output_html_path is provided,
-               (plotly.graph_objects.Figure, None) if not.
+        plotly.graph_objects.Figure: The Plotly figure object.
+        str: The path where the HTML plot was saved (or None if not saved).
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+    debug_print(f"Plotting multi-trace data with title: {title}", file=current_file, function=current_function, console_print_func=console_print_func)
 
     if aggregated_df.empty:
-        print("🚫 Cannot plot: Aggregated DataFrame is empty.")
-        debug_print("Cannot plot: Aggregated DataFrame is empty.", file=current_file, function=current_function)
+        console_print_func("⚠️ Warning: Aggregated DataFrame is empty. Cannot generate plot.")
+        debug_print("Empty aggregated DataFrame for multi-trace plot.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None, None
 
     fig = go.Figure()
 
     # Add aggregated traces
-    if 'Average Level (dBm)' in aggregated_df.columns:
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Average Level (dBm)'],
-                                 mode='lines', name='Average Level', line=dict(color='cyan', width=2)))
-    if 'Median Level (dBm)' in aggregated_df.columns:
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Median Level (dBm)'],
-                                 mode='lines', name='Median Level', line=dict(color='lightgreen', width=1, dash='dot')))
-    if 'Max Level (dBm)' in aggregated_df.columns and 'Min Level (dBm)' in aggregated_df.columns:
-        # Add a shaded area for the range
-        fig.add_trace(go.Scatter(
-            x=aggregated_df['Frequency (MHz)'].tolist() + aggregated_df['Frequency (MHz)'].tolist()[::-1],
-            y=aggregated_df['Max Level (dBm)'].tolist() + aggregated_df['Min Level (dBm)'].tolist()[::-1],
-            fill='toself',
-            fillcolor='rgba(255,165,0,0.1)', # Light orange fill
-            line=dict(color='rgba(255,255,255,0)'),
-            name='Min/Max Range',
-            hoverinfo='skip',
-            showlegend=True
-        ))
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Max Level (dBm)'],
-                                 mode='lines', name='Max Level', line=dict(color='orange', width=1, dash='dash')))
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Min Level (dBm)'],
-                                 mode='lines', name='Min Level', line=dict(color='yellow', width=1, dash='dash')))
-    
-    if 'Standard Deviation (dB)' in aggregated_df.columns:
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Standard Deviation (dB)'],
-                                 mode='lines', name='Std Dev (dB)', line=dict(color='magenta', width=1, dash='dash')))
-    
-    if 'Variance (dB²)' in aggregated_df.columns:
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Variance (dB²)'],
-                                 mode='lines', name='Variance (dB²)', line=dict(color='purple', width=1, dash='dash')))
-    
-    if 'PSD (dBm/Hz)' in aggregated_df.columns:
-        fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['PSD (dBm/Hz)'],
-                                 mode='lines', name='PSD (dBm/Hz)', line=dict(color='white', width=1, dash='solid')))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Average Power (dBm)'],
+                             mode='lines', name='Average Power (dBm)',
+                             line=dict(color='cyan', width=2)))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Median Power (dBm)'],
+                             mode='lines', name='Median Power (dBm)',
+                             line=dict(color='lightgreen', width=1, dash='dot')))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Range (dB)'],
+                             mode='lines', name='Range (dB)',
+                             line=dict(color='orange', width=1, dash='dash')))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Standard Deviation (dB)'],
+                             mode='lines', name='Standard Deviation (dB)',
+                             line=dict(color='magenta', width=1, dash='dashdot')))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['Variance (dB^2)'],
+                             mode='lines', name='Variance (dB^2)',
+                             line=dict(color='red', width=1, dash='longdash')))
+    fig.add_trace(go.Scatter(x=aggregated_df['Frequency (MHz)'], y=aggregated_df['PSD (dBm/Hz)'],
+                             mode='lines', name='PSD (dBm/Hz)',
+                             line=dict(color='yellow', width=2, dash='solid')))
 
-    # Add historical overlays
+    # Add historical raw scan overlays
     if historical_dfs_with_names:
-        debug_print(f"Including {len(historical_dfs_with_names)} historical overlays.", file=current_file, function=current_function)
-        colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink'] # Cycle through colors
-        for i, (hist_df, hist_name) in enumerate(historical_dfs_with_names):
-            if 'Frequency (MHz)' in hist_df.columns and 'Average Level (dBm)' in hist_df.columns:
-                fig.add_trace(go.Scatter(x=hist_df['Frequency (MHz)'], y=hist_df['Average Level (dBm)'],
-                                         mode='lines', name=f'{hist_name} (Avg)',
-                                         line=dict(color=colors[i % len(colors)], width=0.8, dash='dash')))
-                debug_print(f"Added historical overlay: {hist_name}", file=current_file, function=current_function)
+        for i, hist_data in enumerate(historical_dfs_with_names):
+            hist_df = hist_data['df']
+            hist_name = hist_data['name']
+            x_col = hist_data['x_col']
+            y_col = hist_data['y_col']
+            if not hist_df.empty and x_col in hist_df.columns and y_col in hist_df.columns:
+                fig.add_trace(go.Scatter(x=hist_df[x_col], y=hist_df[y_col],
+                                         mode='lines', name=hist_name,
+                                         line=dict(color=f'rgba(100, 100, 255, {0.2 + i * 0.1})', width=0.5), # Faded blueish
+                                         showlegend=True))
+                debug_print(f"Added historical overlay: {hist_name}", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                debug_print(f"Skipping empty or malformed historical DataFrame: {hist_name}", file=current_file, function=current_function, console_print_func=console_print_func)
 
 
     shapes = []
     annotations = []
 
-    # Function to add markers (re-using the logic from plot_single_scan_data)
-    def add_markers(markers, color, name_prefix, line_dash='dot'):
-        for i, marker in enumerate(markers):
-            start_freq = marker["Start MHz"]
-            stop_freq = marker["Stop MHz"]
-            band_name = marker["Band Name"]
-
-            # Add shaded rectangle for the band
-            shapes.append(
-                dict(
-                    type="rect",
-                    xref="x", yref="paper",
-                    x0=start_freq, y0=0,
-                    x1=stop_freq, y1=1,
-                    fillcolor=color,
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                )
-            )
-            # Add annotation for the band name
-            annotations.append(
-                dict(
-                    x=(start_freq + stop_freq) / 2,
-                    y=1.02, # Position above the plot area
-                    xref="x", yref="paper",
-                    text=band_name,
-                    showarrow=False,
-                    font=dict(size=8, color=color),
-                    xanchor="center", yanchor="bottom",
-                    bgcolor="rgba(0,0,0,0.5)", # Semi-transparent background
-                    bordercolor=color,
-                    borderwidth=0.5,
-                    borderpad=1
-                )
-            )
-
-    # Add TV channel markers
+    # Add TV Channel Markers
     if include_tv_markers:
-        debug_print("Including TV markers in multi-trace plot.", file=current_file, function=current_function)
-        add_markers(TV_PLOT_BAND_MARKERS, 'lightgreen', 'TV Channel')
+        for marker in TV_PLOT_BAND_MARKERS:
+            # Draw vertical line
+            shapes.append(dict(
+                type="line",
+                xref="x", yref="paper",
+                x0=marker["Start MHz"], y0=0, x1=marker["Start MHz"], y1=1,
+                line=dict(color="gray", width=1, dash="dot"),
+                name=marker["Band Name"]
+            ))
+            shapes.append(dict(
+                type="line",
+                xref="x", yref="paper",
+                x0=marker["Stop MHz"], y0=0, x1=marker["Stop MHz"], y1=1,
+                line=dict(color="gray", width=1, dash="dot"),
+                name=marker["Band Name"]
+            ))
+            # Add annotation for band name
+            annotations.append(dict(
+                x=(marker["Start MHz"] + marker["Stop MHz"]) / 2,
+                y=1.02, # Position above the plot
+                xref="x", yref="paper",
+                text=marker["Band Name"],
+                showarrow=False,
+                font=dict(size=8, color="gray"),
+                xanchor="center", yanchor="bottom"
+            ))
+        debug_print("Added TV channel markers to plot.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Add Government band markers
+    # Add Government/Commercial Band Markers
     if include_gov_markers:
-        debug_print("Including Government markers in multi-trace plot.", file=current_file, function=current_function)
-        add_markers(GOV_PLOT_BAND_MARKERS, 'pink', 'Gov Band')
+        for marker in GOV_PLOT_BAND_MARKERS:
+            # Draw vertical line
+            shapes.append(dict(
+                type="line",
+                xref="x", yref="paper",
+                x0=marker["Start MHz"], y0=0, x1=marker["Start MHz"], y1=1,
+                line=dict(color="purple", width=1, dash="dot"),
+                name=marker["Band Name"]
+            ))
+            shapes.append(dict(
+                type="line",
+                xref="x", yref="paper",
+                x0=marker["Stop MHz"], y0=0, x1=marker["Stop MHz"], y1=1,
+                line=dict(color="purple", width=1, dash="dot"),
+                name=marker["Band Name"]
+            ))
+            # Add annotation for band name
+            annotations.append(dict(
+                x=(marker["Start MHz"] + marker["Stop MHz"]) / 2,
+                y=1.05, # Position slightly higher than TV markers
+                xref="x", yref="paper",
+                text=marker["Band Name"],
+                showarrow=False,
+                font=dict(size=8, color="purple"),
+                xanchor="center", yanchor="bottom"
+            ))
+        debug_print("Added Government/Commercial band markers to plot.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Add custom markers from MARKERS.CSV
-    if include_custom_markers:
-        debug_print("Including custom markers from MARKERS.CSV in multi-trace plot.", file=current_file, function=current_function)
-        markers_file_path = os.path.join(output_folder_for_markers, "MARKERS.CSV")
-        if os.path.exists(markers_file_path):
-            try:
-                custom_markers = []
-                with open(markers_file_path, 'r', newline='', encoding='utf-8') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    for row in reader:
-                        try:
-                            freq_mhz = float(row.get("FREQ"))
-                            name = row.get("NAME", "Custom Marker")
-                            custom_markers.append({"Band Name": name, "Start MHz": freq_mhz, "Stop MHz": freq_mhz})
-                        except (ValueError, TypeError):
-                            print(f"⚠️ Warning: Skipping invalid custom marker row: {row}")
-                            debug_print(f"Skipping invalid custom marker row: {row}", file=current_file, function=current_function)
-                            continue
-                
-                if custom_markers:
-                    add_markers(custom_markers, 'yellow', 'Custom Marker')
-                    debug_print(f"Added {len(custom_markers)} custom markers from MARKERS.CSV.", file=current_file, function=current_function)
-                else:
-                    print("ℹ️ MARKERS.CSV found but contains no valid custom marker data for multi-trace plot.")
-                    debug_print("MARKERS.CSV found but contains no valid custom marker data for multi-trace plot.", file=current_file, function=current_function)
+    # Add Markers from MARKERS.CSV
+    if include_markers:
+        output_folder = os.path.dirname(output_html_path) if output_html_path else os.getcwd() # Assume current dir if no output path
+        custom_markers = _load_markers_from_csv_for_plotting(output_folder, console_print_func) # Pass console_print_func
+        for marker in custom_markers:
+            freq_mhz = marker.get("FREQ")
+            name = marker.get("NAME", "Custom Marker")
+            if freq_mhz is not None:
+                shapes.append(dict(
+                    type="line",
+                    xref="x", yref="paper",
+                    x0=freq_mhz, y0=0, x1=freq_mhz, y1=1,
+                    line=dict(color="red", width=2, dash="solid"),
+                    name=name
+                ))
+                annotations.append(dict(
+                    x=freq_mhz,
+                    y=0.98, # Position near top of plot
+                    xref="x", yref="paper",
+                    text=f"{name} ({freq_mhz:.3f} MHz)",
+                    showarrow=True,
+                    arrowhead=2,
+                    ax=0, ay=-30, # Arrow points down from text
+                    font=dict(size=9, color="red"),
+                    xanchor="center", yanchor="bottom"
+                ))
+        debug_print(f"Added {len(custom_markers)} custom markers from MARKERS.CSV to plot.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-            except Exception as e:
-                print(f"❌ Error loading custom markers from MARKERS.CSV for multi-trace plot: {e}")
-                debug_print(f"Error loading custom markers from MARKERS.CSV for multi-trace plot: {e}", file=current_file, function=current_function)
-        else:
-            print(f"ℹ️ MARKERS.CSV not found at {markers_file_path}. Skipping custom markers for multi-trace plot.")
-            debug_print(f"MARKERS.CSV not found at {markers_file_path}. Skipping custom markers for multi-trace plot.", file=current_file, function=current_function)
-
-
-    # Determine x-axis range
-    x_range_min = aggregated_df['Frequency (MHz)'].min()
-    x_range_max = aggregated_df['Frequency (MHz)'].max()
-
-    # Determine y-axis range (add some padding)
-    all_levels = []
-    if 'Average Level (dBm)' in aggregated_df.columns: all_levels.extend(aggregated_df['Average Level (dBm)'].tolist())
-    if 'Median Level (dBm)' in aggregated_df.columns: all_levels.extend(aggregated_df['Median Level (dBm)'].tolist())
-    if 'Max Level (dBm)' in aggregated_df.columns: all_levels.extend(aggregated_df['Max Level (dBm)'].tolist())
-    if 'Min Level (dBm)' in aggregated_df.columns: all_levels.extend(aggregated_df['Min Level (dBm)'].tolist())
-    if 'Standard Deviation (dB)' in aggregated_df.columns: all_levels.extend(aggregated_df['Standard Deviation (dB)'].tolist())
-    if 'Variance (dB²)' in aggregated_df.columns: all_levels.extend(aggregated_df['Variance (dB²)'].tolist())
-    if 'PSD (dBm/Hz)' in aggregated_df.columns: all_levels.extend(aggregated_df['PSD (dBm/Hz)'].tolist())
-
-    for hist_df, _ in (historical_dfs_with_names if historical_dfs_with_names else []):
-        if 'Average Level (dBm)' in hist_df.columns:
-            all_levels.extend(hist_df['Average Level (dBm)'].tolist())
-
-    if all_levels:
-        y_range_min = min(all_levels) - 5
-        y_range_max = max(all_levels) + 5
-    else:
-        y_range_min = -100
-        y_range_max = 0 # Default if no data
 
     fig.update_layout(
         title={
             'text': title,
-            'y':0.95,
+            'y':0.9,
             'x':0.5,
             'xanchor': 'center',
-            'yanchor': 'top',
-            'font': dict(color='white') # Dark mode title color
+            'yanchor': 'top'
         },
-        xaxis=dict(
-            title='Frequency (MHz)',
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.1)',
-            zeroline=False,
-            range=[x_range_min, x_range_max] if x_range_min is not None and x_range_max is not None else None
-        ),
-        yaxis=dict(
-            title='Level (dBm)' if 'Level (dBm)' in aggregated_df.columns else 'Value', # Dynamic Y-axis title
-            showgrid=True,
-            gridcolor='rgba(255,255,255,0.1)',
-            zeroline=False,
-            autorange=False, # Set to False to use manual range
-            range=[y_range_min, y_range_max]
-        ),
-        plot_bgcolor='black',
-        paper_bgcolor='black',
-        font=dict(color='white'),
+        template="plotly_dark", # Dark theme
+        hovermode="x unified",
+        xaxis_title="Frequency (MHz)",
+        yaxis_title="Power Level (dBm)",
+        font=dict(family="Inter, sans-serif"),
+        margin=dict(l=40, r=40, t=80, b=40),
+        height=600, # Fixed height for consistency
         legend=dict(
-            orientation="v", # Vertical orientation
-            yanchor="top",   # Anchor to the top
-            y=0.98,          # Position near the top right, adjusted slightly down
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
             xanchor="right", # Anchor to the right
             x=0.98,          # Position near the right edge
             bgcolor="rgba(0,0,0,0.5)", # Semi-transparent background for readability
@@ -476,7 +343,7 @@ def plot_multi_trace_data(aggregated_df, title, include_tv_markers, include_gov_
         shapes=shapes,
         annotations=annotations
     )
-    debug_print("Plotly multi-trace layout updated with traces, shapes, and annotations.", file=current_file, function=current_function)
+    debug_print("Plotly multi-trace layout updated with traces, shapes, and annotations.", file=current_file, function=current_function, console_print_func=console_print_func)
 
     # If an output path is provided, save the figure
     if output_html_path:
@@ -484,12 +351,12 @@ def plot_multi_trace_data(aggregated_df, title, include_tv_markers, include_gov_
         output_dir = os.path.dirname(output_html_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            debug_print(f"Created directory for multi-trace plot: {output_dir}", file=current_file, function=current_function)
-        debug_print(f"Saving multi-trace plot to: {output_html_path}", file=current_file, function=current_function)
+            debug_print(f"Created directory for multi-trace plot: {output_dir}", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Saving multi-trace plot to: {output_html_path}", file=current_file, function=current_function, console_print_func=console_print_func)
         fig.write_html(output_html_path, auto_open=False)
-        debug_print(f"✅ Multi-trace plot saved to: {output_html_path}", file=current_file, function=current_function)
+        debug_print(f"✅ Multi-trace plot saved to: {output_html_path}", file=current_file, function=current_function, console_print_func=console_print_func)
         return fig, output_html_path
     else:
-        debug_print("No output_html_path provided, returning Plotly multi-trace figure directly.", file=current_file, function=current_function)
+        debug_print("No output_html_path provided for multi-trace plot. Not saving to file.", file=current_file, function=current_function, console_print_func=console_print_func)
         return fig, None
 

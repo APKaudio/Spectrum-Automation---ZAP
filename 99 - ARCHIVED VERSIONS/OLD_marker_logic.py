@@ -1,7 +1,6 @@
 # src/marker_logic.py
 import tkinter as tk
-# from tkinter import messagebox, scrolledtext, filedialog, ttk # Removed messagebox
-from tkinter import scrolledtext, filedialog, ttk # Keep other imports
+from tkinter import messagebox, scrolledtext, filedialog, ttk
 import os
 import csv
 import inspect
@@ -10,8 +9,6 @@ import json # Import json for serializing/deserializing row data
 # Import instrument_logic for setting focus frequency
 from src.instrument_logic import set_focus_frequency_logic, set_marker_and_trace_modes_logic
 from utils.instrument_control import debug_print # Import debug_print
-from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
-
 
 # Removed the hardcoded MARKERS_FILE_PATH, it will now be determined dynamically
 
@@ -21,7 +18,7 @@ class MarkersDisplayTab(ttk.Frame):
     A Tkinter Frame that displays extracted frequency markers in a hierarchical treeview
     and as clickable buttons.
     """
-    def __init__(self, master=None, headers=None, rows=None, app_instance=None, console_print_func=None, **kwargs):
+    def __init__(self, master=None, headers=None, rows=None, app_instance=None, **kwargs):
         """
         Initializes the MarkersDisplayTab.
 
@@ -32,36 +29,37 @@ class MarkersDisplayTab(ttk.Frame):
                          a row of marker data with keys matching the headers.
             app_instance (App): The main application instance, used for accessing
                                 shared state like instrument connection and focus width.
-            console_print_func (function, optional): Function to use for console output.
             **kwargs: Arbitrary keyword arguments for Tkinter Frame.
+        Process:
+            1. Calls the parent `ttk.Frame` constructor.
+            2. Stores `headers`, `rows`, and `app_instance`.
+            3. Configures the frame's style and layout.
+            4. Calls `create_widgets()` to build the GUI elements.
+        Outputs: None (modifies GUI state)
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Initializing MarkersDisplayTab...", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print("Initializing MarkersDisplayTab...", file=current_file, function=current_function)
 
         super().__init__(master, **kwargs)
         self.headers = headers if headers is not None else []
         self.rows = rows if rows is not None else [] # Store full rows data
         self.app_instance = app_instance # Store reference to the main app instance
-        self.console_print_func = console_print_func if console_print_func else print # Use provided func or default print
 
         # Apply style to the main frame (this style is now defined globally in main_app.py)
         self.config(style="Markers.TFrame") 
         self.last_selected_span_button = None # To keep track of the last selected span button
         self.current_span_hz = None # To store the currently active span value in Hz
 
-        self._create_widgets()
+        self.create_widgets()
 
 
-    def _create_widgets(self):
+    def create_widgets(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Creates the widgets for the Markers Display tab, including the treeview
         for zones/groups and the frame for device buttons.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Creating MarkersDisplayTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        
+        debug_print("Creating MarkersDisplayTab widgets...", file=file, function=function)
         # Main frame for the split layout
         main_split_frame = ttk.Frame(self, style="Markers.TFrame") # Use ttk.Frame
         # Changed to grid layout to accommodate span control frame at the bottom
@@ -75,7 +73,7 @@ class MarkersDisplayTab(ttk.Frame):
         main_split_frame.grid_rowconfigure(1, weight=0) # Bottom row for span controls (fixed height)
 
         # Left Half: Treeview for Zones and Groups
-        tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5), style='Dark.TLabelframe') 
+        tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5)) 
         tree_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
@@ -91,11 +89,11 @@ class MarkersDisplayTab(ttk.Frame):
         self.zone_group_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
         # Right Half: Buttons for Devices
-        buttons_frame = ttk.LabelFrame(main_split_frame, text="Devices", padding=(5,5,5,5), style='Dark.TLabelframe') 
+        buttons_frame = ttk.LabelFrame(main_split_frame, text="Devices", padding=(5,5,5,5)) 
         buttons_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=5, pady=5)
         
         # Use a canvas with a scrollbar for buttons if there are many
-        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#1e1e1e", highlightbackground="#1e1e1e") # tk.Canvas as ttk.Canvas doesn't exist
+        self.buttons_canvas = tk.Canvas(buttons_frame, bg="#333333", highlightbackground="#333333") # tk.Canvas as ttk.Canvas doesn't exist
         self.buttons_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         buttons_scrollbar = ttk.Scrollbar(buttons_frame, orient="vertical", command=self.buttons_canvas.yview)
@@ -104,7 +102,7 @@ class MarkersDisplayTab(ttk.Frame):
         self.buttons_canvas.configure(yscrollcommand=buttons_scrollbar.set)
         self.buttons_canvas.bind('<Configure>', lambda e: self.buttons_canvas.configure(scrollregion = self.buttons_canvas.bbox("all")))
 
-        self.inner_buttons_frame = ttk.Frame(self.buttons_canvas, style='Dark.TFrame') # Use ttk.Frame for consistency
+        self.inner_buttons_frame = tk.Frame(self.buttons_canvas, bg="#333333") 
         self.buttons_canvas.create_window((0, 0), window=self.inner_buttons_frame, anchor="nw")
 
         # Configure columns for the grid layout within inner_buttons_frame
@@ -151,15 +149,13 @@ class MarkersDisplayTab(ttk.Frame):
         # --- End New ---
 
 
-    def _populate_zone_group_tree(self):
+    def _populate_zone_group_tree(self, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Populates the Treeview with zones and groups only.
         The tree structure will be: ZONE -> GROUP.
         If GROUP is empty, it will not create a group node, but the markers will still be associated with the zone.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Populating zone/group tree (2 levels)...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("Populating zone/group tree (2 levels)...", file=file, function=function)
         self.zone_group_tree.delete(*self.zone_group_tree.get_children()) # Clear existing data
 
         # Nested dictionary to store data: {ZONE: {GROUP: [rows]}}
@@ -193,14 +189,12 @@ class MarkersDisplayTab(ttk.Frame):
         # Clear device buttons when tree is repopulated
         self._populate_device_buttons([])
 
-    def _on_tree_select(self, event):
+    def _on_tree_select(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Handles selection events in the zone/group treeview.
         Populates the device buttons based on the selected zone or group.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Tree item selected...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("Tree item selected...", file=file, function=function)
         selected_items = self.zone_group_tree.selection()
         if not selected_items:
             self._populate_device_buttons([])
@@ -229,22 +223,20 @@ class MarkersDisplayTab(ttk.Frame):
 
         self._populate_device_buttons(selected_rows_data)
 
-    def _populate_device_buttons(self, devices_to_display):
+    def _populate_device_buttons(self, devices_to_display, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Populates the right-hand frame with clickable buttons for each device.
         Buttons will be approximately 1/3 of the window width, orange with black text,
         and display NAME, DEVICE, and FREQ (in MHz) on three lines.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Populating device buttons with {len(devices_to_display)} devices...", file=file, function=function)
         # Clear existing buttons
         for widget in self.inner_buttons_frame.winfo_children():
             widget.destroy()
 
         if not devices_to_display:
-            ttk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
-                      background="#1e1e1e", foreground="#cccccc", style='Markers.TLabel').grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+            tk.Label(self.inner_buttons_frame, text="Select a zone or group from the left to display devices.",
+                      background="#333333", foreground="white").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
             self.inner_buttons_frame.update_idletasks()
             self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
             return
@@ -258,7 +250,7 @@ class MarkersDisplayTab(ttk.Frame):
 
             if freq_mhz is not None:
                 try:
-                    frequency_hz = float(freq_mhz) * MHZ_TO_HZ # Convert MHz to Hz for instrument
+                    frequency_hz = float(freq_mhz) * 1_000_000 # Convert MHz to Hz for instrument
                     
                     # Format button text for three lines
                     # Ensure empty strings are handled for name and device
@@ -278,9 +270,9 @@ class MarkersDisplayTab(ttk.Frame):
                         col_idx = 0
                         row_idx += 1
                 except ValueError:
-                    debug_print(f"Could not convert frequency '{freq_mhz}' to float for button. Skipping.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    debug_print(f"Could not convert frequency '{freq_mhz}' to float for button. Skipping.", file=file, function=function)
             else:
-                debug_print(f"Frequency not found for device '{name}'. Skipping button.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                debug_print(f"Frequency not found for device '{name}'. Skipping button.", file=file, function=function)
 
         # Ensure columns in inner_buttons_frame expand to fill available space
         self.inner_buttons_frame.grid_columnconfigure(0, weight=1)
@@ -293,36 +285,28 @@ class MarkersDisplayTab(ttk.Frame):
         self.inner_buttons_frame.update_idletasks() # Ensure layout is updated before calculating scrollregion
         self.buttons_canvas.config(scrollregion=self.buttons_canvas.bbox("all"))
 
-    def _on_device_button_click(self, freq_hz, name):
+    def _on_device_button_click(self, freq, name, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Callback for device buttons. Sets the instrument's focus frequency and a marker.
         Uses the currently selected span from the span buttons, or a default if none selected.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        self.console_print_func(f"\nSetting instrument to '{name}' at {freq_hz / MHZ_TO_HZ:.3f} MHz...")
-        debug_print(f"Device button clicked: {name} at {freq_hz} Hz", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
+        debug_print(f"Device button clicked: {name} at {freq} Hz", file=file, function=function)
         if self.app_instance and self.app_instance.inst:
             # Use the currently selected span, or fall back to default focus width
             span_to_use = self.current_span_hz if self.current_span_hz is not None else \
-                          float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
+                          float(self.app_instance.desired_default_focus_width_var.get())
             
-            set_focus_frequency_logic(self.app_instance, freq_hz / MHZ_TO_HZ, name, self.console_print_func) # Pass freq in MHz, and console_print_func
-            set_marker_and_trace_modes_logic(self.app_instance, freq_hz, name, self.console_print_func) # Pass freq in Hz, and console_print_func
+            set_focus_frequency_logic(self.app_instance, freq, span_hz=span_to_use)
+            set_marker_and_trace_modes_logic(self.app_instance, freq, name)
         else:
-            self.console_print_func("⚠️ Warning: Cannot set focus frequency: Instrument not connected.")
-            debug_print("Cannot set focus frequency: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print("Cannot set focus frequency: Instrument not connected.", file=file, function=function)
 
 
-    def _on_span_button_click(self, span_hz, button_widget=None, button_text=None):
+    def _on_span_button_click(self, span_hz, button_widget=None, button_text=None, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Callback for span control buttons. Changes the instrument's span and toggles button color/font.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        self.console_print_func(f"Setting span to {span_hz / MHZ_TO_HZ:.3f} MHz...")
-        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Span button clicked: Setting span to {span_hz} Hz (Button: {button_text})", file=file, function=function)
         
         # Update the stored current span
         self.current_span_hz = span_hz
@@ -341,57 +325,53 @@ class MarkersDisplayTab(ttk.Frame):
             try:
                 # Direct SCPI command to set span
                 if not self.app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
-                    debug_print(f"Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                    self.console_print_func("❌ Error: Failed to set instrument span.")
+                    debug_print(f"Failed to send span command: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
+                    messagebox.showerror("Instrument Error", "Failed to set instrument span.")
                     return False
-                debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                self.console_print_func(f"✅ Instrument span set to {span_hz / MHZ_TO_HZ:.3f} MHz.")
+                debug_print(f"Sent: :SENSe:FREQuency:SPAN {span_hz}", file=file, function=function)
+                print(f"✅ Instrument span set to {span_hz / 1_000_000:.3f} MHz.")
 
                 # Send additional trace mode commands (blank then set)
                 # Ensure all traces are blanked first
                 if not self.app_instance.inst.write(":TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                debug_print("Sent: :TRAC1:MODE BLANK; :TRAC2:MODE BLANK; :TRAC3:MODE BLANK; :TRAC4:MODE BLANK", file=file, function=function)
                 
                 # Then set the desired trace modes
                 if not self.app_instance.inst.write(":TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK"): return False
-                debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                debug_print("Sent: :TRAC1:MODE WRITe;:TRAC2:MODE MAXHold;:TRAC3:MODE MINHold;:TRAC4:MODE BLANK", file=file, function=function)
                 
-                self.console_print_func("✅ Trace modes set: TRAC1:WRITE, TRAC2:MAXHOLD, TRAC3:MINHOLD, TRAC4:BLANK.")
+                print("✅ Trace modes set: TRAC1:WRITE, TRAC2:MAXHOLD, TRAC3:MINHOLD, TRAC4:BLANK.")
 
             except pyvisa.errors.VisaIOError as e:
-                self.console_print_func(f"❌ VISA error while setting span: {e}")
-                debug_print(f"VISA Error setting span: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                print(f"❌ VISA error while setting span: {e}")
+                messagebox.showerror("VISA Error", f"Failed to set instrument span: {e}")
+                debug_print(f"VISA Error setting span: {e}", file=file, function=function)
                 return False
             except Exception as e:
-                self.console_print_func(f"❌ An unexpected error occurred while setting span: {e}")
-                debug_print(f"An unexpected error occurred while setting span: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                print(f"❌ An unexpected error occurred while setting span: {e}")
+                messagebox.showerror("Error", f"An unexpected error occurred while setting span: {e}")
+                debug_print(f"An unexpected error occurred while setting span: {e}", file=file, function=function)
                 return False
         else:
-            self.console_print_func("⚠️ Warning: Cannot set span: Instrument not connected.")
-            debug_print("Cannot set span: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print("Cannot set span: Instrument not connected.", file=file, function=function)
             
 
 
-    def update_markers_data(self, headers, rows):
+    def update_markers_data(self, headers, rows, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Updates the data displayed in the markers tab.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Updating markers data...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("Updating markers data...", file=file, function=function)
         self.headers = headers
         self.rows = rows
         self._populate_zone_group_tree() # Repopulate the treeview with new data
         self._populate_device_buttons([]) # Clear device buttons when new data loaded
 
-    def _on_tab_selected(self, event):
+    def _on_tab_selected(self, event, file=__file__, function=inspect.currentframe().f_code.co_name):
         """
         Callback when this tab is selected. Checks for and loads MARKERS.CSV.
         """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        self.console_print_func("MarkersDisplayTab selected. Checking for MARKERS.CSV...")
-        debug_print("MarkersDisplayTab selected. Checking for MARKERS.CSV...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("MarkersDisplayTab selected. Checking for MARKERS.CSV...", file=file, function=function)
         
         # Dynamically determine MARKERS.CSV path from the main app's output folder
         markers_file_path = None
@@ -399,16 +379,14 @@ class MarkersDisplayTab(ttk.Frame):
             output_folder = self.app_instance.output_folder_var.get()
             if output_folder:
                 markers_file_path = os.path.join(output_folder, 'MARKERS.CSV')
-                debug_print(f"Attempting to load MARKERS.CSV from configured output folder: {markers_file_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                debug_print(f"Attempting to load MARKERS.CSV from configured output folder: {markers_file_path}", file=file, function=function)
             else:
-                self.console_print_func("⚠️ Warning: Output folder not configured in main app. Cannot check for MARKERS.CSV.")
-                debug_print("Output folder not configured in main app. Cannot check for MARKERS.CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                debug_print("Output folder not configured in main app. Cannot check for MARKERS.CSV.", file=file, function=function)
         else:
-            self.console_print_func("⚠️ Warning: App instance or output_folder_var not available. Cannot check for MARKERS.CSV.")
-            debug_print("App instance or output_folder_var not available. Cannot check for MARKERS.CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print("App instance or output_folder_var not available. Cannot check for MARKERS.CSV.", file=file, function=function)
 
         if markers_file_path and os.path.exists(markers_file_path):
-            debug_print(f"MARKERS.CSV found at: {markers_file_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print(f"MARKERS.CSV found at: {markers_file_path}", file=file, function=function)
             try:
                 headers = []
                 rows = []
@@ -419,19 +397,20 @@ class MarkersDisplayTab(ttk.Frame):
                         rows.append(row_data)
                 
                 if headers and rows:
-                    debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=file, function=function)
                     self.update_markers_data(headers, rows)
-                    self.console_print_func(f"✅ Loaded {len(rows)} markers from MARKERS.CSV.")
                 else:
-                    debug_print("MARKERS.CSV is empty or has no data rows.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                    self.console_print_func("ℹ️ Info: The MARKERS.CSV file was found but contains no data.")
+                    debug_print("MARKERS.CSV is empty or has no data rows.", file=file, function=function)
+                    # Changed messagebox to debug_print
+                    debug_print("No Markers: The MARKERS.CSV file was found but contains no data.", file=file, function=function)
                     self.update_markers_data([], []) # Clear any existing display
             except Exception as e:
-                debug_print(f"Error loading MARKERS.CSV: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                self.console_print_func(f"❌ Error Loading Markers: An error occurred while loading MARKERS.CSV: {e}")
+                debug_print(f"Error loading MARKERS.CSV: {e}", file=file, function=function)
+                # Changed messagebox to debug_print
+                debug_print(f"Error Loading Markers: An error occurred while loading MARKERS.CSV: {e}", file=file, function=function)
                 self.update_markers_data([], []) # Clear any existing display on error
         else:
-            debug_print(f"MARKERS.CSV not found or path not determined. Path: {markers_file_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self.console_print_func("ℹ️ Info: MARKERS.CSV not found. Please generate a report first.")
+            debug_print(f"MARKERS.CSV not found or path not determined. Path: {markers_file_path}", file=file, function=function)
+            # Changed messagebox to debug_print
+            debug_print("No Markers File: MARKERS.CSV not found. Please generate a report first.", file=file, function=function)
             self.update_markers_data([], []) # Ensure display is clear if file doesn't exist
-
