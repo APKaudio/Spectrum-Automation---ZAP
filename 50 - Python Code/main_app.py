@@ -495,6 +495,24 @@ class App(tk.Tk):
         style.map('LargeYAK.TButton',
                   background=[('active', '#e07b00'), ('disabled', '#cc7000')])
 
+        # --- NEW STYLES FOR DEVICE BUTTONS ---
+        style.configure("DeviceButton.TButton",
+                        background="#4a4a4a", # Default grey for unselected device buttons
+                        foreground="white",
+                        font=('Helvetica', 10, 'bold'),
+                        padding=[5, 5]) # Smaller padding for device buttons
+        style.map("DeviceButton.TButton",
+                  background=[('active', '#606060')])
+
+        style.configure("SelectedDevice.TButton",
+                        background="#ff8c00", # Orange for selected device buttons
+                        foreground="white",
+                        font=('Helvetica', 10, 'bold'),
+                        padding=[5, 5])
+        style.map("SelectedDevice.TButton",
+                  background=[('active', '#e07b00')])
+        # --- END NEW STYLES ---
+
 
         debug_print("ttk styles set up.", file=__file__, function=inspect.currentframe().f_code.co_name)
 

@@ -8,7 +8,7 @@ import json # Import json for serializing/deserializing row data
 
 # Import set_marker_and_trace_modes_logic from marker_utils
 from utils.marker_utils import set_marker_and_trace_modes_logic
-from utils.instrument_control import debug_print # Import debug_print
+from utils.instrument_control import debug_print, query_current_instrument_settings # Import query_current_instrument_settings
 from utils.frequency_bands import MHZ_TO_HZ # Import MHZ_TO_HZ for conversion
 
 # Import new marker utility functions and constants
@@ -58,9 +58,10 @@ class MarkersDisplayTab(ttk.Frame):
         self.min_hold_mode_var = tk.BooleanVar(self, value=False)
         self.trace_mode_buttons = {} # To store references to trace mode buttons
 
-        # New: For managing selected device button state across selections
+        # For managing selected device button state across selections
         self.current_selected_device_button = None # Reference to the currently active button widget
         self.selected_device_unique_id = None # Unique ID of the currently selected device
+        self.current_selected_device_data = None # NEW: Store the full data of the selected device
 
         self._create_widgets()
 
@@ -86,7 +87,7 @@ class MarkersDisplayTab(ttk.Frame):
         main_split_frame.grid_rowconfigure(0, weight=1) # Top row for treeview and device buttons
         main_split_frame.grid_rowconfigure(1, weight=0) # Bottom row for span controls (fixed height)
         main_split_frame.grid_rowconfigure(2, weight=0) # Bottom row for trace mode controls (fixed height)
-
+        main_split_frame.grid_rowconfigure(3, weight=0) # NEW: Row for current span/trace display
 
         # Left Half: Treeview for Zones and Groups
         tree_frame = ttk.LabelFrame(main_split_frame, text="Zones & Groups", padding=(5,5,5,5), style='Dark.TLabelframe') 
@@ -193,6 +194,18 @@ class MarkersDisplayTab(ttk.Frame):
         # Initialize button colors based on default states (Live is True, others False)
         self._update_trace_mode_button_styles() # Call this to set initial colors
 
+        # --- NEW: Current Span and Trace Mode Display Box ---
+        self.current_settings_frame = ttk.LabelFrame(main_split_frame, text="Current Instrument Settings", padding=(5,5,5,5), style="Dark.TLabelframe")
+        self.current_settings_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        self.current_settings_frame.grid_columnconfigure(0, weight=1) # Allow label to expand
+
+        self.current_span_label = ttk.Label(self.current_settings_frame, text="Span: N/A", style="Markers.TLabel")
+        self.current_span_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+
+        self.current_trace_modes_label = ttk.Label(self.current_settings_frame, text="Trace Modes: N/A", style="Markers.TLabel")
+        self.current_trace_modes_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        # --- END NEW ---
+
 
     def _populate_zone_group_tree(self):
         """
@@ -234,17 +247,26 @@ class MarkersDisplayTab(ttk.Frame):
                 # The markers will be retrieved directly from the selected zone/group in _on_tree_select.
 
         # Clear device buttons when tree is repopulated
-        self._populate_device_buttons([])
+        # Removed: self._populate_device_buttons([]) # This was causing devices to disappear
 
     def _on_tree_select(self, event):
         """
         Handles selection events in the zone/group treeview.
         Populates the device buttons based on the selected zone or group.
+        Also resets the selected device button state.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("Tree item selected...", file=current_file, function=current_function, console_print_func=self.console_print_func)
         selected_items = self.zone_group_tree.selection()
+        
+        # Reset selected device button state when tree selection changes
+        if self.current_selected_device_button:
+            self.current_selected_device_button.config(style="DeviceButton.TButton") # Revert old button to neutral
+            self.current_selected_device_button = None
+            self.selected_device_unique_id = None
+            self.current_selected_device_data = None # NEW: Clear stored device data
+        
         if not selected_items:
             self._populate_device_buttons([])
             return
@@ -301,8 +323,6 @@ class MarkersDisplayTab(ttk.Frame):
 
             if freq_mhz is not None:
                 try:
-                    frequency_hz = float(freq_mhz) * MHZ_TO_HZ # Convert MHz to Hz for instrument
-                    
                     # Create a unique ID for this device
                     unique_device_id = f"{device_data.get('ZONE', '')}-{device_data.get('GROUP', '')}-{device_data.get('DEVICE', '')}-{device_data.get('NAME', '')}-{freq_mhz}"
                     
@@ -359,7 +379,7 @@ class MarkersDisplayTab(ttk.Frame):
         current_file = __file__
 
         freq_hz = float(device_data.get('FREQ')) * MHZ_TO_HZ
-        name = device_data.get('NAME', '')
+        name = device_data.get('NAME', '').strip() # Ensure name is stripped for display
         unique_device_id = f"{device_data.get('ZONE', '')}-{device_data.get('GROUP', '')}-{device_data.get('DEVICE', '')}-{device_data.get('NAME', '')}-{device_data.get('FREQ', '')}"
 
         # Format frequency for display without decimal if it's a whole number
@@ -374,7 +394,7 @@ class MarkersDisplayTab(ttk.Frame):
         clicked_button_widget.config(style="SelectedDevice.TButton") # Select new button (orange)
         self.current_selected_device_button = clicked_button_widget
         self.selected_device_unique_id = unique_device_id
-
+        self.current_selected_device_data = device_data # NEW: Store the full device data
 
         if self.app_instance and self.app_instance.inst:
             # Use the currently selected span, or fall back to default focus width
@@ -382,12 +402,14 @@ class MarkersDisplayTab(ttk.Frame):
                              float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
             
             # Call set_span_logic to set frequency, span, and trace modes
+            # Pass the current state of the trace mode variables
             set_span_logic(self.app_instance.inst, span_to_use_hz, freq_hz, 
                            self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
                            self.console_print_func)
             
             # Keep set_marker_and_trace_modes_logic for marker setup (if it does more than just trace modes)
             set_marker_and_trace_modes_logic(self.app_instance, freq_hz, name, self.console_print_func) 
+            self._update_current_settings_display() # Update display after device click
         else:
             self.console_print_func("⚠️ Warning: Cannot set focus frequency: Instrument not connected.")
             debug_print("Cannot set focus frequency: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -416,11 +438,20 @@ class MarkersDisplayTab(ttk.Frame):
         
         # If the instrument is connected, send the commands
         if self.app_instance and self.app_instance.inst:
+            center_freq_to_use = None
+            if self.current_selected_device_data:
+                try:
+                    center_freq_to_use = float(self.current_selected_device_data.get('FREQ')) * MHZ_TO_HZ
+                    self.console_print_func(f"Re-centering on selected device at {center_freq_to_use / MHZ_TO_HZ:.3f} MHz with new span.")
+                except ValueError:
+                    debug_print("Could not convert selected device frequency to float for re-centering.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    center_freq_to_use = None # Fallback if conversion fails
+
             # Call the centralized set_span_logic from marker_utils
-            # No specific frequency to set when only a span button is clicked, so pass None for center_freq_hz
-            set_span_logic(self.app_instance.inst, span_hz, None, 
-                           self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
-                           self.console_print_func)
+            set_span_logic(self.app_instance.inst, span_to_use_hz=span_hz, center_freq_hz=center_freq_to_use, 
+                           live_mode=self.live_mode_var.get(), max_hold_mode=self.max_hold_mode_var.get(), min_hold_mode=self.min_hold_mode_var.get(),
+                           console_print_func=self.console_print_func)
+            self._update_current_settings_display() # NEW: Update display after span change
         else:
             self.console_print_func("⚠️ Warning: Cannot set span: Instrument not connected.")
             debug_print("Cannot set span: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -453,11 +484,20 @@ class MarkersDisplayTab(ttk.Frame):
             span_to_use_hz = self.current_span_hz if self.current_span_hz is not None else \
                              float(self.app_instance.desired_default_focus_width_var.get()) * MHZ_TO_HZ
             
+            # Determine center frequency if a device is selected
+            center_freq_to_use = None
+            if self.current_selected_device_data:
+                try:
+                    center_freq_to_use = float(self.current_selected_device_data.get('FREQ')) * MHZ_TO_HZ
+                except ValueError:
+                    debug_print("Could not convert selected device frequency to float for re-centering (trace mode click).", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                    center_freq_to_use = None # Fallback if conversion fails
+
             # Call set_span_logic with current span and updated trace modes
-            # Note: We are not changing frequency here, so pass None for center_freq_hz
-            set_span_logic(self.app_instance.inst, span_to_use_hz, None,
+            set_span_logic(self.app_instance.inst, span_to_use_hz, center_freq_to_use,
                            self.live_mode_var.get(), self.max_hold_mode_var.get(), self.min_hold_mode_var.get(),
                            self.console_print_func)
+            self._update_current_settings_display() # NEW: Update display after trace mode change
         else:
             self.console_print_func("⚠️ Warning: Cannot set trace mode: Instrument not connected.")
             debug_print("Cannot set trace mode: Instrument not connected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -475,6 +515,41 @@ class MarkersDisplayTab(ttk.Frame):
             else:
                 button.config(style="Markers.TButton") # Use default blue for unselected
 
+    def _update_current_settings_display(self):
+        """
+        Updates the labels in the "Current Instrument Settings" display box.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Updating current settings display...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        display_span = "N/A"
+        if self.current_span_hz is not None:
+            if self.current_span_hz == 0.0: # Full Span case
+                display_span = "Full Span"
+            elif self.current_span_hz >= MHZ_TO_HZ:
+                display_span = f"{self.current_span_hz / MHZ_TO_HZ:.3f} MHz"
+            else:
+                display_span = f"{self.current_span_hz / 1000:.0f} KHz"
+        self.current_span_label.config(text=f"Span: {display_span}")
+        debug_print(f"Displaying Span: {display_span}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+        active_modes = []
+        if self.live_mode_var.get():
+            active_modes.append("Live")
+        if self.max_hold_mode_var.get():
+            active_modes.append("Max Hold")
+        if self.min_hold_mode_var.get():
+            active_modes.append("Min Hold")
+        
+        if active_modes:
+            self.current_trace_modes_label.config(text=f"Trace Modes: {', '.join(active_modes)}")
+            debug_print(f"Displaying Trace Modes: {', '.join(active_modes)}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.current_trace_modes_label.config(text="Trace Modes: None Active")
+            debug_print("Displaying Trace Modes: None Active", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
 
     def update_markers_data(self, headers, rows):
         """
@@ -486,11 +561,14 @@ class MarkersDisplayTab(ttk.Frame):
         self.headers = headers
         self.rows = rows
         self._populate_zone_group_tree() # Repopulate the treeview with new data
-        self._populate_device_buttons([]) # Clear device buttons when new data loaded
+        # Removed: self._populate_device_buttons([]) # This was causing devices to disappear
+        self._update_current_settings_display() # NEW: Update display after data load
+
 
     def _on_tab_selected(self, event):
         """
         Callback when this tab is selected. Checks for and loads MARKERS.CSV.
+        Also queries the instrument for current span and trace modes to update GUI.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
@@ -525,6 +603,12 @@ class MarkersDisplayTab(ttk.Frame):
                 if headers and rows:
                     debug_print(f"Loaded {len(rows)} markers from MARKERS.CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                     self.update_markers_data(headers, rows)
+                    # NEW: After updating data and populating tree, try to select the first item
+                    if self.zone_group_tree.get_children():
+                        first_item = self.zone_group_tree.get_children()[0]
+                        self.zone_group_tree.selection_set(first_item)
+                        self.zone_group_tree.focus(first_item)
+                        self._on_tree_select(None) # Manually trigger the selection logic
                     self.console_print_func(f"✅ Loaded {len(rows)} markers from MARKERS.CSV.")
                 else:
                     debug_print("MARKERS.CSV is empty or has no data rows.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -539,3 +623,53 @@ class MarkersDisplayTab(ttk.Frame):
             self.console_print_func("ℹ️ Info: MARKERS.CSV not found. Please generate a report first.")
             self.update_markers_data([], []) # Ensure display is clear if file doesn't exist
 
+        # Query instrument for current span and trace modes on tab selection
+        if self.app_instance and self.app_instance.inst:
+            center_freq, current_span, rbw = query_current_instrument_settings(self.app_instance.inst, MHZ_TO_HZ, self.console_print_func)
+            if current_span is not None:
+                current_span_hz = current_span * MHZ_TO_HZ
+                self.current_span_hz = current_span_hz # Update stored span
+
+                # Find and highlight the corresponding span button
+                found_match = False
+                for text_key, span_hz_value in SPAN_OPTIONS.items():
+                    if abs(span_hz_value - current_span_hz) < 1: # Allow for small floating point differences
+                        self.span_buttons[text_key].config(style="SelectedSpan.TButton")
+                        self.last_selected_span_button = self.span_buttons[text_key]
+                        self.console_print_func(f"✅ GUI span button updated to match instrument: {text_key}")
+                        found_match = True
+                    else:
+                        self.span_buttons[text_key].config(style="Markers.TButton") # Revert others
+                
+                if not found_match: # If no matching button, default to "Normal" and highlight it
+                    normal_span_hz = SPAN_OPTIONS["Normal"]
+                    normal_button_widget = self.span_buttons["Normal"]
+                    normal_button_widget.config(style="SelectedSpan.TButton")
+                    self.last_selected_span_button = normal_button_widget
+                    self.current_span_hz = normal_span_hz # Ensure internal state is "Normal"
+                    self.console_print_func("ℹ️ Instrument span did not match a button. Defaulting GUI span to 'Normal'.")
+
+            else: # If instrument not connected or span not queried, default GUI span to "Normal"
+                normal_span_hz = SPAN_OPTIONS["Normal"]
+                normal_button_widget = self.span_buttons["Normal"]
+                normal_button_widget.config(style="SelectedSpan.TButton")
+                self.last_selected_span_button = normal_button_widget
+                self.current_span_hz = normal_span_hz # Ensure internal state is "Normal"
+                self.console_print_func("ℹ️ Instrument not connected or span not queried. Defaulting GUI span to 'Normal'.")
+
+
+            # Query and update trace modes (assuming instrument_control.py can query them)
+            # This would require new query commands in instrument_control.py like :TRAC1:MODE?
+            # For now, we'll assume the instrument is in a known state or rely on initial setup.
+            # If you have SCPI commands to query current trace modes, you'd add them here
+            # and update self.live_mode_var, self.max_hold_mode_var, self.min_hold_mode_var
+            # then call self._update_trace_mode_button_styles()
+        else: # If no instrument, ensure "Normal" is selected by default in GUI
+            normal_span_hz = SPAN_OPTIONS["Normal"]
+            normal_button_widget = self.span_buttons["Normal"]
+            normal_button_widget.config(style="SelectedSpan.TButton")
+            self.last_selected_span_button = normal_button_widget
+            self.current_span_hz = normal_span_hz # Ensure internal state is "Normal"
+            self.console_print_func("ℹ️ Instrument not connected. Defaulting GUI span to 'Normal'.")
+
+        self._update_current_settings_display() # NEW: Always update display on tab selection

@@ -2,14 +2,15 @@
 import inspect
 from utils.instrument_control import debug_print, write_safe, query_safe
 from utils.frequency_bands import MHZ_TO_HZ
+import time # Import time for potential small delays
 
 # Constants for Span Options (used in MarkersDisplayTab)
 SPAN_OPTIONS = {
-    "Full Span": 100 * MHZ_TO_HZ, # This would typically be a special value for full span
-    "Normal": 10 * MHZ_TO_HZ, # Example: 10 MHz
-    "Zoom 1": 1 * MHZ_TO_HZ,  # Example: 1 MHz
-    "Zoom 2": 100 * 1000,    # Example: 100 KHz
-    "Zoom 3": 10 * 1000,     # Example: 10 KHz
+    "Ultra Wide": 100 * MHZ_TO_HZ, # This would typically be a special value for full span
+    "Wide": 10 * MHZ_TO_HZ, # Example: 10 MHz
+    "Normal": 1 * MHZ_TO_HZ,  # Example: 1 MHz
+    "Tight": 100 * 1000,    # Example: 100 KHz
+    "Microscope": 10 * 1000,     # Example: 10 KHz
 }
 
 def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_hold_mode, console_print_func):
@@ -29,19 +30,49 @@ def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_
 
     # Set Center Frequency if provided
     if center_freq_hz is not None:
-        if not write_safe(inst, f":SENSe:FREQuency:CENTer {center_freq_hz}", console_print_func):
+        time.sleep(0.2) # Increased delay before sending command
+        command = f":SENSe:FREQuency:CENTer {center_freq_hz}"
+        debug_print(f"Attempting to send Center Frequency command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        if not write_safe(inst, command, console_print_func):
             success = False
             console_print_func(f"❌ Failed to set center frequency to {center_freq_hz / MHZ_TO_HZ:.3f} MHz.")
+            debug_print(f"write_safe returned False for Center Frequency command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        else: # Wait for operation complete after setting center frequency
+            debug_print(f"Center Frequency command sent. Querying *OPC?...", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+            if not query_safe(inst, "*OPC?", console_print_func):
+                debug_print("Failed to query *OPC? after setting center frequency.", file=current_file, function=current_function, console_print_func=console_print_func)
+                success = False
+        time.sleep(0.1) # Increased delay after OPC
 
     # Set Span
     if span_hz == 0.0: # Special case for "Full Span"
-        if not write_safe(inst, ":SENSe:FREQuency:SPAN MAX", console_print_func): # Use MAX for full span
+        time.sleep(0.2) # Increased delay before sending command
+        command = ":SENSe:FREQuency:SPAN MAX"
+        debug_print(f"Attempting to send Span MAX command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        if not write_safe(inst, command, console_print_func): # Use MAX for full span
             success = False
             console_print_func("❌ Failed to set Full Span.")
+            debug_print(f"write_safe returned False for Span MAX command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        else: # Wait for operation complete after setting span
+            debug_print(f"Span MAX command sent. Querying *OPC?...", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+            if not query_safe(inst, "*OPC?", console_print_func):
+                debug_print("Failed to query *OPC? after setting span MAX.", file=current_file, function=current_function, console_print_func=console_print_func)
+                success = False
+        time.sleep(0.1) # Increased delay
     else:
-        if not write_safe(inst, f":SENSe:FREQuency:SPAN {span_hz}", console_print_func):
+        time.sleep(0.2) # Increased delay before sending command
+        command = f":SENSe:FREQuency:SPAN {span_hz}"
+        debug_print(f"Attempting to send Span command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        if not write_safe(inst, command, console_print_func):
             success = False
             console_print_func(f"❌ Failed to set span to {span_hz / MHZ_TO_HZ:.3f} MHz.")
+            debug_print(f"write_safe returned False for Span command: {command}", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+        else: # Wait for operation complete after setting span
+            debug_print(f"Span command sent. Querying *OPC?...", file=current_file, function=current_function, console_print_func=console_print_func) # NEW DEBUG
+            if not query_safe(inst, "*OPC?", console_print_func):
+                debug_print(f"Failed to query *OPC? after setting span {span_hz}.", file=current_file, function=current_function, console_print_func=console_print_func)
+                success = False
+        time.sleep(0.1) # Increased delay
 
     # Apply Trace Modes
     # Ensure only the selected mode is active, and others are blanked.
@@ -51,6 +82,10 @@ def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_
     else:
         if not write_safe(inst, ":TRAC1:MODE BLANK", console_print_func): success = False
         console_print_func("ℹ️ Trace 1 set to BLANK.")
+    if not query_safe(inst, "*OPC?", console_print_func): # OPC after trace mode
+        debug_print("Failed to query *OPC? after setting TRAC1 mode.", file=current_file, function=current_function, console_print_func=console_print_func)
+        success = False
+    time.sleep(0.05) # Small delay
 
     if max_hold_mode:
         if not write_safe(inst, ":TRAC2:MODE MAXHold", console_print_func): success = False
@@ -58,6 +93,10 @@ def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_
     else:
         if not write_safe(inst, ":TRAC2:MODE BLANK", console_print_func): success = False
         console_print_func("ℹ️ Trace 2 set to BLANK.")
+    if not query_safe(inst, "*OPC?", console_print_func): # OPC after trace mode
+        debug_print("Failed to query *OPC? after setting TRAC2 mode.", file=current_file, function=current_function, console_print_func=console_print_func)
+        success = False
+    time.sleep(0.05) # Small delay
 
     if min_hold_mode:
         if not write_safe(inst, ":TRAC3:MODE MINHold", console_print_func): success = False
@@ -65,6 +104,10 @@ def set_span_logic(inst, span_hz, center_freq_hz, live_mode, max_hold_mode, min_
     else:
         if not write_safe(inst, ":TRAC3:MODE BLANK", console_print_func): success = False
         console_print_func("ℹ️ Trace 3 set to BLANK.")
+    if not query_safe(inst, "*OPC?", console_print_func): # OPC after trace mode
+        debug_print("Failed to query *OPC? after setting TRAC3 mode.", file=current_file, function=current_function, console_print_func=console_print_func)
+        success = False
+    time.sleep(0.05) # Small delay
 
 
     if success:
@@ -96,8 +139,19 @@ def set_marker_and_trace_modes_logic(app_instance, frequency_hz, marker_name, co
     try:
         # Ensure Marker 1 is ON
         if not write_safe(inst, ":CALCulate:MARKer1:STATe ON", console_print_func): success = False
+        else: # Wait for operation complete
+            if not query_safe(inst, "*OPC?", console_print_func):
+                debug_print("Failed to query *OPC? after setting Marker 1 state.", file=current_file, function=current_function, console_print_func=console_print_func)
+                success = False
+        time.sleep(0.05) # Small delay
+
         # Set Marker 1 to the specified frequency
         if not write_safe(inst, f":CALCulate:MARKer1:X {frequency_hz}", console_print_func): success = False
+        else: # Wait for operation complete
+            if not query_safe(inst, "*OPC?", console_print_func):
+                debug_print("Failed to query *OPC? after setting Marker 1 frequency.", file=current_file, function=current_function, console_print_func=console_print_func)
+                success = False
+        time.sleep(0.05) # Small delay
         
         # Query the Y value of the marker
         marker_y_value_str = query_safe(inst, ":CALCulate:MARKer1:Y?", console_print_func)
