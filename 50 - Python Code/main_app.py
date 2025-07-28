@@ -40,7 +40,7 @@ from src.instrument_logic import (
 # Import the logic function directly, it will be called by a method in App
 from src.scan_logic import update_connection_status_logic
 from src.settings_logic import restore_default_settings_logic
-from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
+from src.scan_controler_button_logic import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
 
 from utils.instrument_control import set_debug_mode, set_log_visa_commands_mode, debug_print # Import debug_print
 from tabs.tab_instrument_preset import PresetFilesTab # Import the new tab class
