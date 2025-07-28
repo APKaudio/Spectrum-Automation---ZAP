@@ -132,7 +132,8 @@ def connect_instrument_logic(app_instance, console_print_func):
 
             # --- Retrieve settings from app_instance Tkinter variables for initialization ---
             # These are the user's desired initial settings, not necessarily the current instrument state.
-            init_ref_level_dbm = _get_float_value(app_instance.ref_level_var, -40.0, "Reference Level", console_print_func)
+            # Corrected variable names
+            init_ref_level_dbm = _get_float_value(app_instance.reference_level_dbm_var, -40.0, "Reference Level", console_print_func)
             init_high_sensitivity_on = app_instance.high_sensitivity_var.get()
             init_preamp_on = app_instance.preamp_on_var.get()
             init_rbw_config_val = _get_float_value(app_instance.scan_rbw_hz_var, 10000.0, "Scan RBW", console_print_func)
@@ -218,9 +219,10 @@ def apply_settings_logic(app_instance, console_print_func):
 
     try:
         # Get values from Tkinter variables directly from app_instance
-        ref_level_dbm = _get_float_value(app_instance.ref_level_var, -40.0, "Reference Level", console_print_func)
-        freq_shift_hz = _get_float_value(app_instance.freq_shift_var, 0.0, "Frequency Shift", console_print_func)
-        max_hold_enabled = app_instance.max_hold_enabled_var.get()
+        # Corrected variable names
+        ref_level_dbm = _get_float_value(app_instance.reference_level_dbm_var, -40.0, "Reference Level", console_print_func)
+        freq_shift_hz = _get_float_value(app_instance.freq_shift_hz_var, 0.0, "Frequency Shift", console_print_func)
+        max_hold_enabled = app_instance.maxhold_enabled_var.get() # Corrected variable name
         high_sensitivity = app_instance.high_sensitivity_var.get()
         preamp_on = app_instance.preamp_on_var.get()
         
@@ -234,9 +236,9 @@ def apply_settings_logic(app_instance, console_print_func):
         # --- Apply High Sensitivity / Preamp ---
         # High sensitivity typically means Attenuation OFF and Preamplifier ON
         debug_print(f"Querying current Attenuation Auto state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_atten_auto_str = 0
+        current_atten_auto_str = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func) # Query actual state
         debug_print(f"Querying current Preamplifier state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_preamp_state_str = 0
+        current_preamp_state_str = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func) # Query actual state
 
         current_high_sensitivity_state = (current_atten_auto_str and "OFF" in current_atten_auto_str.upper()) and \
                                          (current_preamp_state_str and "ON" in current_preamp_state_str.upper())
@@ -247,12 +249,12 @@ def apply_settings_logic(app_instance, console_print_func):
         else:
             debug_print(f"Setting High Sensitivity to {'Enabled' if high_sensitivity else 'Disabled'}...", file=current_file, function=current_function, console_print_func=console_print_func)
             if high_sensitivity:
-                if not app_instance.inst.write(":INPut:ATTenuation:AUTO OFF"): success = False
-                if not app_instance.inst.write(":INPut:ATTenuation 0"): success = False # Set attenuation to 0 dB
-                if not app_instance.inst.write(":INPut:GAIN:STATe ON"): success = False # Turn on preamplifier
+                if not write_safe(app_instance.inst, ":INPut:ATTenuation:AUTO OFF", console_print_func): success = False
+                if not write_safe(app_instance.inst, ":INPut:ATTenuation 0", console_print_func): success = False # Set attenuation to 0 dB
+                if not write_safe(app_instance.inst, ":INPut:GAIN:STATe ON", console_print_func): success = False # Turn on preamplifier
             else:
-                if not app_instance.inst.write(":INPut:ATTenuation:AUTO ON"): success = False
-                if not app_instance.inst.write(":INPut:GAIN:STATe OFF"): success = False
+                if not write_safe(app_instance.inst, ":INPut:ATTenuation:AUTO ON", console_print_func): success = False
+                if not write_safe(app_instance.inst, ":INPut:GAIN:STATe OFF", console_print_func): success = False
             
             if success:
                 console_print_func(f"✅ High Sensitivity set to {'Enabled' if high_sensitivity else 'Disabled'}.")
@@ -271,7 +273,7 @@ def apply_settings_logic(app_instance, console_print_func):
             console_print_func(f"ℹ️ Info: RBW already at {rbw_hz_to_apply:.0f} Hz.")
         else:
             debug_print(f"Setting RBW to {rbw_hz_to_apply} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:BANDwidth:RESolution {rbw_hz_to_apply}"):
+            if not write_safe(app_instance.inst, f":SENSe:BANDwidth:RESolution {rbw_hz_to_apply}", console_print_func):
                 success = False
                 console_print_func(f"❌ Failed to set RBW to {rbw_hz_to_apply:.0f} Hz.")
                 debug_print(f"Failed to set RBW.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -288,7 +290,7 @@ def apply_settings_logic(app_instance, console_print_func):
             console_print_func(f"ℹ️ Info: VBW already at {vbw_hz_to_apply:.0f} Hz.")
         else:
             debug_print(f"Setting VBW to {vbw_hz_to_apply} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:BANDwidth:VIDeo {vbw_hz_to_apply}"):
+            if not write_safe(app_instance.inst, f":SENSe:BANDwidth:VIDeo {vbw_hz_to_apply}", console_print_func):
                 success = False
                 console_print_func(f"❌ Failed to set VBW to {vbw_hz_to_apply:.0f} Hz.")
                 debug_print(f"Failed to set VBW.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -339,17 +341,18 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
         span_hz = float(span_str) if span_str else 0.0
         rbw_hz = float(rbw_str) if rbw_str else 0.0
 
+        # Query attenuation and gain states for high sensitivity display
+        atten_auto_query = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
+        gain_state_query = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func)
+
         # Update Tkinter variables in the InstrumentTab
         if hasattr(app_instance, 'instrument_tab'):
             app_instance.instrument_tab.current_center_freq_var.set(f"{center_freq_hz / MHZ_TO_HZ:.3f}")
             app_instance.instrument_tab.current_span_var.set(f"{span_hz / MHZ_TO_HZ:.3f}")
             app_instance.instrument_tab.current_rbw_var.set(f"{rbw_hz:.0f}") # RBW in Hz, displayed as integer
-        
-        atten_auto_query = 0
-        gain_state_query = 0
-        if atten_auto_query and gain_state_query:
-            # High sensitivity is typically attenuation off and preamp on
-            if hasattr(app_instance, 'instrument_tab'):
+            
+            if atten_auto_query and gain_state_query:
+                # High sensitivity is typically attenuation off and preamp on
                 app_instance.instrument_tab.current_high_sensitivity_var.set("Enabled" if ("OFF" in atten_auto_query.upper() and "ON" in gain_state_query.upper()) else "Disabled")
 
         console_print_func("✅ Current instrument settings updated in GUI.")
@@ -386,8 +389,9 @@ def load_selected_preset_logic(app_instance, selected_preset_name, console_print
 
             # Also update the main app's variables that are tied to settings if they exist
             # This ensures consistency if these variables are used elsewhere (e.g., for saving config)
-            app_instance.ref_level_var.set(app_instance.instrument_tab.current_ref_level_var.get())
-            app_instance.freq_shift_var.set(app_instance.instrument_tab.current_freq_shift_var.get())
+            # Corrected variable names
+            app_instance.reference_level_dbm_var.set(app_instance.instrument_tab.current_ref_level_var.get())
+            app_instance.freq_shift_hz_var.set(app_instance.instrument_tab.current_freq_shift_var.get())
             # For max hold and high sensitivity, you might need to query the instrument again
             # or infer from the preset if it includes these states.
             # For simplicity, we'll rely on the instrument_tab's query_settings_display to update these.
@@ -421,3 +425,4 @@ def query_device_presets_logic(app_instance, console_print_func):
         console_print_func("❌ Failed to query presets from device.")
         debug_print("Failed to query presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None # Return None on failure
+

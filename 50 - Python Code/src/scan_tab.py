@@ -98,15 +98,13 @@ class ScanTab(ttk.Frame):
         ttk.Label(instrument_settings_frame, text="Frequency Shift (Hz):", style='TLabel').grid(row=5, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.freq_shift_hz_var, style='TEntry').grid(row=5, column=1, padx=2, pady=2, sticky="ew")
 
-        # Max Hold Enabled Checkbox
-        ttk.Checkbutton(instrument_settings_frame, text="Max Hold Enabled", variable=self.app_instance.max_hold_enabled_var, style='TCheckbutton').grid(row=6, column=0, columnspan=2, padx=5, pady=2, sticky="w")
-
+       
         # High Sensitivity/Preamp Checkbox
         ttk.Checkbutton(instrument_settings_frame, text="High Sensitivity (Preamp On)", variable=self.app_instance.high_sensitivity_var, style='TCheckbutton').grid(row=7, column=0, columnspan=2, padx=5, pady=2, sticky="w")
 
         # RBW Segmentation
         ttk.Label(instrument_settings_frame, text="RBW Segmentation:", style='TLabel').grid(row=8, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.rbw_segmentation_var, style='TEntry').grid(row=8, column=1, padx=2, pady=2, sticky="ew")
+        #ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.rbw_segmentation_var, style='TEntry').grid(row=8, column=1, padx=2, pady=2, sticky="ew")
 
         # Default Focus Width
         ttk.Label(instrument_settings_frame, text="Default Focus Width:", style='TLabel').grid(row=9, column=0, padx=5, pady=2, sticky="w")

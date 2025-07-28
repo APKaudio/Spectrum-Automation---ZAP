@@ -34,17 +34,19 @@ from src.gui_elements import TextRedirector, print_art # Corrected import from p
 from src.instrument_logic import (
     populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
     apply_settings_logic,
-    # Removed set_focus_frequency_logic as it's no longer in instrument_logic.py
     query_current_instrument_settings_logic, query_device_presets_logic,
     load_selected_preset_logic, set_marker_and_trace_modes_logic
 )
-from src.scan_logic import start_scan_thread_logic, stop_scan_logic, pause_scan_logic, resume_scan_logic, _update_button_states_on_connection
+# Removed specific scan_logic imports as they are not defined in scan_logic.py
+from src.scan_logic import update_connection_status_logic as _update_button_states_on_connection # Keep this for button state updates
 from src.settings_logic import restore_default_settings_logic
 from src.instrument_preset_tab import PresetFilesTab # Import the new tab class
-from src.marker_logic import MarkersDisplayTab # Import the MarkersDisplayTab
+from src.marker_tab import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
 from src.plotting_tab import PlottingTab # Import the PlottingTab
 from src.report_converter_tab import ReportConverterTab # Import the ReportConverterTab
 from src.scan_tab import ScanTab # Import the new ScanTab
+from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
+
 
 # Import constants from frequency_bands.py
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
@@ -98,7 +100,7 @@ class App(tk.Tk):
         self.VBW_RBW_RATIO = VBW_RBW_RATIO
 
         # Tkinter variables for settings (linked to config.ini)
-        self._setup_tkinter_vars()
+        self._setup_tkinter_vars() # Initialize Tkinter variables FIRST
 
         # Load configuration and apply geometry
         load_config(self) # Pass self to load_config
@@ -114,9 +116,9 @@ class App(tk.Tk):
         self._redirect_stdout_to_console() # Redirect print statements to GUI console
 
         # Initial population of resources and button states
-        self._populate_resources()
-        # Corrected: Call _update_button_states_on_connection as a function, passing self
-        _update_button_states_on_connection(self)
+        self._populate_resources() # Now this will find self.resource_names
+        # Corrected: Call _update_button_states_on_connection with required arguments
+        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
         
         # Print the ASCII art logo to the console
         print_art()
@@ -193,6 +195,10 @@ class App(tk.Tk):
         self.scan_rbw_segmentation_var = tk.StringVar(self, value="1000000.0")
         self.desired_default_focus_width_var = tk.StringVar(self, value="10000.0") # In MHz
         self.num_scan_cycles_var = tk.IntVar(self, value=1)
+
+        # VISA resource variables
+        self.resource_names = tk.StringVar(self) # Holds the list of available VISA resources
+        self.selected_resource = tk.StringVar(self) # Holds the currently selected VISA resource
 
 
         # Map Tkinter variables to config.ini keys for easy loading/saving
@@ -292,7 +298,8 @@ class App(tk.Tk):
         instrument_frame.grid_columnconfigure(1, weight=1) # Allow combobox to expand
 
         ttk.Label(instrument_frame, text="VISA Resource:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.resource_combobox = ttk.Combobox(instrument_frame, state="readonly", style='TCombobox')
+        # Use self.resource_names here
+        self.resource_combobox = ttk.Combobox(instrument_frame, textvariable=self.selected_resource, values=[], state="readonly", style='TCombobox')
         self.resource_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         self.resource_combobox.bind("<<ComboboxSelected>>", self._on_resource_selected)
 
@@ -350,20 +357,9 @@ class App(tk.Tk):
 
 
         # --- Scan Control Buttons Frame (Moved into right_column_container) ---
-        scan_control_frame = ttk.LabelFrame(right_column_container, text="Scan Control", style='Dark.TLabelframe')
-        scan_control_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new") # Top of right column container
-        scan_control_frame.grid_columnconfigure(0, weight=1)
-        scan_control_frame.grid_columnconfigure(1, weight=1)
-        scan_control_frame.grid_columnconfigure(2, weight=1)
-
-        self.start_scan_button = ttk.Button(scan_control_frame, text="Start Scan", command=self._start_scan, style='Green.TButton')
-        self.start_scan_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-
-        self.pause_scan_button = ttk.Button(scan_control_frame, text="Pause Scan", command=self._pause_scan, state=tk.DISABLED, style='Orange.TButton')
-        self.pause_scan_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-
-        self.stop_scan_button = ttk.Button(scan_control_frame, text="Stop Scan", command=self._stop_scan, state=tk.DISABLED, style='Red.TButton')
-        self.stop_scan_button.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+        # Instantiate ScanControlTab here and pass self (app_instance) to it
+        self.scan_control_tab = ScanControlTab(right_column_container, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.scan_control_tab.grid(row=0, column=0, padx=5, pady=5, sticky="new") # Place in right column container
 
 
         # --- Application Console Frame (Moved into right_column_container) ---
@@ -561,6 +557,15 @@ class App(tk.Tk):
         debug_print("Populating VISA resources...", file=__file__, function=inspect.currentframe().f_code.co_name)
         # Corrected the argument passed to populate_resources_logic
         populate_resources_logic(self, self._print_to_gui_console)
+        # After populating, update the combobox values
+        # The resource_names StringVar holds a space-separated string of resources
+        # We need to split it to set the 'values' attribute of the combobox
+        resource_list = self.resource_names.get().split(' ') if self.resource_names.get() else []
+        self.resource_combobox.config(values=resource_list)
+        if resource_list:
+            # Set the selected resource to the first one if no last used resource was found
+            if not self.selected_resource.get() or self.selected_resource.get() not in resource_list:
+                self.selected_resource.set(resource_list[0])
 
 
     def _on_resource_selected(self, event):
@@ -580,9 +585,9 @@ class App(tk.Tk):
         selected_resource = self.resource_combobox.get()
         
         # Pass self (app_instance) to the logic function
-        connect_instrument_logic(self, selected_resource, self._print_to_gui_console)
+        connect_instrument_logic(self, self._print_to_gui_console) # Removed selected_resource as it's now accessed via app_instance.selected_resource
         # Update button states after connection attempt
-        _update_button_states_on_connection(self)
+        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
 
 
     def _disconnect_instrument(self):
@@ -593,7 +598,7 @@ class App(tk.Tk):
         # Pass self (app_instance) to the logic function
         disconnect_instrument_logic(self, self._print_to_gui_console)
         # Update button states after disconnection
-        _update_button_states_on_connection(self)
+        _update_button_states_on_connection(self, self.inst is not None, self._print_to_gui_console)
 
 
     def _apply_instrument_settings(self):
@@ -625,8 +630,12 @@ class App(tk.Tk):
         Initiates the scan process in a separate thread.
         """
         debug_print("Starting scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Pass self (app_instance) to the logic function
-        start_scan_thread_logic(self)
+        # Call the method on the scan_control_tab instance
+        if hasattr(self, 'scan_control_tab'):
+            self.scan_control_tab._start_scan()
+        else:
+            self._print_to_gui_console("⚠️ Warning: Scan Control tab not initialized.")
+            debug_print("ScanControlTab not initialized for _start_scan.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _pause_scan(self):
@@ -634,8 +643,12 @@ class App(tk.Tk):
         Pauses the active scan.
         """
         debug_print("Pausing scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Pass self (app_instance) to the logic function
-        pause_scan_logic(self)
+        # Call the method on the scan_control_tab instance
+        if hasattr(self, 'scan_control_tab'):
+            self.scan_control_tab._pause_scan()
+        else:
+            self._print_to_gui_console("⚠️ Warning: Scan Control tab not initialized.")
+            debug_print("ScanControlTab not initialized for _pause_scan.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _stop_scan(self):
@@ -643,8 +656,12 @@ class App(tk.Tk):
         Stops the active scan.
         """
         debug_print("Stopping scan...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        # Pass self (app_instance) to the logic function
-        stop_scan_logic(self)
+        # Call the method on the scan_control_tab instance
+        if hasattr(self, 'scan_control_tab'):
+            self.scan_control_tab._stop_scan()
+        else:
+            self._print_to_gui_console("⚠️ Warning: Scan Control tab not initialized.")
+            debug_print("ScanControlTab not initialized for _stop_scan.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
     def _browse_output_folder(self):
