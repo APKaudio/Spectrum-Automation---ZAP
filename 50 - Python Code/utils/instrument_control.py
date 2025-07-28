@@ -60,6 +60,7 @@ def debug_print(message, file=None, function=None, console_print_func=None):
     Includes file and function context for better traceability.
     """
     if DEBUG_MODE:
+        timestamp = datetime.now().strftime("%M.%S")
         prefix = ""
         if file:
             prefix += f"[{os.path.basename(file)}"
@@ -70,7 +71,7 @@ def debug_print(message, file=None, function=None, console_print_func=None):
         elif function:
             prefix += f"[{function}] "
         
-        full_message = f"DEBUG: {prefix}{message}"
+        full_message = f"🚫🐛 [{timestamp}] {prefix}{message}"
         if console_print_func:
             console_print_func(full_message)
         else:
@@ -82,8 +83,8 @@ def log_visa_command(command, direction="SENT", console_print_func=None):
     Logs VISA commands sent to or received from the instrument if LOG_VISA_COMMANDS is enabled.
     """
     if LOG_VISA_COMMANDS:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # Milliseconds
-        log_message = f"VISA_LOG [{timestamp}] {direction}: {command.strip()}"
+        timestamp = datetime.now().strftime("%M.%S")
+        log_message = f"💳🌲 [{timestamp}] {direction}: {command.strip()}"
         if console_print_func:
             console_print_func(log_message)
         else:
@@ -238,9 +239,9 @@ def initialize_instrument(inst, console_print_func=None):
         if not write_safe(inst, ":POW:ATT:AUTO ON", console_print_func): return False # Auto attenuator
         if not write_safe(inst, ":FREQ:CENT 1GHZ", console_print_func): return False # Default center frequency
         if not write_safe(inst, ":FREQ:SPAN 1GHZ", console_print_func): return False # Default span
-        if not write_safe(inst, ":BAND:RES 10KHZ", console_print_func): return False # Default RBW
-        if not write_safe(inst, ":BAND:VID 3KHZ", console_print_func): return False # Default VBW (RBW/3)
-        if not write_safe(inst, ":POW:RF:RLEVEL -30DBM", console_print_func): return False # Default reference level
+        if not write_safe(inst, ":BAND:RES 10000", console_print_func): return False # Default RBW
+        if not write_safe(inst, ":BAND:VID 3000", console_print_func): return False # Default VBW (RBW/3)
+        
         
         debug_print("Instrument initialization commands sent.", file=current_file, function=current_function, console_print_func=console_print_func)
         return True
@@ -392,4 +393,3 @@ def load_selected_preset(inst, selected_preset_name, console_print_func=None):
         if console_print_func:
             console_print_func(f"❌ Error loading preset '{selected_preset_name}': {e}")
         return False, None, None, None
-
