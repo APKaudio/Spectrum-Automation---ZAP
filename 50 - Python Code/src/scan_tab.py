@@ -3,11 +3,14 @@ import tkinter as tk
 from tkinter import ttk, filedialog # Import filedialog
 import inspect
 import os # Import os for path manipulation
+import subprocess # Import subprocess for opening directories
 
 # Import debug_print from utils
 from utils.instrument_control import debug_print
 # Import restore_default_settings_logic from src.settings_logic
 from src.settings_logic import restore_default_settings_logic
+# Import save_config from config_manager
+from src.config_manager import save_config
 
 class ScanTab(ttk.Frame):
     """
@@ -50,6 +53,9 @@ class ScanTab(ttk.Frame):
         session_details_frame.grid_columnconfigure(0, weight=1)
         session_details_frame.grid_columnconfigure(1, weight=2)
         session_details_frame.grid_columnconfigure(2, weight=0) # For browse button
+        # Add a row for the "Open Directory" button
+        session_details_frame.grid_rowconfigure(2, weight=0) 
+
 
         ttk.Label(session_details_frame, text="Session Name:", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(session_details_frame, textvariable=self.app_instance.scan_name_var, style='TEntry').grid(row=0, column=1, columnspan=2, padx=2, pady=2, sticky="ew")
@@ -57,6 +63,9 @@ class ScanTab(ttk.Frame):
         ttk.Label(session_details_frame, text="Output Directory:", style='TLabel').grid(row=1, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(session_details_frame, textvariable=self.app_instance.output_folder_var, style='TEntry').grid(row=1, column=1, padx=2, pady=2, sticky="ew")
         ttk.Button(session_details_frame, text="Browse", command=self._browse_output_directory, style='TButton').grid(row=1, column=2, padx=2, pady=2, sticky="ew")
+
+        # New: Open Directory Button
+        ttk.Button(session_details_frame, text="Open Directory", command=self._open_output_directory, style='TButton').grid(row=2, column=0, columnspan=3, padx=2, pady=5, sticky="ew")
 
 
         # Instrument Settings Frame
@@ -107,20 +116,10 @@ class ScanTab(ttk.Frame):
         ttk.Label(instrument_settings_frame, text="Number of Scan Cycles:", style='TLabel').grid(row=10, column=0, padx=5, pady=2, sticky="w")
         ttk.Entry(instrument_settings_frame, textvariable=self.app_instance.num_scan_cycles_var, style='TEntry').grid(row=10, column=1, padx=2, pady=2, sticky="ew")
 
-        # Plotting Options
-        plotting_options_frame = ttk.LabelFrame(self, text="Plotting Options", padding="10 10 10 10", style='Dark.TLabelframe')
-        plotting_options_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
-        plotting_options_frame.grid_columnconfigure(0, weight=1)
-
-        ttk.Checkbutton(plotting_options_frame, text="Open HTML Plot After Complete", variable=self.app_instance.open_html_after_complete_var, style='TCheckbutton').grid(row=0, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(plotting_options_frame, text="Include TV Markers", variable=self.app_instance.include_tv_markers_var, style='TCheckbutton').grid(row=1, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(plotting_options_frame, text="Include Government Markers", variable=self.app_instance.include_gov_markers_var, style='TCheckbutton').grid(row=2, column=0, padx=5, pady=2, sticky="w")
-        ttk.Checkbutton(plotting_options_frame, text="Include Report Markers", variable=self.app_instance.include_markers_var, style='TCheckbutton').grid(row=3, column=0, padx=5, pady=2, sticky="w")
-
-
         # Frequency Band Selection Frame
+        # Adjusted row to 2 as plotting options frame is removed
         band_selection_frame = ttk.LabelFrame(self, text="Frequency Band Selection", padding="10 10 10 10", style='Dark.TLabelframe')
-        band_selection_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        band_selection_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
         band_selection_frame.grid_columnconfigure(0, weight=1)
         band_selection_frame.grid_rowconfigure(0, weight=1) # Allow checkbox frame to expand
 
@@ -135,8 +134,14 @@ class ScanTab(ttk.Frame):
             cb.grid(row=i, column=0, sticky="w", padx=2, pady=1)
 
         # Restore Defaults Button
+        # Adjusted row to 3
         restore_defaults_button = ttk.Button(self, text="Restore Default Settings", command=self._restore_default_settings, style='TButton')
-        restore_defaults_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        restore_defaults_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        # New: Save Last Used to Config Button
+        # Adjusted row to 4
+        save_last_used_button = ttk.Button(self, text="Save Last Used to Config", command=self._save_last_used_config, style='TButton')
+        save_last_used_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 
         debug_print("ScanTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -158,6 +163,45 @@ class ScanTab(ttk.Frame):
             self.console_print_func("ℹ️ Output directory selection cancelled.")
             debug_print("Output directory selection cancelled.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
+    def _open_output_directory(self):
+        """Opens the currently set output directory in the file explorer."""
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        output_path = self.app_instance.output_folder_var.get()
+
+        if not output_path:
+            self.console_print_func("⚠️ Warning: Output directory is not set.")
+            debug_print("Output directory is not set.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        if not os.path.isdir(output_path):
+            self.console_print_func(f"❌ Error: Directory does not exist: {output_path}")
+            debug_print(f"Directory does not exist: {output_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(output_path)
+            elif sys.platform == "darwin": # macOS
+                subprocess.Popen(["open", output_path])
+            else: # Linux
+                subprocess.Popen(["xdg-open", output_path])
+            self.console_print_func(f"✅ Opened directory: {output_path}")
+            debug_print(f"Opened directory: {output_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        except Exception as e:
+            self.console_print_func(f"❌ Error opening directory: {e}")
+            debug_print(f"Error opening directory '{output_path}': {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _save_last_used_config(self):
+        """
+        Saves the current application settings to config.ini.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Saving last used settings from ScanTab...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        save_config(self.app_instance)
+        self.console_print_func("✅ Current settings saved to config.ini.")
+
 
     def _restore_default_settings(self):
         """
@@ -166,7 +210,7 @@ class ScanTab(ttk.Frame):
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Restoring default settings from ScanTab...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print("Restoring default settings from ScanTab... (delegating to logic)", file=current_file, function=current_function, console_print_func=self.console_print_func)
         restore_default_settings_logic(self.app_instance, self.console_print_func)
 
 
@@ -178,8 +222,5 @@ class ScanTab(ttk.Frame):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("ScanTab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        # Enable plot button if there's data to plot
-        # This logic is now primarily handled by update_connection_status_logic
-        # which is called by the ScanControlTab.
+        # No specific refresh logic needed for ScanTab upon selection for now.
         pass
-

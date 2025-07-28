@@ -274,22 +274,8 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             return False # Wait for operation to complete
         time.sleep(1) # Give it a moment after reset and OPC
 
-        # Set continuous initiation ON
-        if write_safe(inst, ":INITiate:CONTinuous ON", console_print_func):
-            debug_print("Sent: :INITiate:CONTinuous ON", file=current_file, function=current_function, console_print_func=console_print_func)
-        else:
-            debug_print("Failed to set :INITiate:CONTinuous ON", file=current_file, function=current_function, console_print_func=console_print_func)
-            return False # Added return False on failure
-
-        # Set reference level
-        if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM", console_print_func):
-            debug_print(f"Failed to set reference level to {ref_level_dbm} dBm.", file=current_file, function=current_function, console_print_func=console_print_func)
-            return False
-        if console_print_func:
-            console_print_func(f"✅ Set reference level to {ref_level_dbm} dBm.")
-        debug_print(f"Set reference level to {ref_level_dbm} dBm.", file=current_file, function=current_function, console_print_func=console_print_func)
-
-        # Set preamplifier
+        
+                # Set preamplifier
         if preamp_on:
             if not write_safe(inst, ":POWer:ATTenuation:AUTO ON", console_print_func):
                 debug_print("Failed to set :POWer:ATTenuation:AUTO ON.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -318,7 +304,7 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
         # Set high sensitivity (preamplifier)
         if high_sensitivity_on:
             # Note: The original code set RLEVel to -50 here, preserving that behavior
-            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50DBM", console_print_func):
+            if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel -50D", console_print_func):
                 debug_print("Failed to set reference level to -50 dBm for high sensitivity.", file=current_file, function=current_function, console_print_func=console_print_func)
                 return False
             if not write_safe(inst, ":POWer:ATTenuation 0", console_print_func):
@@ -417,3 +403,52 @@ def initialize_instrument(inst, ref_level_dbm, high_sensitivity_on, preamp_on, r
             console_print_func(f"❌ An unexpected error occurred during instrument initialization: {e}")
         debug_print(f"Unexpected error during instrument initialization: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
         return False
+
+
+
+def _query_settings_display(self):
+        """
+        Queries the current settings from the instrument and updates the display variables.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Querying current instrument settings for display...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not self.app_instance.inst:
+            self.console_print_func("⚠️ Warning: No instrument connected. Cannot query settings for display.")
+            debug_print("No instrument connected. Cannot query settings for display.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self._clear_settings_display()
+            return False
+
+        try:
+            # Query Center Frequency
+            center_freq_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:CENTer?", self.console_print_func)
+            self.current_center_freq_var.set(f"{float(center_freq_str) / MHZ_TO_HZ:.3f}" if center_freq_str else "N/A")
+
+            # Query Span
+            span_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:SPAN?", self.console_print_func)
+            self.current_span_var.set(f"{float(span_str) / MHZ_TO_HZ:.3f}" if span_str else "N/A")
+
+            # Query RBW
+            rbw_str = query_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution?", self.console_print_func)
+            self.current_rbw_var.set(f"{float(rbw_str):.0f}" if rbw_str else "N/A")
+
+            # Query Reference Level
+            ref_level_str = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
+            self.current_ref_level_var.set(f"{float(ref_level_str):.1f}" if ref_level_str else "N/A")
+
+            # Query High Sensitivity / Preamp state
+            atten_auto_query = query_safe(self.app_instance.inst, ":INPut:ATTenuation:AUTO?", self.console_print_func)
+            gain_state_query = query_safe(self.app_instance.inst, ":INPut:GAIN:STATe?", self.console_print_func)
+            high_sensitivity_status = "Enabled" if (atten_auto_query and "OFF" in atten_auto_query.upper() and \
+                                                   gain_state_query and "ON" in gain_state_query.upper()) else "Disabled"
+            self.current_high_sensitivity_var.set(high_sensitivity_status)
+
+            self.console_print_func("✅ Current instrument settings displayed.")
+            debug_print("Current instrument settings displayed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return True
+        except Exception as e:
+            self.console_print_func(f"❌ Error querying instrument settings for display: {e}")
+            debug_print(f"Error querying instrument settings for display: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self._clear_settings_display()
+            return False

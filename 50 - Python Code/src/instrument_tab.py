@@ -75,6 +75,7 @@ class InstrumentTab(ttk.Frame):
         self.resource_dropdown.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
 
         self.populate_button = ttk.Button(connection_frame, text="Populate Resources", command=self._populate_resources)
+        self.populate_button = ttk.Button(connection_frame, text="Populate Resources", command=self._populate_resources)
         self.populate_button.grid(row=0, column=2, padx=5, pady=2, sticky="ew")
 
         self.connect_button = ttk.Button(connection_frame, text="Connect", command=self._connect_instrument)
@@ -170,61 +171,7 @@ class InstrumentTab(ttk.Frame):
         """Calls the logic function to query current instrument settings and updates display."""
         self._query_settings_display()
 
-    def _query_settings_display(self):
-        """
-        Queries the current settings from the instrument and updates the display variables.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Querying current instrument settings for display...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        if not self.app_instance.inst:
-            self.console_print_func("⚠️ Warning: No instrument connected. Cannot query settings for display.")
-            debug_print("No instrument connected. Cannot query settings for display.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self._clear_settings_display()
-            return False
-
-        try:
-            # Query Center Frequency
-            center_freq_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:CENTer?", self.console_print_func)
-            self.current_center_freq_var.set(f"{float(center_freq_str) / MHZ_TO_HZ:.3f}" if center_freq_str else "N/A")
-
-            # Query Span
-            span_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:SPAN?", self.console_print_func)
-            self.current_span_var.set(f"{float(span_str) / MHZ_TO_HZ:.3f}" if span_str else "N/A")
-
-            # Query RBW
-            rbw_str = query_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution?", self.console_print_func)
-            self.current_rbw_var.set(f"{float(rbw_str):.0f}" if rbw_str else "N/A")
-
-            # Query Reference Level
-            ref_level_str = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
-            self.current_ref_level_var.set(f"{float(ref_level_str):.1f}" if ref_level_str else "N/A")
-
-            # Query Frequency Shift
-            freq_shift_str = query_safe(self.app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", self.console_print_func)
-            self.current_freq_shift_var.set(f"{float(freq_shift_str):.0f}" if freq_shift_str else "N/A")
-
-            # Query Max Hold state
-            trace_type_query = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", self.console_print_func)
-            self.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
-
-            # Query High Sensitivity / Preamp state
-            atten_auto_query = query_safe(self.app_instance.inst, ":INPut:ATTenuation:AUTO?", self.console_print_func)
-            gain_state_query = query_safe(self.app_instance.inst, ":INPut:GAIN:STATe?", self.console_print_func)
-            high_sensitivity_status = "Enabled" if (atten_auto_query and "OFF" in atten_auto_query.upper() and \
-                                                   gain_state_query and "ON" in gain_state_query.upper()) else "Disabled"
-            self.current_high_sensitivity_var.set(high_sensitivity_status)
-
-            self.console_print_func("✅ Current instrument settings displayed.")
-            debug_print("Current instrument settings displayed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return True
-        except Exception as e:
-            self.console_print_func(f"❌ Error querying instrument settings for display: {e}")
-            debug_print(f"Error querying instrument settings for display: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self._clear_settings_display()
-            return False
-
+    
     def _clear_settings_display(self):
         """Clears the displayed instrument settings."""
         self.current_center_freq_var.set("")

@@ -230,65 +230,13 @@ def apply_settings_logic(app_instance, console_print_func):
 
         success = True
 
-        # --- Apply Reference Level ---
-        debug_print(f"Querying current Reference Level for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_ref_level_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
-        current_ref_level_dbm = float(current_ref_level_str) if current_ref_level_str else None
-
-        if current_ref_level_dbm is not None and abs(current_ref_level_dbm - ref_level_dbm) < 0.1: # Tolerance for float comparison
-            debug_print(f"Reference Level already at {ref_level_dbm} dBm. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: Reference Level already at {ref_level_dbm:.1f} dBm.")
-        else:
-            debug_print(f"Setting Reference Level to {ref_level_dbm} dBm...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}"):
-                success = False
-                console_print_func(f"❌ Failed to set Reference Level to {ref_level_dbm:.1f} dBm.")
-                debug_print(f"Failed to set Reference Level.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ Reference Level set to {ref_level_dbm:.1f} dBm.")
-
-        # --- Apply Frequency Shift ---
-        debug_print(f"Querying current Frequency Shift for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_freq_shift_str = query_safe(app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
-        current_freq_shift_hz = float(current_freq_shift_str) if current_freq_shift_str else None
-
-        if current_freq_shift_hz is not None and abs(current_freq_shift_hz - freq_shift_hz) < 1:
-            debug_print(f"Frequency Shift already at {freq_shift_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: Frequency Shift already at {freq_shift_hz:.0f} Hz.")
-        else:
-            debug_print(f"Setting Frequency Shift to {freq_shift_hz} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":INPut:RFSense:FREQuency:SHIFt {freq_shift_hz}"):
-                success = False
-                console_print_func(f"❌ Failed to set Frequency Shift to {freq_shift_hz:.0f} Hz.")
-                debug_print(f"Failed to set Frequency Shift.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ Frequency Shift set to {freq_shift_hz:.0f} Hz.")
-
-        # --- Apply Max Hold ---
-        debug_print(f"Querying current Trace Type for Max Hold comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trace_type_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
-        
-        desired_trace_type_command = ":DISPlay:WINDow:TRACe:TYPE MAXHold" if max_hold_enabled else ":DISPlay:WINDow:TRACe:TYPE NORM"
-        desired_trace_type_status = "MAXH" if max_hold_enabled else "NORM"
-
-        if current_trace_type_str and desired_trace_type_status in current_trace_type_str.upper():
-            debug_print(f"Max Hold state already set to {'Enabled' if max_hold_enabled else 'Disabled'}. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: Max Hold already {'Enabled' if max_hold_enabled else 'Disabled'}.")
-        else:
-            debug_print(f"Setting Max Hold state to {'Enabled' if max_hold_enabled else 'Disabled'}...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(desired_trace_type_command):
-                success = False
-                console_print_func(f"❌ Failed to set Max Hold to {'Enabled' if max_hold_enabled else 'Disabled'}.")
-                debug_print(f"Failed to set Max Hold.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ Max Hold set to {'Enabled' if max_hold_enabled else 'Disabled'}.")
-
+              
         # --- Apply High Sensitivity / Preamp ---
         # High sensitivity typically means Attenuation OFF and Preamplifier ON
         debug_print(f"Querying current Attenuation Auto state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_atten_auto_str = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
+        current_atten_auto_str = 0
         debug_print(f"Querying current Preamplifier state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_preamp_state_str = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func)
+        current_preamp_state_str = 0
 
         current_high_sensitivity_state = (current_atten_auto_str and "OFF" in current_atten_auto_str.upper()) and \
                                          (current_preamp_state_str and "ON" in current_preamp_state_str.upper())
@@ -397,35 +345,8 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
             app_instance.instrument_tab.current_span_var.set(f"{span_hz / MHZ_TO_HZ:.3f}")
             app_instance.instrument_tab.current_rbw_var.set(f"{rbw_hz:.0f}") # RBW in Hz, displayed as integer
         
-        # Query and update other settings as needed
-        # Example: Reference Level
-        ref_level_dbm_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
-        if ref_level_dbm_str:
-            try:
-                if hasattr(app_instance, 'instrument_tab'):
-                    app_instance.instrument_tab.current_ref_level_var.set(f"{float(ref_level_dbm_str):.1f}")
-            except ValueError:
-                debug_print(f"Could not convert queried reference level: {ref_level_dbm_str}", file=current_file, function=current_function, console_print_func=console_print_func)
-
-        # Query and update Frequency Shift
-        freq_shift_hz_str = query_safe(app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
-        if freq_shift_hz_str:
-            try:
-                if hasattr(app_instance, 'instrument_tab'):
-                    app_instance.instrument_tab.current_freq_shift_var.set(f"{float(freq_shift_hz_str):.0f}")
-            except ValueError:
-                debug_print(f"Could not convert queried frequency shift: {freq_shift_hz_str}", file=current_file, function=current_function, console_print_func=console_print_func)
-
-
-        # Query and update Max Hold state
-        trace_type_query = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
-        if trace_type_query:
-            if hasattr(app_instance, 'instrument_tab'):
-                app_instance.instrument_tab.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
-
-        # Query and update High Sensitivity / Preamp state
-        atten_auto_query = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
-        gain_state_query = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func)
+        atten_auto_query = 0
+        gain_state_query = 0
         if atten_auto_query and gain_state_query:
             # High sensitivity is typically attenuation off and preamp on
             if hasattr(app_instance, 'instrument_tab'):
