@@ -489,11 +489,11 @@ class App(tk.Tk):
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Configure main_frame grid
-        # Row 0: Scan Control Tab (takes minimal height, spans 2 columns conceptually)
-        # Row 1: Bottom content (Notebook + Console), expands vertically, spans 2 columns conceptually
+        # Row 0: Scan Control Tab (takes minimal height)
+        # Row 1: Bottom content (Notebook + Console), expands vertically
         main_frame.grid_rowconfigure(0, weight=0) # Scan control row - fixed height
         main_frame.grid_rowconfigure(1, weight=1) # Bottom content row - expands
-        main_frame.grid_columnconfigure(0, weight=1) # Single column to place elements, will be split further down
+        main_frame.grid_columnconfigure(0, weight=1) # Single column for the overall layout
 
         # Initialize ScanControlTab first as it's a direct child of main_frame
         self.scan_control_tab = ScanControlTab(main_frame, app_instance=self, console_print_func=self._print_to_gui_console)
@@ -503,10 +503,10 @@ class App(tk.Tk):
         bottom_content_frame = ttk.Frame(main_frame, style='Dark.TFrame')
         bottom_content_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5) # Place below scan control, span across
         
-        # Configure bottom_content_frame columns for 50/50 split
+        # Configure bottom_content_frame columns for 50/50 width split
         bottom_content_frame.grid_columnconfigure(0, weight=1) # Left notebook column
         bottom_content_frame.grid_columnconfigure(1, weight=1) # Right console column
-        bottom_content_frame.grid_rowconfigure(0, weight=1) # Only one row for this frame
+        bottom_content_frame.grid_rowconfigure(0, weight=1) # Only one row for this frame, expands vertically
 
         # Left Notebook for Tabs
         self.left_notebook = ttk.Notebook(bottom_content_frame)
@@ -591,26 +591,24 @@ class App(tk.Tk):
     def update_connection_status(self, is_connected):
         """
         Updates the GUI elements based on the instrument connection status.
-        This function is now a wrapper for the logic in scan_logic.
-        It also updates the buttons in InstrumentTab and ScanControlTab.
+        This function is the central dispatcher for updating button states across tabs.
         """
-        # Ensure instrument_tab is initialized before trying to access its buttons
-        if hasattr(self, 'instrument_tab') and hasattr(self, 'scan_control_tab'):
+        debug_print(f"Main App: update_connection_status called. Connected: {is_connected}", file=__file__, function=inspect.currentframe().f_code.co_name)
+
+        # Update InstrumentTab buttons and other general status
+        if hasattr(self, 'instrument_tab'):
+            # Pass the app_instance itself for access to its properties like inst, scan_control_tab
             update_connection_status_logic(
-                self,
+                self, # Pass app_instance
                 is_connected,
                 self._print_to_gui_console,
-                connect_btn=self.instrument_tab.connect_button,
-                disconnect_btn=self.instrument_tab.disconnect_button,
-                apply_btn=self.instrument_tab.apply_settings_button, # Renamed in InstrumentTab
-                query_btn=self.instrument_tab.query_settings_button
+                # No need to pass individual buttons here, scan_logic will get them from app_instance
             )
-            # Also trigger the scan control tab to update its buttons
-            self.scan_control_tab.update_scan_button_states()
         else:
-            debug_print("InstrumentTab or ScanControlTab not yet initialized when update_connection_status called.", file=__file__, function=inspect.currentframe().f_code.co_name)
+            debug_print("InstrumentTab not yet initialized when update_connection_status called.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
-        debug_print(f"Connection status updated to: {is_connected}", file=__file__, function=inspect.currentframe().f_code.co_name)
+        # The scan_control_tab's update_scan_button_states is now called by update_connection_status_logic
+        # so no explicit call needed here. This prevents the recursion.
 
 
     def reset_setting_colors_logic(self):
@@ -689,4 +687,3 @@ if __name__ == "__main__":
 
     app = App()
     app.mainloop()
-

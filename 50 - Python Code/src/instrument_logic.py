@@ -76,20 +76,24 @@ def connect_instrument_logic(app_instance, console_print_func):
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
     resource_name = app_instance.selected_resource.get()
-    console_print_func(f"\nAttempting to connect to {resource_name}...")
-    debug_print(f"Attempting to connect to {resource_name}...", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    if resource_name == "No Resources Found" or not resource_name:
-        console_print_func("⚠️ Warning: No valid VISA resource selected.")
-        debug_print("No valid VISA resource selected for connection.", file=current_file, function=current_function, console_print_func=console_print_func)
+    # Sanitize resource_name: remove leading/trailing whitespace and any trailing commas
+    sanitized_resource_name = resource_name.strip().rstrip(',')
+    
+    console_print_func(f"\nAttempting to connect to {sanitized_resource_name}...")
+    debug_print(f"Attempting to connect to {sanitized_resource_name}...", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    if sanitized_resource_name == "No Resources Found" or not sanitized_resource_name:
+        console_print_func("⚠️ Warning: No valid VISA resource selected or resource name is empty after sanitization.")
+        debug_print("No valid VISA resource selected for connection or empty after sanitization.", file=current_file, function=current_function, console_print_func=console_print_func)
         return False
 
     try:
-        inst = connect_to_instrument(resource_name, console_print_func)
+        inst = connect_to_instrument(sanitized_resource_name, console_print_func)
         if inst:
             app_instance.inst = inst
-            console_print_func(f"✅ Successfully connected to {resource_name}")
-            debug_print(f"Successfully connected to {resource_name}", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"✅ Successfully connected to {sanitized_resource_name}")
+            debug_print(f"Successfully connected to {sanitized_resource_name}", file=current_file, function=current_function, console_print_func=console_print_func)
             
             # Initialize instrument settings
             if initialize_instrument(app_instance.inst, console_print_func):
@@ -97,12 +101,9 @@ def connect_instrument_logic(app_instance, console_print_func):
                 debug_print("Instrument initialized with default settings.", file=current_file, function=current_function, console_print_func=console_print_func)
                 
                 # Query and display current instrument settings
-                center_freq, span, rbw = query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ, console_print_func)
-                app_instance.center_freq_var.set(f"{center_freq:.3f}")
-                app_instance.span_var.set(f"{span:.3f}")
-                app_instance.rbw_var.set(f"{rbw:.3f}")
-                console_print_func(f"Current Instrument Settings: Center Freq={center_freq:.3f} MHz, Span={span:.3f} MHz, RBW={rbw:.3f} MHz")
-                
+                # Note: center_freq_var, span_var, rbw_var are now in InstrumentTab's local vars
+                # The InstrumentTab's _query_settings_display will handle updating its own display.
+                # Here, we just ensure the main app's connection status is updated.
                 app_instance.update_connection_status(True) # Update GUI status
                 save_config(app_instance) # Save the successfully connected resource
                 return True
@@ -114,13 +115,13 @@ def connect_instrument_logic(app_instance, console_print_func):
                 app_instance.update_connection_status(False)
                 return False
         else:
-            console_print_func(f"❌ Failed to connect to {resource_name}.")
-            debug_print(f"Failed to connect to {resource_name}.", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"❌ Failed to connect to {sanitized_resource_name}.")
+            debug_print(f"Failed to connect to {sanitized_resource_name}.", file=current_file, function=current_function, console_print_func=console_print_func)
             app_instance.update_connection_status(False)
             return False
     except Exception as e:
         console_print_func(f"❌ An error occurred during connection: {e}")
-        debug_print(f"Error during connection to {resource_name}: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Error during connection to {sanitized_resource_name}: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
         app_instance.update_connection_status(False)
         return False
 
@@ -159,9 +160,10 @@ def apply_settings_logic(app_instance, console_print_func):
 
     try:
         # Get values from Tkinter variables, converting to appropriate types
-        center_freq_mhz = _get_float_value(app_instance.center_freq_var, 100.0, "Center Frequency", console_print_func)
-        span_mhz = _get_float_value(app_instance.span_var, 10.0, "Span", console_print_func)
-        rbw_hz = _get_float_value(app_instance.rbw_var, 10000.0, "RBW", console_print_func)
+        # These variables are now directly on app_instance
+        center_freq_mhz = _get_float_value(app_instance.center_freq_var, 100.0, "Center Frequency", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
+        span_mhz = _get_float_value(app_instance.span_var, 10.0, "Span", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
+        rbw_hz = _get_float_value(app_instance.rbw_var, 10000.0, "RBW", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
         ref_level_dbm = _get_float_value(app_instance.ref_level_var, -40.0, "Reference Level", console_print_func)
         freq_shift_hz = _get_float_value(app_instance.freq_shift_var, 0.0, "Frequency Shift", console_print_func)
         max_hold_enabled = app_instance.max_hold_enabled_var.get()
@@ -367,31 +369,45 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
     try:
         center_freq_hz, span_hz, rbw_hz = query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ, console_print_func)
         
-        # Update Tkinter variables
-        app_instance.center_freq_var.set(f"{center_freq_hz / MHZ_TO_HZ:.3f}")
-        app_instance.span_var.set(f"{span_hz / MHZ_TO_HZ:.3f}")
-        app_instance.rbw_var.set(f"{rbw_hz / MHZ_TO_HZ:.3f}") # RBW is often displayed in MHz or KHz
+        # Update Tkinter variables in the InstrumentTab
+        if hasattr(app_instance, 'instrument_tab'):
+            app_instance.instrument_tab.current_center_freq_var.set(f"{center_freq_hz / MHZ_TO_HZ:.3f}")
+            app_instance.instrument_tab.current_span_var.set(f"{span_hz / MHZ_TO_HZ:.3f}")
+            app_instance.instrument_tab.current_rbw_var.set(f"{rbw_hz:.0f}") # RBW in Hz, displayed as integer
         
         # Query and update other settings as needed
         # Example: Reference Level
         ref_level_dbm_str = app_instance.inst.query(":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
         if ref_level_dbm_str:
             try:
-                app_instance.ref_level_var.set(f"{float(ref_level_dbm_str):.1f}")
+                if hasattr(app_instance, 'instrument_tab'):
+                    app_instance.instrument_tab.current_ref_level_var.set(f"{float(ref_level_dbm_str):.1f}")
             except ValueError:
                 debug_print(f"Could not convert queried reference level: {ref_level_dbm_str}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        # Query and update Frequency Shift
+        freq_shift_hz_str = app_instance.inst.query(":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
+        if freq_shift_hz_str:
+            try:
+                if hasattr(app_instance, 'instrument_tab'):
+                    app_instance.instrument_tab.current_freq_shift_var.set(f"{float(freq_shift_hz_str):.0f}")
+            except ValueError:
+                debug_print(f"Could not convert queried frequency shift: {freq_shift_hz_str}", file=current_file, function=current_function, console_print_func=console_print_func)
+
 
         # Query and update Max Hold state
         trace_type_query = app_instance.inst.query(":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
         if trace_type_query:
-            app_instance.max_hold_enabled_var.set("MAXH" in trace_type_query.upper())
+            if hasattr(app_instance, 'instrument_tab'):
+                app_instance.instrument_tab.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
 
         # Query and update High Sensitivity / Preamp state
         atten_auto_query = app_instance.inst.query(":INPut:ATTenuation:AUTO?", console_print_func)
         gain_state_query = app_instance.inst.query(":INPut:GAIN:STATe?", console_print_func)
         if atten_auto_query and gain_state_query:
             # High sensitivity is typically attenuation off and preamp on
-            app_instance.high_sensitivity_var.set("OFF" in atten_auto_query.upper() and "ON" in gain_state_query.upper())
+            if hasattr(app_instance, 'instrument_tab'):
+                app_instance.instrument_tab.current_high_sensitivity_var.set("Enabled" if ("OFF" in atten_auto_query.upper() and "ON" in gain_state_query.upper()) else "Disabled")
 
         console_print_func("✅ Current instrument settings updated in GUI.")
         debug_print("Current instrument settings updated in GUI.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -418,10 +434,23 @@ def load_selected_preset_logic(app_instance, selected_preset_name, console_print
     )
     if success:
         # Update GUI settings based on loaded preset
-        app_instance.center_freq_var.set(f"{center_freq:.3f}")
-        app_instance.span_var.set(f"{span:.3f}")
-        app_instance.rbw_var.set(f"{rbw:.3f}")
-        console_print_func(f"GUI settings updated from preset: Center Freq={center_freq:.3f} MHz, Span={span:.3f} MHz, RBW={rbw:.3f} MHz")
+        # These variables are now in InstrumentTab's local vars
+        if hasattr(app_instance, 'instrument_tab'):
+            app_instance.instrument_tab.current_center_freq_var.set(f"{center_freq:.3f}")
+            app_instance.instrument_tab.current_span_var.set(f"{span:.3f}")
+            app_instance.instrument_tab.current_rbw_var.set(f"{rbw:.0f}") # RBW in Hz, displayed as integer
+
+            # Also update the main app's variables that are tied to settings if they exist
+            # This ensures consistency if these variables are used elsewhere (e.g., for saving config)
+            app_instance.ref_level_var.set(app_instance.instrument_tab.current_ref_level_var.get())
+            app_instance.freq_shift_var.set(app_instance.instrument_tab.current_freq_shift_var.get())
+            # For max hold and high sensitivity, you might need to query the instrument again
+            # or infer from the preset if it includes these states.
+            # For simplicity, we'll rely on the instrument_tab's query_settings_display to update these.
+            app_instance.instrument_tab._query_settings_display()
+
+
+        console_print_func(f"GUI settings updated from preset: Center Freq={center_freq:.3f} MHz, Span={span:.3f} MHz, RBW={rbw:.0f} Hz")
         debug_print("GUI settings updated from loaded preset.", file=current_file, function=current_function, console_print_func=console_print_func)
         return True
     else:
@@ -438,11 +467,13 @@ def query_device_presets_logic(app_instance, console_print_func):
     # Use the control_query_device_presets from utils.instrument_control
     presets = control_query_device_presets(app_instance.inst, console_print_func)
     if presets is not None:
-        app_instance.preset_files_tab.display_presets(presets, "device")
+        if hasattr(app_instance, 'preset_files_tab'):
+            app_instance.preset_files_tab.populate_preset_buttons(presets, "device")
         console_print_func(f"✅ Queried {len(presets)} presets from device.")
         debug_print(f"Queried {len(presets)} presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
-        return True
+        return presets # Return the list of presets
     else:
         console_print_func("❌ Failed to query presets from device.")
         debug_print("Failed to query presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
-        return False
+        return None # Return None on failure
+

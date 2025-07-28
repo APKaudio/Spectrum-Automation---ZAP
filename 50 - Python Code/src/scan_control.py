@@ -30,7 +30,8 @@ class ScanControlTab(ttk.Frame):
         self.is_paused = False # New state for pausing
 
         self._create_widgets()
-        self.update_scan_button_states() # Set initial button states
+        # Initial state update will be triggered by main_app after all tabs are initialized
+        # self.update_scan_button_states() # Removed: avoid calling before app_instance is fully set up
 
     def _create_widgets(self):
         """
@@ -79,7 +80,8 @@ class ScanControlTab(ttk.Frame):
             self.is_paused = False
             self.console_print_func("▶️ Scan resumed.")
             debug_print("Scan resumed.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self.update_scan_button_states()
+            # Trigger full GUI update after state change
+            self.app_instance.update_connection_status(self.app_instance.inst is not None)
             return
 
         self.is_scanning = True
@@ -89,7 +91,8 @@ class ScanControlTab(ttk.Frame):
         self.scan_thread.start()
         self.console_print_func("▶️ Scan started...")
         debug_print("Scan thread started.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        self.update_scan_button_states()
+        # Trigger full GUI update after state change
+        self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
 
     def _pause_scan(self):
@@ -104,7 +107,8 @@ class ScanControlTab(ttk.Frame):
             self.is_paused = True
             self.console_print_func("⏸️ Scan paused.")
             debug_print("Scan paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self.update_scan_button_states()
+            # Trigger full GUI update after state change
+            self.app_instance.update_connection_status(self.app_instance.inst is not None)
         elif self.is_paused:
             self.console_print_func("ℹ️ Info: Scan is already paused.")
             debug_print("Scan already paused.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -135,7 +139,8 @@ class ScanControlTab(ttk.Frame):
             self.console_print_func("ℹ️ Info: No scan is currently running.")
             debug_print("No scan is currently running.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         
-        self.update_scan_button_states() # Re-enable/disable buttons after stopping
+        # Trigger full GUI update after state change
+        self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
     def _run_scan(self):
         """
@@ -151,7 +156,7 @@ class ScanControlTab(ttk.Frame):
                 self.app_instance.after(0, lambda: self.console_print_func("⚠️ Warning: No frequency bands selected for scan."))
                 debug_print("No frequency bands selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                 self.is_scanning = False
-                self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+                self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None) # Update buttons on main thread
                 return
 
             num_scan_cycles = int(self.app_instance.num_scan_cycles_var.get())
@@ -259,19 +264,20 @@ class ScanControlTab(ttk.Frame):
                     self.app_instance.after(0, lambda: self.console_print_func("ℹ️ No markers extracted during scan to update Markers tab."))
                     debug_print("No markers extracted during scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             
-            self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None) # Update buttons on main thread
 
         except Exception as e:
             self.is_scanning = False
             self.is_paused = False
             self.app_instance.after(0, lambda: self.console_print_func(f"❌ An error occurred during scan: {e}"))
             debug_print(f"Error during scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            self.app_instance.after(0, self.update_scan_button_states) # Update buttons on main thread
+            self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None) # Update buttons on main thread
 
     def update_scan_button_states(self):
         """
         Updates the state of the Start, Pause, and Stop buttons based on scan status.
         This function should be called from the main thread using app_instance.after().
+        It does NOT call app_instance.update_connection_status to prevent recursion.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
@@ -298,8 +304,6 @@ class ScanControlTab(ttk.Frame):
             self.pause_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.DISABLED)
 
-        # Update other relevant buttons in the main app and other tabs
-        # This is crucial for maintaining consistent UI state across the application.
-        # Call the app_instance's update_connection_status to propagate changes
-        self.app_instance.update_connection_status(self.app_instance.inst is not None)
-
+        # Removed: self.app_instance.update_connection_status(self.app_instance.inst is not None)
+        # This call was causing the recursion. The main app's update_connection_status
+        # will now explicitly call this method.
