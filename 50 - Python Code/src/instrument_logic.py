@@ -11,7 +11,8 @@ from utils.instrument_control import (
     initialize_instrument, # This is the correct initialize_instrument from utils
     # Removed query_current_instrument_settings, as it will be replaced by individual query_safe calls
     debug_print, # Import debug_print
-    query_safe # Import query_safe for individual queries
+    query_safe, # Import query_safe for individual queries
+    write_safe # Import write_safe for setting instrument parameters
 )
 from utils.frequency_bands import MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
 from src.config_manager import save_config # Import save_config
@@ -19,6 +20,9 @@ import tkinter.ttk as ttk # Import ttk for themed widgets
 
 # Import set_marker_and_trace_modes_logic from marker_utils
 from utils.marker_utils import set_marker_and_trace_modes_logic
+
+# Import the update_connection_status_logic function from scan_logic
+from src.scan_logic import update_connection_status_logic
 
 
 def _get_float_value(tk_var, default_value, setting_name, console_print_func):
@@ -140,7 +144,8 @@ def connect_instrument_logic(app_instance, console_print_func):
             init_vbw_config_val = init_rbw_config_val * VBW_RBW_RATIO # Derived VBW
 
             # --- Initialize instrument settings ---
-            if initialize_instrument(
+            # Handle potential non-tuple return from initialize_instrument
+            init_result = initialize_instrument(
                 app_instance.inst,
                 init_ref_level_dbm,
                 init_high_sensitivity_on,
@@ -149,7 +154,22 @@ def connect_instrument_logic(app_instance, console_print_func):
                 init_vbw_config_val,
                 model_match, # Pass the detected model
                 console_print_func
-            ):
+            )
+
+            if isinstance(init_result, tuple) and len(init_result) == 2:
+                success_init, returned_model = init_result
+            else:
+                # Fallback for unexpected return type (e.g., if it returns just a boolean)
+                success_init = bool(init_result)
+                returned_model = None
+                console_print_func("⚠️ Warning: initialize_instrument returned unexpected type. Assuming boolean success.")
+                debug_print(f"initialize_instrument returned non-tuple. Result: {init_result}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+            if success_init:
+                # Update the app_instance.instrument_model with the model returned by initialize_instrument
+                if returned_model and returned_model != "UNKNOWN":
+                    app_instance.instrument_model = returned_model
+
                 console_print_func("✅ Instrument initialized with default settings.")
                 debug_print("Instrument initialized with default settings.", file=current_file, function=current_function, console_print_func=console_print_func)
                 
@@ -158,7 +178,8 @@ def connect_instrument_logic(app_instance, console_print_func):
                 if hasattr(app_instance, 'instrument_tab'):
                     app_instance.instrument_tab._query_settings_display()
                 
-                app_instance.update_connection_status(True) # Update GUI status
+                # Call the update_connection_status_logic function
+                update_connection_status_logic(app_instance, True, console_print_func)
                 save_config(app_instance) # Save the successfully connected resource
                 return True
             else:
@@ -166,17 +187,17 @@ def connect_instrument_logic(app_instance, console_print_func):
                 debug_print("Failed to initialize instrument.", file=current_file, function=current_function, console_print_func=console_print_func)
                 control_disconnect_instrument(app_instance.inst, console_print_func) # Disconnect if initialization fails
                 app_instance.inst = None
-                app_instance.update_connection_status(False)
+                update_connection_status_logic(app_instance, False, console_print_func)
                 return False
         else:
             console_print_func(f"❌ Failed to connect to {sanitized_resource_name}.")
             debug_print(f"Failed to connect to {sanitized_resource_name}.", file=current_file, function=current_function, console_print_func=console_print_func)
-            app_instance.update_connection_status(False)
+            update_connection_status_logic(app_instance, False, console_print_func)
             return False
     except Exception as e:
         console_print_func(f"❌ An error occurred during connection: {e}")
         debug_print(f"Error during connection to {sanitized_resource_name}: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-        app_instance.update_connection_status(False)
+        update_connection_status_logic(app_instance, False, console_print_func)
         return False
 
 def disconnect_instrument_logic(app_instance, console_print_func):
@@ -200,7 +221,7 @@ def disconnect_instrument_logic(app_instance, console_print_func):
     else:
         console_print_func("ℹ️ Info: No instrument to disconnect.")
         debug_print("No instrument to disconnect.", file=current_file, function=current_function, console_print_func=console_print_func)
-    app_instance.update_connection_status(False) # Update GUI status
+    update_connection_status_logic(app_instance, False, console_print_func) # Update GUI status
 
 def apply_settings_logic(app_instance, console_print_func):
     """
@@ -332,14 +353,18 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
         return False
 
     try:
-        # Use query_safe for all instrument queries
+        # Use query_safe for all individual instrument queries
         center_freq_str = query_safe(app_instance.inst, ":SENSe:FREQuency:CENTer?", console_print_func)
         span_str = query_safe(app_instance.inst, ":SENSe:FREQuency:SPAN?", console_print_func)
         rbw_str = query_safe(app_instance.inst, ":SENSe:BANDwidth:RESolution?", console_print_func)
+        ref_level_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
+        freq_shift_str = query_safe(app_instance.inst, ":FREQuency:OFFSet?", console_print_func) # Assuming this is the correct SCPI for frequency shift
         
         center_freq_hz = float(center_freq_str) if center_freq_str else 0.0
         span_hz = float(span_str) if span_str else 0.0
         rbw_hz = float(rbw_str) if rbw_str else 0.0
+        ref_level_dbm = float(ref_level_str) if ref_level_str else 0.0
+        freq_shift_hz = float(freq_shift_str) if freq_shift_str else 0.0
 
         # Query attenuation and gain states for high sensitivity display
         atten_auto_query = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
@@ -350,6 +375,8 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
             app_instance.instrument_tab.current_center_freq_var.set(f"{center_freq_hz / MHZ_TO_HZ:.3f}")
             app_instance.instrument_tab.current_span_var.set(f"{span_hz / MHZ_TO_HZ:.3f}")
             app_instance.instrument_tab.current_rbw_var.set(f"{rbw_hz:.0f}") # RBW in Hz, displayed as integer
+            app_instance.instrument_tab.current_ref_level_var.set(f"{ref_level_dbm:.1f}")
+            app_instance.instrument_tab.current_freq_shift_var.set(f"{freq_shift_hz:.0f}")
             
             if atten_auto_query and gain_state_query:
                 # High sensitivity is typically attenuation off and preamp on
@@ -390,12 +417,9 @@ def load_selected_preset_logic(app_instance, selected_preset_name, console_print
             # Also update the main app's variables that are tied to settings if they exist
             # This ensures consistency if these variables are used elsewhere (e.g., for saving config)
             # Corrected variable names
-            app_instance.reference_level_dbm_var.set(app_instance.instrument_tab.current_ref_level_var.get())
-            app_instance.freq_shift_hz_var.set(app_instance.instrument_tab.current_freq_shift_var.get())
-            # For max hold and high sensitivity, you might need to query the instrument again
-            # or infer from the preset if it includes these states.
-            # For simplicity, we'll rely on the instrument_tab's query_settings_display to update these.
-            app_instance.instrument_tab._query_settings_display()
+            # Instead of directly setting from instrument_tab's current_ref_level_var, query directly
+            # from the instrument to ensure consistency after preset load.
+            query_current_instrument_settings_logic(app_instance, console_print_func)
 
 
         console_print_func(f"GUI settings updated from preset: Center Freq={center_freq:.3f} MHz, Span={span:.3f} MHz, RBW={rbw:.0f} Hz")
@@ -425,4 +449,3 @@ def query_device_presets_logic(app_instance, console_print_func):
         console_print_func("❌ Failed to query presets from device.")
         debug_print("Failed to query presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None # Return None on failure
-
