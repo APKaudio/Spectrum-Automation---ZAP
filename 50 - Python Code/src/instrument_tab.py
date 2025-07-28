@@ -8,11 +8,8 @@ from src.instrument_logic import (
     populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
     apply_settings_logic, query_current_instrument_settings_logic
 )
-# Import update_connection_status_logic from scan_logic to manage button states
-# Note: This import creates a dependency. If update_connection_status_logic
-# needs to be more generic, it could be moved to utils.
-from src.scan_logic import update_connection_status_logic
-from utils.instrument_control import debug_print, set_debug_mode, log_visa_command # Import debug control functions
+# Removed: from src.scan_logic import update_connection_status_logic # This import is no longer needed here
+from utils.instrument_control import debug_print, set_debug_mode, log_visa_command, query_safe # Import debug control functions and query_safe
 from utils.frequency_bands import MHZ_TO_HZ # Import for display conversion
 
 class InstrumentTab(ttk.Frame):
@@ -154,14 +151,14 @@ class InstrumentTab(ttk.Frame):
         """Calls the logic function to connect to the instrument."""
         if connect_instrument_logic(self.app_instance, self.console_print_func):
             self._query_settings_display() # Update display after connection
-        # Update main app's connection status which will propagate to other tabs
+        # Trigger full GUI update via main app
         self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
     def _disconnect_instrument(self):
         """Calls the logic function to disconnect from the instrument."""
         disconnect_instrument_logic(self.app_instance, self.console_print_func)
         self._clear_settings_display() # Clear display after disconnect
-        # Update main app's connection status which will propagate to other tabs
+        # Trigger full GUI update via main app
         self.app_instance.update_connection_status(self.app_instance.inst is not None)
 
     def _apply_settings(self):
@@ -189,33 +186,34 @@ class InstrumentTab(ttk.Frame):
 
         try:
             # Query Center Frequency
-            center_freq_str = self.app_instance.inst.query(":SENSe:FREQuency:CENTer?", self.console_print_func)
+            center_freq_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:CENTer?", self.console_print_func)
             self.current_center_freq_var.set(f"{float(center_freq_str) / MHZ_TO_HZ:.3f}" if center_freq_str else "N/A")
 
             # Query Span
-            span_str = self.app_instance.inst.query(":SENSe:FREQuency:SPAN?", self.console_print_func)
+            span_str = query_safe(self.app_instance.inst, ":SENSe:FREQuency:SPAN?", self.console_print_func)
             self.current_span_var.set(f"{float(span_str) / MHZ_TO_HZ:.3f}" if span_str else "N/A")
 
             # Query RBW
-            rbw_str = self.app_instance.inst.query(":SENSe:BANDwidth:RESolution?", self.console_print_func)
+            rbw_str = query_safe(self.app_instance.inst, ":SENSe:BANDwidth:RESolution?", self.console_print_func)
             self.current_rbw_var.set(f"{float(rbw_str):.0f}" if rbw_str else "N/A")
 
             # Query Reference Level
-            ref_level_str = self.app_instance.inst.query(":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
+            ref_level_str = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", self.console_print_func)
             self.current_ref_level_var.set(f"{float(ref_level_str):.1f}" if ref_level_str else "N/A")
 
             # Query Frequency Shift
-            freq_shift_str = self.app_instance.inst.query(":INPut:RFSense:FREQuency:SHIFt?", self.console_print_func)
+            freq_shift_str = query_safe(self.app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", self.console_print_func)
             self.current_freq_shift_var.set(f"{float(freq_shift_str):.0f}" if freq_shift_str else "N/A")
 
             # Query Max Hold state
-            trace_type_query = self.app_instance.inst.query(":DISPlay:WINDow:TRACe:TYPE?", self.console_print_func)
+            trace_type_query = query_safe(self.app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", self.console_print_func)
             self.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
 
             # Query High Sensitivity / Preamp state
-            atten_auto_query = self.app_instance.inst.query(":INPut:ATTenuation:AUTO?", self.console_print_func)
-            gain_state_query = self.app_instance.inst.query(":INPut:GAIN:STATe?", self.console_print_func)
-            high_sensitivity_status = "Enabled" if ("OFF" in atten_auto_query.upper() and "ON" in gain_state_query.upper()) else "Disabled"
+            atten_auto_query = query_safe(self.app_instance.inst, ":INPut:ATTenuation:AUTO?", self.console_print_func)
+            gain_state_query = query_safe(self.app_instance.inst, ":INPut:GAIN:STATe?", self.console_print_func)
+            high_sensitivity_status = "Enabled" if (atten_auto_query and "OFF" in atten_auto_query.upper() and \
+                                                   gain_state_query and "ON" in gain_state_query.upper()) else "Disabled"
             self.current_high_sensitivity_var.set(high_sensitivity_status)
 
             self.console_print_func("✅ Current instrument settings displayed.")

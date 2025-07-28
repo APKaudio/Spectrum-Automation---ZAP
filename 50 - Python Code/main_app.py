@@ -31,11 +31,13 @@ import inspect # Import inspect module
 # Import local modules
 from src.config_manager import load_config, save_config
 from src.gui_elements import TextRedirector, print_art # Corrected import from print_logo to print_art
-from src.instrument_logic import (
-    populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
-    apply_settings_logic, query_current_instrument_settings_logic,
-    load_selected_preset_logic, query_device_presets_logic
-)
+# Removed direct imports from src.instrument_logic as these functions are now
+# methods of InstrumentTab or PresetFilesTab, or are called indirectly.
+# from src.instrument_logic import (
+#     connect_instrument_logic, disconnect_instrument_logic,
+#     apply_settings_logic, query_current_instrument_settings_logic,
+#     load_selected_preset_logic, query_device_presets_logic
+# )
 from src.scan_logic import update_connection_status_logic # Only update_connection_status_logic remains here
 from src.settings_logic import restore_default_settings_logic
 from src.plotting_tab import PlottingTab # Import PlottingTab
@@ -687,3 +689,4 @@ if __name__ == "__main__":
 
     app = App()
     app.mainloop()
+

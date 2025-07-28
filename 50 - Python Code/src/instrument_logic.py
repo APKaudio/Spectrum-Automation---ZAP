@@ -9,8 +9,9 @@ from utils.instrument_control import (
     set_debug_mode, list_visa_resources, connect_to_instrument,
     disconnect_instrument as control_disconnect_instrument,
     initialize_instrument, # This is the correct initialize_instrument from utils
-    query_current_instrument_settings, # This is the one imported from utils
-    debug_print # Import debug_print
+    # Removed query_current_instrument_settings, as it will be replaced by individual query_safe calls
+    debug_print, # Import debug_print
+    query_safe # Import query_safe for individual queries
 )
 from utils.frequency_bands import MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATIO
 from src.config_manager import save_config # Import save_config
@@ -50,20 +51,37 @@ def populate_resources_logic(app_instance, console_print_func):
     current_file = __file__
     debug_print("Populating VISA resources...", file=current_file, function=current_function, console_print_func=console_print_func)
     
-    resources = list_visa_resources(console_print_func)
-    app_instance.resource_names.set([]) # Clear existing options
-    if resources:
-        app_instance.resource_names.set(resources)
+    raw_resources = list_visa_resources(console_print_func)
+    debug_print(f"Raw resources found: {raw_resources}", file=current_file, function=current_function, console_print_func=console_print_func)
+    
+    # Sanitize each resource name before setting it to app_instance.resource_names
+    sanitized_resources = []
+    for resource in raw_resources:
+        # Apply the same sanitization logic as in connect_instrument_logic
+        sanitized_resource = resource.strip().replace("'", "").replace('"', "").rstrip(',').rstrip(')')
+        sanitized_resources.append(sanitized_resource)
+    debug_print(f"Sanitized resources: {sanitized_resources}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    app_instance.resource_names.set("") # Clear existing options by setting to empty string
+    debug_print("Cleared existing resource names in app_instance.resource_names.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    if sanitized_resources:
+        # Join the list into a single space-separated string for the StringVar
+        app_instance.resource_names.set(" ".join(sanitized_resources))
+        debug_print(f"Set app_instance.resource_names to: '{app_instance.resource_names.get()}'", file=current_file, function=current_function, console_print_func=console_print_func)
+
         # Attempt to set the last used resource if it's still available
         last_used_resource = app_instance.config.get('LAST_USED_SETTINGS', 'last_gpib_device', fallback='')
-        if last_used_resource and last_used_resource in resources:
+        debug_print(f"Last used resource from config: '{last_used_resource}'", file=current_file, function=current_function, console_print_func=console_print_func)
+
+        if last_used_resource and last_used_resource in sanitized_resources:
             app_instance.selected_resource.set(last_used_resource)
             console_print_func(f"✅ Last used resource '{last_used_resource}' found and selected.")
             debug_print(f"Last used resource '{last_used_resource}' found and selected.", file=current_file, function=current_function, console_print_func=console_print_func)
         else:
-            app_instance.selected_resource.set(resources[0]) # Select the first resource by default
-            console_print_func(f"✅ Resources found. Selected: {resources[0]}")
-            debug_print(f"Resources found. Selected: {resources[0]}", file=current_file, function=current_function, console_print_func=console_print_func)
+            app_instance.selected_resource.set(sanitized_resources[0]) # Select the first resource by default
+            console_print_func(f"✅ Resources found. Selected: {sanitized_resources[0]}")
+            debug_print(f"Selected first resource by default: {sanitized_resources[0]}", file=current_file, function=current_function, console_print_func=console_print_func)
     else:
         app_instance.selected_resource.set("No Resources Found")
         console_print_func("❌ No VISA resources found. Ensure NI-VISA is installed and instrument is connected.")
@@ -77,8 +95,9 @@ def connect_instrument_logic(app_instance, console_print_func):
     current_file = __file__
     resource_name = app_instance.selected_resource.get()
 
-    # Sanitize resource_name: remove leading/trailing whitespace and any trailing commas
-    sanitized_resource_name = resource_name.strip().rstrip(',')
+    # The resource_name should already be sanitized by populate_resources_logic,
+    # but a final strip is harmless.
+    sanitized_resource_name = resource_name.strip()
     
     console_print_func(f"\nAttempting to connect to {sanitized_resource_name}...")
     debug_print(f"Attempting to connect to {sanitized_resource_name}...", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -95,15 +114,49 @@ def connect_instrument_logic(app_instance, console_print_func):
             console_print_func(f"✅ Successfully connected to {sanitized_resource_name}")
             debug_print(f"Successfully connected to {sanitized_resource_name}", file=current_file, function=current_function, console_print_func=console_print_func)
             
-            # Initialize instrument settings
-            if initialize_instrument(app_instance.inst, console_print_func):
+            # --- Determine Instrument Model ---
+            model_match = "UNKNOWN" # Default
+            try:
+                idn_response = query_safe(inst, "*IDN?", console_print_func) # Use query_safe
+                if idn_response:
+                    # Example IDN: Agilent Technologies,N9340B,MY48060001,A.01.00
+                    parts = idn_response.split(',')
+                    if len(parts) > 1:
+                        model_match = parts[1].strip()
+                        app_instance.instrument_model = model_match # Store model in app_instance
+                        console_print_func(f"✅ Detected instrument model: {model_match}")
+                        debug_print(f"Detected instrument model: {model_match}", file=current_file, function=current_function, console_print_func=console_print_func)
+            except Exception as idn_e:
+                console_print_func(f"⚠️ Warning: Could not query instrument IDN: {idn_e}. Assuming UNKNOWN model.")
+                debug_print(f"Error querying IDN: {idn_e}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+            # --- Retrieve settings from app_instance Tkinter variables for initialization ---
+            # These are the user's desired initial settings, not necessarily the current instrument state.
+            init_ref_level_dbm = _get_float_value(app_instance.ref_level_var, -40.0, "Reference Level", console_print_func)
+            init_high_sensitivity_on = app_instance.high_sensitivity_var.get()
+            init_preamp_on = app_instance.preamp_on_var.get()
+            init_rbw_config_val = _get_float_value(app_instance.scan_rbw_hz_var, 10000.0, "Scan RBW", console_print_func)
+            init_vbw_config_val = init_rbw_config_val * VBW_RBW_RATIO # Derived VBW
+
+            # --- Initialize instrument settings ---
+            if initialize_instrument(
+                app_instance.inst,
+                init_ref_level_dbm,
+                init_high_sensitivity_on,
+                init_preamp_on,
+                init_rbw_config_val,
+                init_vbw_config_val,
+                model_match, # Pass the detected model
+                console_print_func
+            ):
                 console_print_func("✅ Instrument initialized with default settings.")
                 debug_print("Instrument initialized with default settings.", file=current_file, function=current_function, console_print_func=console_print_func)
                 
-                # Query and display current instrument settings
-                # Note: center_freq_var, span_var, rbw_var are now in InstrumentTab's local vars
-                # The InstrumentTab's _query_settings_display will handle updating its own display.
-                # Here, we just ensure the main app's connection status is updated.
+                # Query and display current instrument settings in InstrumentTab
+                # This will update the InstrumentTab's local Tkinter variables
+                if hasattr(app_instance, 'instrument_tab'):
+                    app_instance.instrument_tab._query_settings_display()
+                
                 app_instance.update_connection_status(True) # Update GUI status
                 save_config(app_instance) # Save the successfully connected resource
                 return True
@@ -135,10 +188,14 @@ def disconnect_instrument_logic(app_instance, console_print_func):
     debug_print("Attempting to disconnect instrument...", file=current_file, function=current_function, console_print_func=console_print_func)
 
     if app_instance.inst:
-        control_disconnect_instrument(app_instance.inst, console_print_func)
-        app_instance.inst = None
-        console_print_func("✅ Instrument disconnected.")
-        debug_print("Instrument disconnected.", file=current_file, function=current_function, console_print_func=console_print_func)
+        try:
+            control_disconnect_instrument(app_instance.inst, console_print_func)
+            app_instance.inst = None
+            console_print_func("✅ Instrument disconnected.")
+            debug_print("Instrument disconnected.", file=current_file, function=current_function, console_print_func=console_print_func)
+        except Exception as e:
+            console_print_func(f"❌ An error occurred during disconnection: {e}")
+            debug_print(f"Error during disconnection: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
     else:
         console_print_func("ℹ️ Info: No instrument to disconnect.")
         debug_print("No instrument to disconnect.", file=current_file, function=current_function, console_print_func=console_print_func)
@@ -146,7 +203,8 @@ def disconnect_instrument_logic(app_instance, console_print_func):
 
 def apply_settings_logic(app_instance, console_print_func):
     """
-    Applies the current settings from the GUI to the connected instrument.
+    Applies the current settings from the GUI's main application variables to the connected instrument.
+    This includes Reference Level, Frequency Shift, Max Hold, High Sensitivity, Preamp, and Scan RBW/VBW.
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
@@ -159,84 +217,25 @@ def apply_settings_logic(app_instance, console_print_func):
         return False
 
     try:
-        # Get values from Tkinter variables, converting to appropriate types
-        # These variables are now directly on app_instance
-        center_freq_mhz = _get_float_value(app_instance.center_freq_var, 100.0, "Center Frequency", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
-        span_mhz = _get_float_value(app_instance.span_var, 10.0, "Span", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
-        rbw_hz = _get_float_value(app_instance.rbw_var, 10000.0, "RBW", console_print_func) # This variable is not directly on app_instance, it's a local var in instrument_tab
+        # Get values from Tkinter variables directly from app_instance
         ref_level_dbm = _get_float_value(app_instance.ref_level_var, -40.0, "Reference Level", console_print_func)
         freq_shift_hz = _get_float_value(app_instance.freq_shift_var, 0.0, "Frequency Shift", console_print_func)
         max_hold_enabled = app_instance.max_hold_enabled_var.get()
         high_sensitivity = app_instance.high_sensitivity_var.get()
-        preamp_on = app_instance.preamp_on_var.get() # This variable is redundant if high_sensitivity controls both.
-                                                    # Keeping it for now as it's in the map.
-        rbw_segmentation_hz = _get_float_value(app_instance.rbw_segmentation_var, 1_000_000.0, "RBW Segmentation", console_print_func)
-        default_focus_width_mhz = _get_float_value(app_instance.desired_default_focus_width_var, 10.0, "Default Focus Width", console_print_func)
-
-        # Convert frequencies to Hz for SCPI commands
-        center_freq_hz = center_freq_mhz * MHZ_TO_HZ
-        span_hz = span_mhz * MHZ_TO_HZ
-        default_focus_width_hz = default_focus_width_mhz * MHZ_TO_HZ
+        preamp_on = app_instance.preamp_on_var.get()
+        
+        # Get the desired RBW from the scan config variable
+        rbw_hz_to_apply = _get_float_value(app_instance.scan_rbw_hz_var, 10000.0, "Scan RBW", console_print_func)
+        vbw_hz_to_apply = rbw_hz_to_apply * VBW_RBW_RATIO # Derived VBW
 
         success = True
 
-        # --- Apply Center Frequency ---
-        debug_print(f"Querying current center frequency for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_center_freq_str = app_instance.inst.query(":SENSe:FREQuency:CENTer?", console_print_func)
-        current_center_freq_hz = float(current_center_freq_str) if current_center_freq_str else None
-        
-        if current_center_freq_hz is not None and abs(current_center_freq_hz - center_freq_hz) < 1: # Tolerance for float comparison
-            debug_print(f"Center frequency already at {center_freq_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: Center frequency already at {center_freq_mhz:.3f} MHz.")
-        else:
-            debug_print(f"Setting center frequency to {center_freq_hz} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:FREQuency:CENTer {center_freq_hz}"):
-                success = False
-                console_print_func(f"❌ Failed to set Center Frequency to {center_freq_mhz:.3f} MHz.")
-                debug_print(f"Failed to set Center Frequency.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ Center Frequency set to {center_freq_mhz:.3f} MHz.")
-
-        # --- Apply Span ---
-        debug_print(f"Querying current span for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_span_str = app_instance.inst.query(":SENSe:FREQuency:SPAN?", console_print_func)
-        current_span_hz = float(current_span_str) if current_span_str else None
-
-        if current_span_hz is not None and abs(current_span_hz - span_hz) < 1:
-            debug_print(f"Span already at {span_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: Span already at {span_mhz:.3f} MHz.")
-        else:
-            debug_print(f"Setting span to {span_hz} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:FREQuency:SPAN {span_hz}"):
-                success = False
-                console_print_func(f"❌ Failed to set Span to {span_mhz:.3f} MHz.")
-                debug_print(f"Failed to set Span.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ Span set to {span_mhz:.3f} MHz.")
-
-        # --- Apply RBW ---
-        debug_print(f"Querying current RBW for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_rbw_str = app_instance.inst.query(":SENSe:BANDwidth:RESolution?", console_print_func)
-        current_rbw_hz = float(current_rbw_str) if current_rbw_str else None
-
-        if current_rbw_hz is not None and abs(current_rbw_hz - rbw_hz) < 1:
-            debug_print(f"RBW already at {rbw_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: RBW already at {rbw_hz:.0f} Hz.")
-        else:
-            debug_print(f"Setting RBW to {rbw_hz} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:BANDwidth:RESolution {rbw_hz}"):
-                success = False
-                console_print_func(f"❌ Failed to set RBW to {rbw_hz:.0f} Hz.")
-                debug_print(f"Failed to set RBW.", file=current_file, function=current_function, console_print_func=console_print_func)
-            else:
-                console_print_func(f"✅ RBW set to {rbw_hz:.0f} Hz.")
-
         # --- Apply Reference Level ---
         debug_print(f"Querying current Reference Level for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_ref_level_str = app_instance.inst.query(":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
+        current_ref_level_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
         current_ref_level_dbm = float(current_ref_level_str) if current_ref_level_str else None
 
-        if current_ref_level_dbm is not None and abs(current_ref_level_dbm - ref_level_dbm) < 0.1: # Compare floats
+        if current_ref_level_dbm is not None and abs(current_ref_level_dbm - ref_level_dbm) < 0.1: # Tolerance for float comparison
             debug_print(f"Reference Level already at {ref_level_dbm} dBm. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
             console_print_func(f"ℹ️ Info: Reference Level already at {ref_level_dbm:.1f} dBm.")
         else:
@@ -250,7 +249,7 @@ def apply_settings_logic(app_instance, console_print_func):
 
         # --- Apply Frequency Shift ---
         debug_print(f"Querying current Frequency Shift for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_freq_shift_str = app_instance.inst.query(":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
+        current_freq_shift_str = query_safe(app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
         current_freq_shift_hz = float(current_freq_shift_str) if current_freq_shift_str else None
 
         if current_freq_shift_hz is not None and abs(current_freq_shift_hz - freq_shift_hz) < 1:
@@ -267,7 +266,7 @@ def apply_settings_logic(app_instance, console_print_func):
 
         # --- Apply Max Hold ---
         debug_print(f"Querying current Trace Type for Max Hold comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_trace_type_str = app_instance.inst.query(":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
+        current_trace_type_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
         
         desired_trace_type_command = ":DISPlay:WINDow:TRACe:TYPE MAXHold" if max_hold_enabled else ":DISPlay:WINDow:TRACe:TYPE NORM"
         desired_trace_type_status = "MAXH" if max_hold_enabled else "NORM"
@@ -287,9 +286,9 @@ def apply_settings_logic(app_instance, console_print_func):
         # --- Apply High Sensitivity / Preamp ---
         # High sensitivity typically means Attenuation OFF and Preamplifier ON
         debug_print(f"Querying current Attenuation Auto state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_atten_auto_str = app_instance.inst.query(":INPut:ATTenuation:AUTO?", console_print_func)
+        current_atten_auto_str = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
         debug_print(f"Querying current Preamplifier state for High Sensitivity comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_preamp_state_str = app_instance.inst.query(":INPut:GAIN:STATe?", console_print_func)
+        current_preamp_state_str = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func)
 
         current_high_sensitivity_state = (current_atten_auto_str and "OFF" in current_atten_auto_str.upper()) and \
                                          (current_preamp_state_str and "ON" in current_preamp_state_str.upper())
@@ -314,23 +313,39 @@ def apply_settings_logic(app_instance, console_print_func):
                 debug_print(f"Failed to set High Sensitivity.", file=current_file, function=current_function, console_print_func=console_print_func)
 
 
-        # --- Apply VBW/RBW ratio (fixed to 1/3 as per frequency_bands.py) ---
-        vbw_hz = rbw_hz * VBW_RBW_RATIO
+        # --- Apply RBW (from scan config) ---
+        debug_print(f"Querying current RBW for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
+        current_rbw_str = query_safe(app_instance.inst, ":SENSe:BANDwidth:RESolution?", console_print_func)
+        current_rbw_hz = float(current_rbw_str) if current_rbw_str else None
+
+        if current_rbw_hz is not None and abs(current_rbw_hz - rbw_hz_to_apply) < 1:
+            debug_print(f"RBW already at {rbw_hz_to_apply} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"ℹ️ Info: RBW already at {rbw_hz_to_apply:.0f} Hz.")
+        else:
+            debug_print(f"Setting RBW to {rbw_hz_to_apply} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
+            if not app_instance.inst.write(f":SENSe:BANDwidth:RESolution {rbw_hz_to_apply}"):
+                success = False
+                console_print_func(f"❌ Failed to set RBW to {rbw_hz_to_apply:.0f} Hz.")
+                debug_print(f"Failed to set RBW.", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                console_print_func(f"✅ RBW set to {rbw_hz_to_apply:.0f} Hz.")
+
+        # --- Apply VBW (derived from RBW) ---
         debug_print(f"Querying current VBW for comparison...", file=current_file, function=current_function, console_print_func=console_print_func)
-        current_vbw_str = app_instance.inst.query(":SENSe:BANDwidth:VIDeo?", console_print_func)
+        current_vbw_str = query_safe(app_instance.inst, ":SENSe:BANDwidth:VIDeo?", console_print_func)
         current_vbw_hz = float(current_vbw_str) if current_vbw_str else None
 
-        if current_vbw_hz is not None and abs(current_vbw_hz - vbw_hz) < 1:
-            debug_print(f"VBW already at {vbw_hz} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"ℹ️ Info: VBW already at {vbw_hz:.0f} Hz.")
+        if current_vbw_hz is not None and abs(current_vbw_hz - vbw_hz_to_apply) < 1:
+            debug_print(f"VBW already at {vbw_hz_to_apply} Hz. Skipping command.", file=current_file, function=current_function, console_print_func=console_print_func)
+            console_print_func(f"ℹ️ Info: VBW already at {vbw_hz_to_apply:.0f} Hz.")
         else:
-            debug_print(f"Setting VBW to {vbw_hz} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
-            if not app_instance.inst.write(f":SENSe:BANDwidth:VIDeo {vbw_hz}"):
+            debug_print(f"Setting VBW to {vbw_hz_to_apply} Hz...", file=current_file, function=current_function, console_print_func=console_print_func)
+            if not app_instance.inst.write(f":SENSe:BANDwidth:VIDeo {vbw_hz_to_apply}"):
                 success = False
-                console_print_func(f"❌ Failed to set VBW to {vbw_hz:.0f} Hz.")
+                console_print_func(f"❌ Failed to set VBW to {vbw_hz_to_apply:.0f} Hz.")
                 debug_print(f"Failed to set VBW.", file=current_file, function=current_function, console_print_func=console_print_func)
             else:
-                console_print_func(f"✅ VBW set to {vbw_hz:.0f} Hz.")
+                console_print_func(f"✅ VBW set to {vbw_hz_to_apply:.0f} Hz.")
         
         if success:
             console_print_func("✅ All applicable settings applied successfully.")
@@ -367,8 +382,15 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
         return False
 
     try:
-        center_freq_hz, span_hz, rbw_hz = query_current_instrument_settings(app_instance.inst, MHZ_TO_HZ, console_print_func)
+        # Use query_safe for all instrument queries
+        center_freq_str = query_safe(app_instance.inst, ":SENSe:FREQuency:CENTer?", console_print_func)
+        span_str = query_safe(app_instance.inst, ":SENSe:FREQuency:SPAN?", console_print_func)
+        rbw_str = query_safe(app_instance.inst, ":SENSe:BANDwidth:RESolution?", console_print_func)
         
+        center_freq_hz = float(center_freq_str) if center_freq_str else 0.0
+        span_hz = float(span_str) if span_str else 0.0
+        rbw_hz = float(rbw_str) if rbw_str else 0.0
+
         # Update Tkinter variables in the InstrumentTab
         if hasattr(app_instance, 'instrument_tab'):
             app_instance.instrument_tab.current_center_freq_var.set(f"{center_freq_hz / MHZ_TO_HZ:.3f}")
@@ -377,7 +399,7 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
         
         # Query and update other settings as needed
         # Example: Reference Level
-        ref_level_dbm_str = app_instance.inst.query(":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
+        ref_level_dbm_str = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:Y:RLEVel?", console_print_func)
         if ref_level_dbm_str:
             try:
                 if hasattr(app_instance, 'instrument_tab'):
@@ -386,7 +408,7 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
                 debug_print(f"Could not convert queried reference level: {ref_level_dbm_str}", file=current_file, function=current_function, console_print_func=console_print_func)
 
         # Query and update Frequency Shift
-        freq_shift_hz_str = app_instance.inst.query(":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
+        freq_shift_hz_str = query_safe(app_instance.inst, ":INPut:RFSense:FREQuency:SHIFt?", console_print_func)
         if freq_shift_hz_str:
             try:
                 if hasattr(app_instance, 'instrument_tab'):
@@ -396,14 +418,14 @@ def query_current_instrument_settings_logic(app_instance, console_print_func):
 
 
         # Query and update Max Hold state
-        trace_type_query = app_instance.inst.query(":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
+        trace_type_query = query_safe(app_instance.inst, ":DISPlay:WINDow:TRACe:TYPE?", console_print_func)
         if trace_type_query:
             if hasattr(app_instance, 'instrument_tab'):
                 app_instance.instrument_tab.current_max_hold_var.set("Enabled" if "MAXH" in trace_type_query.upper() else "Disabled")
 
         # Query and update High Sensitivity / Preamp state
-        atten_auto_query = app_instance.inst.query(":INPut:ATTenuation:AUTO?", console_print_func)
-        gain_state_query = app_instance.inst.query(":INPut:GAIN:STATe?", console_print_func)
+        atten_auto_query = query_safe(app_instance.inst, ":INPut:ATTenuation:AUTO?", console_print_func)
+        gain_state_query = query_safe(app_instance.inst, ":INPut:GAIN:STATe?", console_print_func)
         if atten_auto_query and gain_state_query:
             # High sensitivity is typically attenuation off and preamp on
             if hasattr(app_instance, 'instrument_tab'):
@@ -429,6 +451,7 @@ def load_selected_preset_logic(app_instance, selected_preset_name, console_print
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
     # Use the control_load_selected_preset from utils.instrument_control
+    from utils.preset_utils import load_selected_preset as control_load_selected_preset # Import here
     success, center_freq, span, rbw = control_load_selected_preset(
         app_instance.inst, selected_preset_name, console_print_func
     )
@@ -465,6 +488,7 @@ def query_device_presets_logic(app_instance, console_print_func):
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
     # Use the control_query_device_presets from utils.instrument_control
+    from utils.preset_utils import query_device_presets as control_query_device_presets # Import here
     presets = control_query_device_presets(app_instance.inst, console_print_func)
     if presets is not None:
         if hasattr(app_instance, 'preset_files_tab'):
@@ -476,4 +500,3 @@ def query_device_presets_logic(app_instance, console_print_func):
         console_print_func("❌ Failed to query presets from device.")
         debug_print("Failed to query presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None # Return None on failure
-
