@@ -35,7 +35,7 @@ from src.instrument_logic import (
     populate_resources_logic, connect_instrument_logic, disconnect_instrument_logic,
     apply_settings_logic,
     query_current_instrument_settings_logic, query_device_presets_logic,
-    load_selected_preset_logic, set_marker_and_trace_modes_logic
+    load_selected_preset_logic # Removed: set_marker_and_trace_modes_logic
 )
 # Import the logic function directly, it will be called by a method in App
 from src.scan_logic import update_connection_status_logic

@@ -322,11 +322,6 @@ class VisaInterpreterTab(ttk.Frame):
             ("N9340B", "System/Reset", "DO", "*RST", ""),
             ("N9340B", "System/Errors", "GET", ":SYSTem:ERRor?", ""),
             ("N9340B", "System/Display Update", "DO", ":SYSTem:DISPlay:UPDate", ""),
-            
-            # Memory/Preset
-            ("N9340B", "Memory/Preset/Catalog", "GET", ":MMEMory:CATalog:STATe?", ""),
-            ("N9340B", "Memory/Preset/Load", "SET", ":MMEMory:LOAD:STATe", "0"),
-            ("N9340B", "Memory/Preset/Store", "SET", ":MMEMory:STORe:STATe", "0"),
 
             # Frequency/Span/Sweep
             ("N9340B", "Frequency/Center", "SET", ":SENSe:FREQuency:CENTer", "1000"),
@@ -367,14 +362,6 @@ class VisaInterpreterTab(ttk.Frame):
             ("N9340B", "Amplitude/Power/High Sensitive/On", "SET", ":POWer:HSENsitive", "ON"),
             ("N9340B", "Amplitude/Power/High Sensitive/Off", "SET", ":POWer:HSENsitive", "OFF"),
 
-
-            # Trace/Display - and format
-            ("N9340B", "Trace/Display/Type", "GET", ":DISPlay:WINDow:TRACe:TYPE?", ""),
-            ("N9340B", "Trace/Display/Y Scale/Spacing", "SET", ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing", "LOGarithmic"),
-            ("N9340B", "Trace/Format/Data/ASCII (N9340B)", "SET", ":TRACe:FORMat:DATA", "ASCii"), # For N9340B
-            ("N9340B", "Trace/Format/Data/ASCII (General)", "SET", ":FORMat:DATA", "ASCii"), # General
-
-
             # Trace/Display - Expanded for 4 traces
             # Trace Data Query
             ("N9340B", "Trace/1/Data", "GET", ":TRACe:DATA? TRACE1", ""),
@@ -405,6 +392,11 @@ class VisaInterpreterTab(ttk.Frame):
             ("N9340B", "Trace/2/Mode/MinHold", "SET", ":TRAC2:MODE", "MINHold"),
             ("N9340B", "Trace/3/Mode/MinHold", "SET", ":TRAC3:MODE", "MINHold"),
             ("N9340B", "Trace/4/Mode/MinHold", "SET", ":TRAC4:MODE", "MINHold"),
+
+            ("N9340B", "Trace/Display/Type", "GET", ":DISPlay:WINDow:TRACe:TYPE?", ""),
+            ("N9340B", "Trace/Display/Y Scale/Spacing", "SET", ":DISPlay:WINDow:TRACe:Y:SCALe:SPACing", "LOGarithmic"),
+            ("N9340B", "Trace/Format/Data/ASCII (N9340B)", "SET", ":TRACe:FORMat:DATA", "ASCii"), # For N9340B
+            ("N9340B", "Trace/Format/Data/ASCII (General)", "SET", ":FORMat:DATA", "ASCii"), # General
 
             # Marker - Expanded for 6 markers
             # Marker Calculate Max
@@ -439,7 +431,10 @@ class VisaInterpreterTab(ttk.Frame):
             ("N9340B", "Marker/5/Calculate/Y", "GET", ":CALCulate:MARKer5:Y?", ""),
             ("N9340B", "Marker/6/Calculate/Y", "GET", ":CALCulate:MARKer6:Y?", ""),
 
-
+            # Memory/Preset
+            ("N9340B", "Memory/Preset/Catalog", "GET", ":MMEMory:CATalog:STATe?", ""),
+            ("N9340B", "Memory/Preset/Load", "SET", ":MMEMory:LOAD:STATe", "0"),
+            ("N9340B", "Memory/Preset/Store", "SET", ":MMEMory:STORe:STATe", "0"),
         ]
 
         processed_commands = []

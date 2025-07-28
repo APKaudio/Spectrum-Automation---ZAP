@@ -18,8 +18,8 @@ from utils.frequency_bands import MHZ_TO_HZ, VBW_RBW_RATIO # Import VBW_RBW_RATI
 from src.config_manager import save_config # Import save_config
 import tkinter.ttk as ttk # Import ttk for themed widgets
 
-# Import set_marker_and_trace_modes_logic from marker_utils
-from utils.marker_utils import set_marker_and_trace_modes_logic
+# Removed: Import set_marker_and_trace_modes_logic from marker_utils
+# This function is used in marker_tab.py, not directly in instrument_logic.py
 
 # Import the update_connection_status_logic function from scan_logic
 from src.scan_logic import update_connection_status_logic
@@ -449,3 +449,4 @@ def query_device_presets_logic(app_instance, console_print_func):
         console_print_func("❌ Failed to query presets from device.")
         debug_print("Failed to query presets from device.", file=current_file, function=current_function, console_print_func=console_print_func)
         return None # Return None on failure
+
