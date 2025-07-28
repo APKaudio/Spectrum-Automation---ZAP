@@ -48,7 +48,7 @@ from tabs.tab_plotting import PlottingTab # Import the PlottingTab
 from tabs.tab_report_converter import ReportConverterTab # Import the ReportConverterTab
 from tabs.tab_scan_configuration import ScanTab # Import the new ScanTab
 
-from tabs.tab_instrument_preset import InstrumentTab # Import the InstrumentTab
+from tabs.tab_instrument_connection import InstrumentTab # Import the InstrumentTab
 from tabs.tab_visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
 
 # Import constants from frequency_bands.py
