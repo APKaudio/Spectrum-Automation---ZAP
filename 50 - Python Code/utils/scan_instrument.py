@@ -46,10 +46,12 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+    debug_print(f"Entering {current_function} function.", file=current_file, function=current_function)
     debug_print(f"Processing raw scan data ({len(raw_data)} points)...", file=current_file, function=current_function)
 
     if not raw_data:
         debug_print("No raw data to process.", file=current_file, function=current_function)
+        debug_print(f"Exiting {current_function} function. Result: Empty DataFrame", file=current_file, function=current_function)
         return pd.DataFrame()
 
     # Convert to DataFrame
@@ -71,6 +73,7 @@ def _process_raw_scan_data(raw_data, overall_start_freq_hz, overall_stop_freq_hz
     df = df[['Frequency (MHz)', 'Amplitude (dBm)']]
 
     debug_print(f"Processed data shape: {df.shape}", file=current_file, function=current_function)
+    debug_print(f"Exiting {current_function} function. Result: DataFrame with {df.shape[0]} rows.", file=current_file, function=current_function)
     return df
 
 
@@ -80,6 +83,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
     """
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
+    debug_print(f"Entering {current_function} function.", file=current_file, function=current_function)
     debug_print("Starting scan_bands function.", file=current_file, function=current_function)
 
     # Configure debug mode for underlying instrument control functions
@@ -93,24 +97,80 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
     app_console_update_func(f"Scanning from {overall_start_freq_hz / MHZ_TO_HZ:.3f} MHz to {overall_stop_freq_hz / MHZ_TO_HZ:.3f} MHz...")
     debug_print(f"Overall scan range: {overall_start_freq_hz} Hz to {overall_stop_freq_hz} Hz", file=current_file, function=current_function)
 
-    # Initialize instrument for scan
+    # Initialize instrument for scan (basic setup, no specific scan parameters here)
     app_console_update_func("Initializing instrument for scan settings...")
     if not initialize_instrument(
         inst,
-        rbw_hz=rbw_hz,
-        ref_level_dbm=ref_level_dbm,
-        freq_shift_hz=freq_shift_hz,
-        maxhold_enabled=maxhold_enabled,
-        high_sensitivity=high_sensitivity,
-        preamp_on=preamp_on,
         debug_mode=general_debug_enabled,
         model_match=app_instance_ref.instrument_model # Pass the instrument model
     ):
         app_console_update_func("❌ Error: Failed to initialize instrument for scan. Aborting.")
-        # app_instance_ref.after(0, lambda: messagebox.showerror("Instrument Init Error", "Failed to initialize instrument for scan. Aborting.")) # Removed
         app_instance_ref.after(0, lambda: print("❌ Error: Failed to initialize instrument for scan. Aborting."))
         debug_print("Instrument initialization failed in scan_bands.", file=current_file, function=current_function)
+        debug_print(f"Exiting {current_function} function. Result: -1, None, None", file=current_file, function=current_function)
         return -1, None, None
+
+    # Apply specific scan settings after basic initialization
+    app_console_update_func("Applying scan parameters to instrument...")
+    if not write_safe(inst, f":SENSe:BANDwidth:RESolution {rbw_hz}HZ"):
+        app_console_update_func(f"❌ Error: Failed to set RBW to {rbw_hz}Hz.")
+        debug_print(f"Failed to set RBW: {rbw_hz}Hz", file=current_file, function=current_function)
+        debug_print(f"Exiting {current_function} function. Result: -1, None, None", file=current_file, function=current_function)
+        return -1, None, None
+    
+    # Ensure VBW is set as a ratio of RBW, if supported by instrument.
+    vbw_percent = int(VBW_RBW_RATIO * 100) # Convert 1/3 to 33%
+    if not write_safe(inst, f":SENSe:BANDwidth:VIDeo:RATio {vbw_percent}PCT"): # Example command, verify for specific instrument
+        app_console_update_func(f"❌ Error: Failed to set VBW ratio to {vbw_percent}PCT.")
+        debug_print(f"Failed to set VBW ratio: {vbw_percent}PCT", file=current_file, function=current_function)
+        # This might not be critical, so continue, but log error
+
+    if not write_safe(inst, f":DISPlay:WINDow:TRACe:Y:RLEVel {ref_level_dbm}DBM"):
+        app_console_update_func(f"❌ Error: Failed to set reference level to {ref_level_dbm}dBm.")
+        debug_print(f"Failed to set reference level: {ref_level_dbm}dBm", file=current_file, function=current_function)
+        debug_print(f"Exiting {current_function} function. Result: -1, None, None", file=current_file, function=current_function)
+        return -1, None, None
+
+    if not write_safe(inst, f":INPut:RFSense:FREQuency:SHIFt {freq_shift_hz}HZ"):
+        app_console_update_func(f"❌ Error: Failed to set frequency shift to {freq_shift_hz}Hz.")
+        debug_print(f"Failed to set frequency shift: {freq_shift_hz}Hz", file=current_file, function=current_function)
+        # Not critical, continue but log
+
+    # Maxhold setting
+    maxhold_cmd = ":TRAC2:MODE MAXHold" if maxhold_enabled else ":TRAC2:MODE AVERage" # Assuming Trace 2 for MaxHold
+    if not write_safe(inst, maxhold_cmd):
+        app_console_update_func(f"❌ Error: Failed to set Max Hold mode to {maxhold_enabled}.")
+        debug_print(f"Failed to set Max Hold mode: {maxhold_enabled}", file=current_file, function=current_function)
+        # Not critical, continue but log
+
+    # High sensitivity / Preamp setting
+    # This might involve multiple commands depending on the instrument model
+    if high_sensitivity:
+        # Assuming high sensitivity implies attenuation off and gain on
+        if not write_safe(inst, ":INPut:ATTenuation:AUTO OFF"):
+            app_console_update_func("❌ Error: Failed to set attenuation auto OFF for high sensitivity.")
+            debug_print("Failed to set attenuation auto OFF.", file=current_file, function=current_function)
+        if not write_safe(inst, ":INPut:GAIN:STATe ON"): # Preamp ON
+            app_console_update_func("❌ Error: Failed to turn ON preamp for high sensitivity.")
+            debug_print("Failed to turn ON preamp.", file=current_file, function=current_function)
+    else:
+        # Assuming high sensitivity off implies attenuation auto on and gain off
+        if not write_safe(inst, ":INPut:ATTenuation:AUTO ON"):
+            app_console_update_func("❌ Error: Failed to set attenuation auto ON for normal sensitivity.")
+            debug_print("Failed to set attenuation auto ON.", file=current_file, function=current_function)
+        if not write_safe(inst, ":INPut:GAIN:STATe OFF"): # Preamp OFF
+            app_console_update_func("❌ Error: Failed to turn OFF preamp for normal sensitivity.")
+            debug_print("Failed to turn OFF preamp.", file=current_file, function=current_function)
+
+    if preamp_on: # Explicit preamp control, might be redundant with high_sensitivity
+        if not write_safe(inst, ":INPut:GAIN:STATe ON"):
+            app_console_update_func("❌ Error: Failed to turn ON preamp.")
+            debug_print("Failed to turn ON preamp.", file=current_file, function=current_function)
+    else:
+        if not write_safe(inst, ":INPut:GAIN:STATe OFF"):
+            app_console_update_func("❌ Error: Failed to turn OFF preamp.")
+            debug_print("Failed to turn OFF preamp.", file=current_file, function=current_function)
+
 
     raw_scan_data_for_current_sweep = [] # List to collect (freq, amplitude) tuples for the entire sweep
     last_successful_band_index = -1 # Keep track of the last band that successfully scanned
@@ -121,6 +181,7 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
         if stop_event.is_set():
             app_console_update_func("Scan stopped by user during band iteration.")
             debug_print("Scan stop event set during band iteration.", file=current_file, function=current_function)
+            debug_print(f"Exiting {current_function} function. Result: {last_successful_band_index}, None, None", file=current_file, function=current_function)
             break # Exit loop if stop is requested
 
         band_name = band["Band Name"]
@@ -325,9 +386,11 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
         # by some external means or a future enhancement. For now, it remains empty
         # or can be a dummy. The main_app.py passes its `last_scan_markers` to plotting logic.
         
+        debug_print(f"Exiting {current_function} function. Result: {last_successful_band_index}, DataFrame, Markers Data", file=current_file, function=current_function)
         return last_successful_band_index, final_sweep_data_for_plotting, markers_data_from_scan # Return the DataFrame and markers
     else:
         app_instance_ref.after(0, app_instance_ref._update_console_line, 
                                f"🚫 No data collected for full scan after de-duplication attempt for band: {selected_bands[last_successful_band_index]['Band Name'] if last_successful_band_index != -1 else 'N/A'}.")
         debug_print("Final sweep data is empty after processing.", file=current_file, function=current_function)
+        debug_print(f"Exiting {current_function} function. Result: {last_successful_band_index}, None, None", file=current_file, function=current_function)
         return last_successful_band_index, None, None # Return None for filename if no data after processing

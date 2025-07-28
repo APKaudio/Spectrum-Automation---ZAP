@@ -266,27 +266,11 @@ class App(tk.Tk):
 
         # --- Left Column: Notebook for Settings and Tabs ---
         self.left_notebook = ttk.Notebook(self)
+        # The notebook will now occupy row 0, column 0 and expand to fill the available space.
         self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
-        # --- Session Description Frame (Moved to top of left column) ---
-        session_description_frame = ttk.LabelFrame(self, text="Session Description", style='Dark.TLabelframe')
-        session_description_frame.grid(row=0, column=0, padx=5, pady=5, sticky="new", columnspan=1) # Place in left column, top
-        session_description_frame.grid_columnconfigure(1, weight=1) # Allow entry fields to expand
-
-        ttk.Label(session_description_frame, text="Scan Name:", style='TLabel').grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.scan_name_entry = ttk.Entry(session_description_frame, textvariable=self.scan_name_var, style='TEntry')
-        self.scan_name_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-
-        ttk.Label(session_description_frame, text="Output Directory:", style='TLabel').grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.output_folder_entry = ttk.Entry(session_description_frame, textvariable=self.output_folder_var, style='TEntry')
-        self.output_folder_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-        self.browse_output_button = ttk.Button(session_description_frame, text="Browse", command=self._browse_output_folder, style='Blue.TButton')
-        self.browse_output_button.grid(row=1, column=2, padx=5, pady=5)
-
-        # Ensure the notebook takes the rest of the vertical space in the left column
-        self.grid_rowconfigure(1, weight=1) # New row for the notebook
-        self.left_notebook.grid(row=1, column=0, padx=5, pady=5, sticky="nsew") # Move notebook to new row
-
+        # Removed the redundant Session Description Frame from here.
+        # Its widgets (Scan Name, Output Directory) are now expected to be handled within ScanTab.
 
         # Instantiate InstrumentTab and add it to the notebook
         self.instrument_tab = InstrumentTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
@@ -319,7 +303,7 @@ class App(tk.Tk):
         # --- Right Column Container Frame ---
         # This frame will hold the Scan Control and Application Console
         right_column_container = ttk.Frame(self, style='Dark.TFrame')
-        right_column_container.grid(row=0, column=1, rowspan=2, padx=5, pady=5, sticky="nsew") # Place in main window's grid, span two rows
+        right_column_container.grid(row=0, column=1, rowspan=1, padx=5, pady=5, sticky="nsew") # Place in main window's grid, span 1 row (full height of right column)
         right_column_container.grid_columnconfigure(0, weight=1) # Single column within this container
         right_column_container.grid_rowconfigure(0, weight=0) # Scan Control row (fixed height)
         right_column_container.grid_rowconfigure(1, weight=1) # Application Console row (expands)
