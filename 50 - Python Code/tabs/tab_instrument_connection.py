@@ -11,6 +11,7 @@ from src.instrument_logic import (
 # Removed: from src.scan_logic import update_connection_status_logic # This import is no longer needed here
 from utils.instrument_control import debug_print, set_debug_mode, log_visa_command, query_safe # Import debug control functions and query_safe
 from utils.frequency_bands import MHZ_TO_HZ # Import for display conversion
+from src.config_manager import save_config # Import save_config
 
 class InstrumentTab(ttk.Frame):
     """
@@ -48,6 +49,8 @@ class InstrumentTab(ttk.Frame):
 
 
         self._create_widgets()
+        # Automatically populate resources when the tab is initialized
+        self._populate_resources()
 
     def _create_widgets(self):
         """
@@ -66,17 +69,19 @@ class InstrumentTab(ttk.Frame):
         connection_frame.grid(row=0, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
         connection_frame.grid_columnconfigure(0, weight=1)
         connection_frame.grid_columnconfigure(1, weight=2) # Resource dropdown
-        connection_frame.grid_columnconfigure(2, weight=1) # Populate button
+        connection_frame.grid_columnconfigure(2, weight=1) # Refresh Devices button
 
         ttk.Label(connection_frame, text="VISA Resource:", style='TLabel').grid(row=0, column=0, padx=5, pady=2, sticky="w")
-        self.resource_dropdown = ttk.OptionMenu(connection_frame, self.selected_resource, "", *self.resource_names.get().split(),
-                                                command=lambda x: debug_print(f"Selected resource: {x}", file=current_file, function=current_function, console_print_func=self.console_print_func))
+        
+        # Modified OptionMenu to call _on_resource_selected when value changes
+        self.resource_dropdown = ttk.OptionMenu(connection_frame, self.selected_resource, "", 
+                                                command=self._on_resource_selected)
         self.resource_dropdown.config(width=40)
         self.resource_dropdown.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
 
-        self.populate_button = ttk.Button(connection_frame, text="Populate Resources", command=self._populate_resources)
-        self.populate_button = ttk.Button(connection_frame, text="Populate Resources", command=self._populate_resources)
-        self.populate_button.grid(row=0, column=2, padx=5, pady=2, sticky="ew")
+        # Renamed button text and command
+        self.refresh_devices_button = ttk.Button(connection_frame, text="Refresh Devices", command=self._populate_resources)
+        self.refresh_devices_button.grid(row=0, column=2, padx=5, pady=2, sticky="ew")
 
         self.connect_button = ttk.Button(connection_frame, text="Connect", command=self._connect_instrument)
         self.connect_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
@@ -138,15 +143,53 @@ class InstrumentTab(ttk.Frame):
 
     def _populate_resources(self):
         """Calls the logic function to populate VISA resources."""
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+
         populate_resources_logic(self.app_instance, self.console_print_func)
+        
         # Update dropdown menu after populating resources
         menu = self.resource_dropdown["menu"]
         menu.delete(0, "end")
         resources = self.resource_names.get().split()
-        for resource in resources:
-            menu.add_command(label=resource, command=tk._setit(self.selected_resource, resource))
-        if self.selected_resource.get() == "" and resources:
-            self.selected_resource.set(resources[0]) # Set first as default if none selected
+
+        # Get last selected resource from config
+        last_selected_resource = self.app_instance.config.get('LAST_USED_SETTINGS', 'last_selected_visa_resource', fallback='N/A')
+        debug_print(f"Last selected VISA resource from config: {last_selected_resource}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Add resources to dropdown
+        if resources:
+            for resource in resources:
+                menu.add_command(label=resource, command=tk._setit(self.selected_resource, resource))
+            
+            # Set the selected resource to the last used one if it's in the current list
+            if last_selected_resource in resources:
+                self.selected_resource.set(last_selected_resource)
+                debug_print(f"Set selected resource to last used: {last_selected_resource}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            elif resources: # If last_selected_resource is not found, set to the first available
+                self.selected_resource.set(resources[0])
+                debug_print(f"Last used resource not found, set to first available: {resources[0]}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.selected_resource.set("N/A") # Set to "N/A" if no resources found
+            debug_print("No VISA resources found, setting selected resource to 'N/A'.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        
+        # Save the currently selected resource (either loaded or default) to config
+        # Corrected: Call the standalone save_config function
+        save_config(self.app_instance)
+
+
+    def _on_resource_selected(self, selected_value):
+        """
+        Callback when a new VISA resource is selected from the dropdown.
+        Saves the selected resource to config.ini.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Selected resource changed to: {selected_value}. Saving to config.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        self.app_instance.config['LAST_USED_SETTINGS']['last_selected_visa_resource'] = selected_value
+        # Corrected: Call the standalone save_config function
+        save_config(self.app_instance)
+
 
     def _connect_instrument(self):
         """Calls the logic function to connect to the instrument."""
@@ -243,6 +286,9 @@ class InstrumentTab(ttk.Frame):
         # Set initial state of debug checkboxes based on app_instance variables
         self.general_debug_checkbox.config(variable=self.app_instance.general_debug_enabled_var)
         self.log_visa_commands_checkbox.config(variable=self.app_instance.log_visa_commands_enabled_var)
+
+        # Populate resources when the tab is selected
+        self._populate_resources()
 
     def _toggle_general_debug(self):
         """Toggles the global debug mode based on checkbox state."""

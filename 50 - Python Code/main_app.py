@@ -40,14 +40,16 @@ from src.instrument_logic import (
 # Import the logic function directly, it will be called by a method in App
 from src.scan_logic import update_connection_status_logic
 from src.settings_logic import restore_default_settings_logic
-from src.instrument_preset_tab import PresetFilesTab # Import the new tab class
-from src.marker_tab import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
-from src.plotting_tab import PlottingTab # Import the PlottingTab
-from src.report_converter_tab import ReportConverterTab # Import the ReportConverterTab
-from src.scan_tab import ScanTab # Import the new ScanTab
 from src.scan_control import ScanControlTab # Import the ScanControlTab (assuming it exists or will be created)
-from src.instrument_tab import InstrumentTab # Import the InstrumentTab
-from src.visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
+from tabs.tab_instrument_preset import PresetFilesTab # Import the new tab class
+
+from tabs.tab_marker_display import MarkersDisplayTab # Corrected import: Changed from src.marker_logic to src.marker_tab
+from tabs.tab_plotting import PlottingTab # Import the PlottingTab
+from tabs.tab_report_converter import ReportConverterTab # Import the ReportConverterTab
+from tabs.tab_scan_configuration import ScanTab # Import the new ScanTab
+
+from tabs.tab_instrument_preset import InstrumentTab # Import the InstrumentTab
+from tabs.tab_visa_interpreter import VisaInterpreterTab # Import the new VisaInterpreterTab
 
 # Import constants from frequency_bands.py
 from utils.frequency_bands import SCAN_BAND_RANGES, MHZ_TO_HZ, VBW_RBW_RATIO
@@ -495,24 +497,6 @@ class App(tk.Tk):
         style.map('LargeYAK.TButton',
                   background=[('active', '#e07b00'), ('disabled', '#cc7000')])
 
-        # --- NEW STYLES FOR DEVICE BUTTONS ---
-        style.configure("DeviceButton.TButton",
-                        background="#4a4a4a", # Default grey for unselected device buttons
-                        foreground="white",
-                        font=('Helvetica', 10, 'bold'),
-                        padding=[5, 5]) # Smaller padding for device buttons
-        style.map("DeviceButton.TButton",
-                  background=[('active', '#606060')])
-
-        style.configure("SelectedDevice.TButton",
-                        background="#ff8c00", # Orange for selected device buttons
-                        foreground="white",
-                        font=('Helvetica', 10, 'bold'),
-                        padding=[5, 5])
-        style.map("SelectedDevice.TButton",
-                  background=[('active', '#e07b00')])
-        # --- END NEW STYLES ---
-
 
         debug_print("ttk styles set up.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
@@ -527,18 +511,27 @@ class App(tk.Tk):
         print("Application console initialized.") # This will now print to the GUI console
 
 
-    def _print_to_gui_console(self, message):
+    def _print_to_gui_console(self, message, overwrite=False):
         """
         A helper function to print messages to the GUI console from any thread.
         Uses after() to ensure thread safety.
+        If overwrite is True, it attempts to overwrite the last line.
         """
-        self.after(0, lambda: self._update_console_text(message))
+        self.after(0, lambda: self._update_console_text(message, overwrite))
 
-    def _update_console_text(self, message):
+    def _update_console_text(self, message, overwrite):
         """
         Appends a message to the scrolled text widget.
+        If overwrite is True, it deletes the last line before inserting.
         """
         self.console_text.config(state=tk.NORMAL)
+        if overwrite:
+            # Get the start and end of the last line
+            # "end-1c" means the character before the very end (which is the newline)
+            # "linestart" moves to the beginning of that line
+            last_line_start = self.console_text.index("end-1c linestart")
+            self.console_text.delete(last_line_start, tk.END)
+        
         self.console_text.insert(tk.END, message + "\n")
         self.console_text.see(tk.END) # Scroll to the end
         self.console_text.config(state=tk.DISABLED)
@@ -753,3 +746,4 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+

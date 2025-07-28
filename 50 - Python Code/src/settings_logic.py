@@ -1,8 +1,7 @@
 # src/settings_logic.py
 import tkinter as tk
-# from tkinter import messagebox # Removed messagebox
 import inspect
-import os # Import os for path manipulation
+import os
 
 # Import necessary functions/constants from utils
 from utils.instrument_control import debug_print
@@ -28,22 +27,23 @@ def restore_default_settings_logic(app_instance, console_print_func):
                 try:
                     # Convert to appropriate type based on Tkinter variable type
                     if isinstance(tk_var_instance, tk.BooleanVar):
-                        # configparser.getboolean handles "True", "False", "yes", "no", "1", "0"
-                        tk_var_instance.set(app_instance.config.getboolean('DEFAULT_SETTINGS', default_key))
-                    elif isinstance(tk_var_instance, tk.DoubleVar):
-                        tk_var_instance.set(float(default_value_str))
+                        tk_var_instance.set(default_value_str.lower() == 'true')
                     elif isinstance(tk_var_instance, tk.IntVar):
                         tk_var_instance.set(int(default_value_str))
-                    elif isinstance(tk_var_instance, tk.StringVar):
+                    elif isinstance(tk_var_instance, tk.DoubleVar):
+                        tk_var_instance.set(float(default_value_str))
+                    else: # Default to StringVar
                         tk_var_instance.set(default_value_str)
-                    debug_print(f"Restored '{tk_var_name}' to default: {tk_var_instance.get()}", file=current_file, function=current_function, console_print_func=console_print_func)
+                    debug_print(f"  Restored '{tk_var_name}' to default: {default_value_str}", file=current_file, function=current_function, console_print_func=console_print_func)
                 except ValueError as e:
-                    console_print_func(f"❌ Error: Could not convert default value '{default_value_str}' for '{default_key}': {e}")
-                    debug_print(f"ValueError restoring '{default_key}': {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+                    console_print_func(f"❌ Error restoring default for {tk_var_name}: {e}")
+                    debug_print(f"Error converting default value for {tk_var_name}: {default_value_str} - {e}", file=current_file, function=current_function, console_print_func=console_print_func)
             else:
-                debug_print(f"No default value found for '{default_key}'. Skipping.", file=current_file, function=current_function, console_print_func=console_print_func)
+                debug_print(f"  No default value found for '{default_key}' in config.ini.", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            debug_print(f"  No default key defined for '{tk_var_name}'. Skipping.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Restore default selected bands
+    # Restore selected bands from default_selected_bands
     default_selected_bands_str = app_instance.config.get('DEFAULT_SETTINGS', 'default_selected_bands', fallback='')
     if default_selected_bands_str:
         default_selected_band_names = [name.strip() for name in default_selected_bands_str.split(',') if name.strip()]
@@ -57,7 +57,7 @@ def restore_default_settings_logic(app_instance, console_print_func):
         debug_print("No default_selected_bands in config.ini. All bands set to selected.", file=current_file, function=current_function, console_print_func=console_print_func)
 
     # Update sliders to reflect new default values
-    app_instance._set_initial_slider_positions()
+    app_instance._set_initial_slider_positions() # Assuming this method exists and correctly updates sliders
     
     # Reset setting colors (e.g., remove any "changed" highlights)
     app_instance.reset_setting_colors_logic()
@@ -65,6 +65,63 @@ def restore_default_settings_logic(app_instance, console_print_func):
     # Save the current (now default) settings to LAST_USED_SETTINGS
     save_config(app_instance)
 
-    console_print_func("✅ Info: All settings have been restored to their default values and saved.")
-    debug_print("Default settings restored and saved.", file=current_file, function=current_function, console_print_func=console_print_func)
+    console_print_func("✅ Info: All settings have been restored to default values.")
 
+
+# --- START OF MODIFICATION ---
+def restore_last_used_settings_logic(app_instance, console_print_func):
+    """
+    Restores all application settings to their last-used values as defined in config.ini.
+    This function updates the Tkinter variables based on the LAST_USED_SETTINGS section.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+
+    debug_print("Attempting to restore last used settings...", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    # Iterate through the setting_var_map and set each Tkinter variable
+    # to its last-used value from the LAST_USED_SETTINGS section.
+    for tk_var_name, (last_key, default_key, tk_var_instance) in app_instance.setting_var_map.items():
+        if last_key: # Only restore if a last_key is defined
+            last_value_str = app_instance.config.get('LAST_USED_SETTINGS', last_key, fallback=None)
+            if last_value_str is not None:
+                try:
+                    # Convert to appropriate type based on Tkinter variable type
+                    if isinstance(tk_var_instance, tk.BooleanVar):
+                        tk_var_instance.set(last_value_str.lower() == 'true')
+                    elif isinstance(tk_var_instance, tk.IntVar):
+                        tk_var_instance.set(int(last_value_str))
+                    elif isinstance(tk_var_instance, tk.DoubleVar):
+                        tk_var_instance.set(float(last_value_str))
+                    else: # Default to StringVar
+                        tk_var_instance.set(last_value_str)
+                    debug_print(f"  Restored '{tk_var_name}' to last used: {last_value_str}", file=current_file, function=current_function, console_print_func=console_print_func)
+                except ValueError as e:
+                    console_print_func(f"❌ Error restoring last used for {tk_var_name}: {e}")
+                    debug_print(f"Error converting last used value for {tk_var_name}: {last_value_str} - {e}", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                debug_print(f"  No last used value found for '{last_key}' in config.ini. Skipping.", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            debug_print(f"  No last used key defined for '{tk_var_name}'. Skipping.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    # Restore selected bands from last_selected_bands
+    last_selected_bands_str = app_instance.config.get('LAST_USED_SETTINGS', 'last_selected_bands', fallback='')
+    if last_selected_bands_str:
+        last_selected_band_names = [name.strip() for name in last_selected_bands_str.split(',') if name.strip()]
+        for band_item in app_instance.band_vars:
+            band_item["var"].set(band_item["band"]["Band Name"] in last_selected_band_names)
+        debug_print(f"Restored selected bands to last used: {last_selected_band_names}", file=current_file, function=current_function, console_print_func=console_print_func)
+    else:
+        # If no last_selected_bands in config, ensure all are selected
+        for band_item in app_instance.band_vars:
+            band_item["var"].set(False) # Default to unchecked if no last used bands
+        debug_print("No last_selected_bands in config.ini. All bands set to unchecked.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    # Update sliders to reflect new last-used values
+    app_instance._set_initial_slider_positions() # Assuming this method exists and correctly updates sliders
+    
+    # Reset setting colors (e.g., remove any "changed" highlights)
+    app_instance.reset_setting_colors_logic()
+
+    console_print_func("✅ Info: All settings have been restored to last used values.")
+# --- END OF MODIFICATION ---

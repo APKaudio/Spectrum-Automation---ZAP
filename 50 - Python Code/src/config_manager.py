@@ -62,6 +62,7 @@ def load_config(app_instance):
         'default_scan_name': 'ThisIsMyScan',
         'default_num_scan_cycles': '1',
         'default_include_markers': 'True', # New default setting
+        'default_selected_visa_resource': 'N/A', # New default for VISA resource
     }
 
     # Ensure all default settings are present
@@ -115,6 +116,11 @@ def load_config(app_instance):
         _get_config_value('LAST_USED_SETTINGS', 'last_scan_directory', 'default_scan_directory', 'scan_data')
     )
 
+    # Load the last selected VISA resource
+    last_selected_visa = _get_config_value('LAST_USED_SETTINGS', 'last_selected_visa_resource', 'default_selected_visa_resource', 'N/A')
+    app_instance.selected_resource.set(last_selected_visa)
+
+
     debug_print("Configuration loaded.", file=current_file, function=current_function)
 
 
@@ -154,6 +160,10 @@ def save_config(app_instance):
     app_instance.config['LAST_USED_SETTINGS']['last_selected_bands'] = bands_to_save
     debug_print(f"Saving 'last_selected_bands': '{bands_to_save}'", file=current_file, function=current_function)
     
+    # Save the currently selected VISA resource
+    app_instance.config['LAST_USED_SETTINGS']['last_selected_visa_resource'] = app_instance.selected_resource.get()
+    debug_print(f"Saving 'last_selected_visa_resource': '{app_instance.selected_resource.get()}'", file=current_file, function=current_function)
+
     # Force update of window geometry before saving
     app_instance.update_idletasks() # IMPORTANT: Ensure geometry is up-to-date
     current_geometry = app_instance.winfo_geometry()

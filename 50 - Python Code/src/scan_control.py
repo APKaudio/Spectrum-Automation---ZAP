@@ -168,6 +168,18 @@ class ScanControlTab(ttk.Frame):
             include_gov_markers = self.app_instance.include_gov_markers_var.get()
             include_markers = self.app_instance.include_markers_var.get()
 
+            # Convert Tkinter StringVar values to appropriate types
+            # These values are retrieved from the GUI elements (likely Entry widgets)
+            # and need to be converted to numerical types for calculations or instrument commands.
+            rbw_hz_val = float(self.app_instance.scan_rbw_hz_var.get())
+            ref_level_dbm_val = float(self.app_instance.reference_level_dbm_var.get())
+            freq_shift_hz_val = float(self.app_instance.freq_shift_hz_var.get())
+            maxhold_enabled_val = self.app_instance.maxhold_enabled_var.get() # This is already a boolean from Checkbutton
+            high_sensitivity_val = self.app_instance.high_sensitivity_var.get() # This is already a boolean from Checkbutton
+            preamp_on_val = self.app_instance.preamp_on_var.get() # This is already a boolean from Checkbutton
+            rbw_step_size_hz_val = float(self.app_instance.rbw_step_size_hz_var.get())
+
+
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
             debug_print(f"Ensured output directory exists: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -194,16 +206,16 @@ class ScanControlTab(ttk.Frame):
                     app_instance_ref=self.app_instance, # Pass app_instance_ref as keyword argument
                     inst=self.app_instance.inst,
                     selected_bands=selected_bands,
-                    rbw_hz=self.app_instance.scan_rbw_hz_var,
-                    ref_level_dbm=self.app_instance.reference_level_dbm_var,
-                    freq_shift_hz=self.app_instance.freq_shift_hz_var,
-                    maxhold_enabled=self.app_instance.maxhold_enabled_var,
-                    high_sensitivity=self.app_instance.high_sensitivity_var,
-                    preamp_on=self.app_instance.preamp_on_var,
-                    rbw_step_size_hz=self.app_instance.rbw_step_size_hz_var, # Added this missing argument
-                    cycle_wait_time_seconds=self.app_instance.cycle_wait_time_seconds_var,
-                    scan_name=scan_name, # Added this missing argument
-                    output_folder=output_dir, # Added this missing argument
+                    rbw_hz=rbw_hz_val, # Use the converted float value
+                    ref_level_dbm=ref_level_dbm_val, # Use the converted float value
+                    freq_shift_hz=freq_shift_hz_val, # Use the converted float value
+                    maxhold_enabled=maxhold_enabled_val, # Use the converted boolean value
+                    high_sensitivity=high_sensitivity_val, # Use the converted boolean value
+                    preamp_on=preamp_on_val, # Use the converted boolean value
+                    rbw_step_size_hz=rbw_step_size_hz_val, # Use the converted float value
+                    cycle_wait_time_seconds=cycle_wait_time,
+                    scan_name=scan_name,
+                    output_folder=output_dir,
                     stop_event=self.app_instance.stop_scan_event,
                     pause_event=self.app_instance.pause_scan_event,
                     log_visa_commands_enabled=self.app_instance.log_visa_commands_enabled_var.get(),
