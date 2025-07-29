@@ -59,7 +59,7 @@ N9340B,Trace/3/Mode/MinHold,SET,:TRAC3:MODE,MINHold
 N9340B,Trace/4/Mode/MinHold,SET,:TRAC4:MODE,MINHold
 N9340B,Trace/Display/Type,GET,:DISPlay:WINDow:TRACe:TYPE?,
 N9340B,Trace/Display/Y Scale/Spacing,SET,:DISPlay:WINDow:TRACe:Y:SCALe:SPACing,LOGarithmic
-N9340B,Trace/Format/Data/ASCII (N9340B),SET,:TRACe:FORMat:DATA,ASCii
+N9342CN,Trace/Format/Data/ASCII (N9340B),SET,:TRACe:FORMat:DATA,ASCii
 N9340B,Trace/Format/Data/ASCII (General),SET,:FORMat:DATA,ASCii
 N9340B,Marker/1/Calculate/Max,DO,:CALCulate:MARKer1:MAX,
 N9340B,Marker/2/Calculate/Max,DO,:CALCulate:MARKer2:MAX,
@@ -88,3 +88,8 @@ N9340B,Marker/6/Calculate/Y,GET,:CALCulate:MARKer6:Y?,
 N9340B,Memory/Preset/Catalog,GET,:MMEMory:CATalog:STATe?,
 N9340B,Memory/Preset/Load,SET,:MMEMory:LOAD:STATe,0
 N9340B,Memory/Preset/Store,SET,:MMEMory:STORe:STATe,0
+N9340B,General,SET,,
+N9340B,General,SET,,
+N9340B,General,SET,,
+N9340B,General,SET,,
+N9340B,General,SET,,

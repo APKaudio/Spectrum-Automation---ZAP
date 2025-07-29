@@ -1,16 +1,17 @@
-# src/plotting_tab.py
+# src/tab_plotting.py
 import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext
+from tkinter import ttk, filedialog, scrolledtext, messagebox
 import os
 import pandas as pd
 import inspect
 import webbrowser # For opening HTML plot in browser
-# Removed: import subprocess, threading, sys, requests (moved to JsonApiTab)
+import re # Added for regex in file grouping
 
 from utils.instrument_control import debug_print
 from src.plot_logic import plot_single_scan_data # Import only plot_single_scan_data
 # Import generate_current_cycle_average_csv_and_plot from its correct location
 from process_math.averaging_utils import generate_current_cycle_average_csv_and_plot
+from process_math.averaging_utils import generate_multi_file_average_and_plot # NEW import
 
 class PlottingTab(ttk.Frame):
     """
@@ -29,239 +30,367 @@ class PlottingTab(ttk.Frame):
         """
         super().__init__(master, **kwargs)
         self.app_instance = app_instance
-        self.console_print_func = console_print_func if console_print_func else print # Use provided func or default print
-        self.last_plot_path = None # To store the path of the last generated plot
-        # Removed JSON API related attributes: self.json_api_process, self.json_api_port, self.json_api_url_base
+        self.console_print_func = console_print_func if console_print_func else print # Use provided func or print
+        self.current_plot_file = None # To store the path of the last generated plot HTML
+        self.last_opened_folder = None # To remember the last opened folder for averaging
+
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         self._create_widgets()
-        # Removed: self._update_api_button_states()
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
     def _create_widgets(self):
-        """
-        Creates and arranges the widgets for the Plotting tab.
-        """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Creating PlottingTab widgets...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
+        # Plotting Options Frame
+        plotting_options_frame = ttk.LabelFrame(self, text="Plotting Options", padding="10")
+        plotting_options_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Checkboxes for TV and Government Band Markers
+        self.include_tv_markers_var = tk.BooleanVar(value=True) # Default to True
+        ttk.Checkbutton(plotting_options_frame, text="Include TV Band Markers", variable=self.include_tv_markers_var).grid(row=0, column=0, padx=5, pady=2, sticky="w")
+
+        self.include_gov_markers_var = tk.BooleanVar(value=False) # Default to False
+        ttk.Checkbutton(plotting_options_frame, text="Include Government Band Markers", variable=self.include_gov_markers_var).grid(row=1, column=0, padx=5, pady=2, sticky="w")
+
+        # Option to open plot after generation
+        self.open_html_after_complete_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(plotting_options_frame, text="Open plot in browser after generation", variable=self.open_html_after_complete_var).grid(row=2, column=0, padx=5, pady=2, sticky="w")
+
+        # Plot Single Scan Button
+        self.plot_button = ttk.Button(plotting_options_frame, text="Plot Single Scan", command=self._plot_single_scan)
+        self.plot_button.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
+        self.plot_button.config(state=tk.DISABLED) # Disable until data is available
+
+        # Plot Average of Current Cycle Button
+        self.plot_average_button = ttk.Button(plotting_options_frame, text="Plot Current Cycle Average (All Traces)", command=self._plot_current_cycle_average)
+        self.plot_average_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+        self.plot_average_button.config(state=tk.DISABLED) # Disable until data is available
+
+        # Open Last Plot Button
+        self.open_last_plot_button = ttk.Button(plotting_options_frame, text="Open Last Plot", command=self._open_last_plot)
+        self.open_last_plot_button.grid(row=5, column=0, padx=5, pady=5, sticky="ew")
+
+        # --- NEW: Plotting Averages from Folder Section ---
+        self.averaging_folder_frame = ttk.LabelFrame(self, text="Plotting Averages from Folder", padding="10")
+        self.averaging_folder_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        self.open_folder_button = ttk.Button(self.averaging_folder_frame, text="Open Folder to Average", command=self._open_folder_for_averaging)
+        self.open_folder_button.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        # Checkboxes for average types (before dynamic buttons)
+        self.avg_type_vars = {
+            "Average": tk.BooleanVar(value=True),
+            "Median": tk.BooleanVar(value=False),
+            "Range": tk.BooleanVar(value=False),
+            "Std Dev": tk.BooleanVar(value=False),
+            "Variance": tk.BooleanVar(value=False),
+            "PSD (dBm/Hz)": tk.BooleanVar(value=False) # Assuming PSD is also a statistical measure here
+        }
+
+        row_offset = 1 # Starting row for checkboxes
+        for i, (text, var) in enumerate(self.avg_type_vars.items()):
+            ttk.Checkbutton(self.averaging_folder_frame, text=text, variable=var).grid(row=row_offset + i, column=0, padx=5, pady=2, sticky="w")
+
+        self.generate_avg_button = ttk.Button(self.averaging_folder_frame, text="Generate Selected Average Plot", command=self._generate_selected_average_plot)
+        self.generate_avg_button.grid(row=row_offset + len(self.avg_type_vars), column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.generate_avg_button.config(state=tk.DISABLED)
+
+
+        self.dynamic_avg_buttons_frame = ttk.Frame(self.averaging_folder_frame)
+        self.dynamic_avg_buttons_frame.grid(row=row_offset + len(self.avg_type_vars) + 1, column=0, columnspan=2, sticky="ew", pady=(10,0))
+        # This frame will hold dynamically created buttons.
+
+        # Configure column weights for resizing
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-
-        # Plotting Controls
-        plot_control_frame = ttk.LabelFrame(self, text="Plotting Controls", style='Dark.TLabelframe')
-        plot_control_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
-        plot_control_frame.grid_columnconfigure(0, weight=1)
-        plot_control_frame.grid_columnconfigure(1, weight=1)
-
-        self.plot_button = ttk.Button(plot_control_frame, text="Plot Last Scan", command=self._plot_last_scan, style='Blue.TButton')
-        self.plot_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-
-        self.plot_average_button = ttk.Button(plot_control_frame, text="Plot Average Scan", command=self._plot_average_scan, style='Blue.TButton')
-        self.plot_average_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-
-        # New button for opening a scan from a file
-        self.open_scan_button = ttk.Button(plot_control_frame, text="Open Scan to Plot (CSV)", command=self._open_scan_to_plot, style='Blue.TButton')
-        self.open_scan_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-
-        self.open_plot_button = ttk.Button(plot_control_frame, text="Open Last Plot in Browser", command=self._open_last_plot_in_browser, state=tk.DISABLED, style='Blue.TButton')
-        self.open_plot_button.grid(row=1, column=1, padx=5, pady=5, sticky="ew") # Adjusted row/column for new button
-
-        # Plotting Options (Moved from main_app)
-        plotting_options_frame = ttk.LabelFrame(self, text="Plotting Options", style='Dark.TLabelframe')
-        plotting_options_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # Adjusted row for new button
         plotting_options_frame.grid_columnconfigure(0, weight=1)
+        self.averaging_folder_frame.grid_columnconfigure(0, weight=1)
+        self.dynamic_avg_buttons_frame.grid_columnconfigure(0, weight=1)
 
-        ttk.Checkbutton(plotting_options_frame, text="Include Government Markers", variable=self.app_instance.include_gov_markers_var, style='TCheckbutton').grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(plotting_options_frame, text="Include TV Markers", variable=self.app_instance.include_tv_markers_var, style='TCheckbutton').grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(plotting_options_frame, text="Include Custom Markers (from CSV)", variable=self.app_instance.include_markers_var, style='TCheckbutton').grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(plotting_options_frame, text="Open HTML Plot After Scan Complete", variable=self.app_instance.open_html_after_complete_var, style='TCheckbutton').grid(row=3, column=0, sticky="w", padx=5, pady=2)
-
-        # Removed JSON API Controls and dynamic scan buttons frame creation
-        # self.api_control_frame = ttk.LabelFrame(...)
-        # self.dynamic_scan_buttons_frame = ttk.LabelFrame(...)
-
-        debug_print("PlottingTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
-    def _plot_last_scan(self):
-        """
-        Plots the data from the last completed scan.
-        """
+    def _plot_single_scan(self):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Attempting to plot last scan...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         if not self.app_instance.collected_scans_dataframes:
-            self.console_print_func("⚠️ Warning: No scan data available to plot. Please run a scan first.")
-            debug_print("No scan data for plotting.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            self.console_print_func("No scan data available to plot.")
+            debug_print("No scan data available for single plot.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print(f"Exiting {current_function} (no data)", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
-        last_df = self.app_instance.collected_scans_dataframes[-1]
-        output_dir = self.app_instance.output_folder_var.get()
-        scan_name = self.app_instance.scan_name_var.get()
+        # Get the latest scan
+        latest_scan_name = list(self.app_instance.collected_scans_dataframes.keys())[-1]
+        latest_df = self.app_instance.collected_scans_dataframes[latest_scan_name]
+        debug_print(f"Plotting single scan for: {latest_scan_name}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        try:
-            # Assuming plot_single_scan_data returns the path to the generated HTML file
-            # Corrected the argument for output_folder_for_markers
-            fig, plot_path = plot_single_scan_data(
-                last_df,
-                f"{scan_name} - Last Scan", # Title for the plot
-                include_tv_markers=self.app_instance.include_tv_markers_var.get(),
-                include_gov_markers=self.app_instance.include_gov_markers_var.get(),
-                include_markers_from_csv=self.app_instance.include_markers_var.get(),
-                markers_csv_path=os.path.join(output_dir, "MARKERS.CSV"), # Pass the correct path to MARKERS.CSV
-                output_html_path=os.path.join(output_dir, f"{scan_name}_LastScan_Plot.html") # Explicit path
-            )
-            if fig: # Check if figure was successfully created
-                self.last_plot_path = plot_path
-                self.open_plot_button.config(state=tk.NORMAL)
-                self.console_print_func(f"✅ Last scan plotted to: {plot_path}")
-                debug_print(f"Last scan plotted to: {plot_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            else:
-                self.console_print_func("❌ Error: Failed to generate plot for the last scan.")
-                debug_print("Failed to generate plot for last scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        except Exception as e:
-            self.console_print_func(f"❌ Error plotting last scan: {e}")
-            debug_print(f"Error plotting last scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        output_dir = self.app_instance.config.get('Paths', 'output_directory')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            debug_print(f"Created output directory: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
+        html_filename = os.path.join(output_dir, f"{latest_scan_name.replace(' ', '_')}_single_scan_plot.html")
+        debug_print(f"Output HTML filename: {html_filename}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-    def _plot_average_scan(self):
-        """
-        Generates and plots the average of all collected scan data.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Attempting to plot average scan...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        if not self.app_instance.collected_scans_dataframes:
-            self.console_print_func("⚠️ Warning: No scan data available to average plot. Please run a scan first.")
-            debug_print("No scan data for average plotting.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return
-
-        output_dir = self.app_instance.output_folder_var.get()
-        scan_name = self.app_instance.scan_name_var.get()
-
-        try:
-            # Assuming generate_current_cycle_average_csv_and_plot returns the path to the generated HTML file
-            plot_path = generate_current_cycle_average_csv_and_plot(
-                self.app_instance.collected_scans_dataframes,
-                output_dir,
-                scan_name,
-                self.app_instance.include_gov_markers_var.get(),
-                self.app_instance.include_tv_markers_var.get(),
-                self.app_instance.include_markers_var.get(),
-                # Pass headers and rows from MarkersDisplayTab if it exists and has them
-                getattr(self.app_instance, 'markers_display_tab', None) and getattr(self.app_instance.markers_display_tab, 'headers', []),
-                getattr(self.app_instance, 'markers_display_tab', None) and getattr(self.app_instance.markers_display_tab, 'rows', []),
-                self.console_print_func
-            )
-            if plot_path:
-                self.last_plot_path = plot_path
-                self.open_plot_button.config(state=tk.NORMAL)
-                self.console_print_func(f"✅ Average scan plotted to: {plot_path}")
-                debug_print(f"Average scan plotted to: {plot_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            else:
-                self.console_print_func("❌ Error: Failed to generate average plot.")
-                debug_print("Failed to generate average plot.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        except Exception as e:
-            self.console_print_func(f"❌ Error plotting average scan: {e}")
-            debug_print(f"Error plotting average scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-
-    def _open_scan_to_plot(self):
-        """
-        Opens a file dialog to select a CSV scan file and plots its data.
-        Reads CSV without headers and assigns 'Frequency (MHz)' and 'Level (dBm)' columns.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print("Attempting to open scan from file...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        file_path = filedialog.askopenfilename(
-            title="Select Scan CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        fig, plot_html_path_return = plot_single_scan_data(
+            latest_df,
+            f"Single Scan: {latest_scan_name}",
+            self.include_tv_markers_var.get(),
+            self.include_gov_markers_var.get(),
+            output_html_path=html_filename,
+            console_print_func=self.console_print_func
         )
 
-        if not file_path:
-            self.console_print_func("ℹ️ No file selected for plotting.")
-            debug_print("No file selected for plotting.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return
-
-        try:
-            # Read the CSV file into a DataFrame, assuming no headers
-            df = pd.read_csv(file_path, header=None)
-
-            # Assign column names explicitly
-            # Assuming the 1st column (index 0) is Frequency (MHz)
-            # Assuming the 2nd column (index 1) is Level (dBm)
-            if df.shape[1] < 2:
-                self.console_print_func("❌ Error: Selected CSV file does not contain at least two columns for Frequency and Level data.")
-                debug_print("Insufficient columns in CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                return
-
-            df.rename(columns={0: 'Frequency (MHz)', 1: 'Amplitude (dBm)'}, inplace=True) # Changed to Amplitude (dBm) for consistency
-
-            output_dir = self.app_instance.output_folder_var.get()
-            # Use the filename (without extension) as part of the plot title and output file name
-            scan_name = os.path.splitext(os.path.basename(file_path))[0]
-
-            fig, plot_path = plot_single_scan_data(
-                df,
-                f"{scan_name} - Imported Scan", # Title for the plot
-                include_tv_markers=self.app_instance.include_tv_markers_var.get(),
-                include_gov_markers=self.app_instance.include_gov_markers_var.get(),
-                include_markers_from_csv=self.app_instance.include_markers_var.get(),
-                markers_csv_path=os.path.join(output_dir, "MARKERS.CSV"), # Pass the correct path to MARKERS.CSV
-                output_html_path=os.path.join(output_dir, f"{scan_name}_ImportedScan_Plot.html") # Explicit path
-            )
-
-            if fig:
-                self.last_plot_path = plot_path
-                self.open_plot_button.config(state=tk.NORMAL)
-                self.console_print_func(f"✅ Imported scan plotted to: {plot_path}")
-                debug_print(f"Imported scan plotted to: {plot_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-                if self.app_instance.open_html_after_complete_var.get():
-                    self._open_last_plot_in_browser()
-            else:
-                self.console_print_func("❌ Error: Failed to generate plot for the imported scan.")
-                debug_print("Failed to generate plot for imported scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        except pd.errors.EmptyDataError:
-            self.console_print_func("❌ Error: Selected CSV file is empty.")
-            debug_print("Empty CSV file selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        except FileNotFoundError:
-            self.console_print_func("❌ Error: File not found.")
-            debug_print("File not found during import.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        except Exception as e:
-            self.console_print_func(f"❌ Error processing imported scan: {e}")
-            debug_print(f"Error processing imported scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        if fig:
+            self.current_plot_file = plot_html_path_return
+            self.console_print_func(f"✅ Single scan plot saved to: {self.current_plot_file}")
+            debug_print(f"Plot saved successfully to: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            if self.open_html_after_complete_var.get():
+                self.console_print_func(f"Opening plot in browser: {self.current_plot_file}")
+                webbrowser.open_new_tab(self.current_plot_file)
+                debug_print(f"Plot opened in browser: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("🚫 Plotly figure was not generated for single scan.")
+            debug_print("Plotly figure not generated for single scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
-    def _open_last_plot_in_browser(self):
-        """
-        Opens the last generated HTML plot in the default web browser.
-        """
+    def _plot_current_cycle_average(self):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Attempting to open last plot in browser...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        if self.last_plot_path and os.path.exists(self.last_plot_path):
-            try:
-                webbrowser.open_new_tab(f"file:///{os.path.abspath(self.last_plot_path)}")
-                self.console_print_func(f"✅ Opened plot: {self.last_plot_path}")
-                debug_print(f"Opened plot: {self.last_plot_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            except Exception as e:
-                self.console_print_func(f"❌ Error opening plot in browser: {e}")
-                debug_print(f"Error opening plot in browser: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        if not self.app_instance.collected_scans_dataframes:
+            self.console_print_func("No collected scan dataframes to average.")
+            debug_print("No collected scan dataframes for current cycle average.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print(f"Exiting {current_function} (no data)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        output_dir = self.app_instance.config.get('Paths', 'output_directory')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            debug_print(f"Created output directory: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        debug_print(f"Calling generate_current_cycle_average_csv_and_plot with {len(self.app_instance.collected_scans_dataframes)} dataframes.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        # Pass all relevant variables to the averaging utility
+        fig, plot_html_path_return = generate_current_cycle_average_csv_and_plot(
+            self.app_instance.collected_scans_dataframes,
+            output_dir,
+            self.include_tv_markers_var,
+            self.include_gov_markers_var,
+            self.open_html_after_complete_var, # Pass the Tkinter BooleanVar directly
+            self.console_print_func,
+            include_markers_var=tk.BooleanVar(value=True) # Assuming MARKERS.CSV is always included for historical plots
+        )
+
+        if fig:
+            self.current_plot_file = plot_html_path_return
+            self.console_print_func(f"✅ Historical averaged plot saved to: {self.current_plot_file}")
+            debug_print(f"Current cycle averaged plot saved to: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            # The function itself opens the browser if open_html_after_complete_var is True
         else:
-            self.console_print_func("⚠️ Warning: No plot available or file not found. Please generate a plot first.")
+            self.console_print_func("🚫 Plotly figure was not generated for current cycle averaged data.")
+            debug_print("Plotly figure not generated for current cycle averaged data.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _open_last_plot(self):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if self.current_plot_file and os.path.exists(self.current_plot_file):
+            self.console_print_func(f"Opening last plot: {self.current_plot_file}")
+            webbrowser.open_new_tab(self.current_plot_file)
+            debug_print(f"Opened last plot: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            messagebox.showinfo("Error", "No plot available or file not found. Please generate a plot first.")
             debug_print("No plot available or file not found.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
-    # Removed all JSON API related methods:
-    # _run_json_api_thread_target, _start_json_api, _stop_json_api, _update_api_button_states,
-    # _open_all_api_scans, _open_api_scan_data, _open_markers_api, _open_latest_api_scan
+    def _open_folder_for_averaging(self):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        folder_path = filedialog.askdirectory(initialdir=self.last_opened_folder)
+        debug_print(f"Selected folder_path: {folder_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        if folder_path:
+            self.last_opened_folder = folder_path
+            self.console_print_func(f"Selected folder for averaging: {folder_path}")
+            self._find_and_group_csv_files(folder_path)
+            self.generate_avg_button.config(state=tk.NORMAL) # Enable the generate button
+            debug_print("Generate average button enabled.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("Folder selection cancelled.")
+            self.generate_avg_button.config(state=tk.DISABLED)
+            debug_print("Folder selection cancelled. Generate average button disabled.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _find_and_group_csv_files(self, folder_path):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function} with folder_path: {folder_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+        debug_print(f"Found CSV files: {csv_files}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        if not csv_files:
+            self.console_print_func("No CSV files found in the selected folder.")
+            self._clear_dynamic_buttons()
+            debug_print(f"Exiting {current_function} (no CSVs)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        file_groups = {}
+        for filename in csv_files:
+            base_name = os.path.splitext(filename)[0]
+            match = re.match(r"([^\d_ -]+(?:[_ -]?[^\d_ -]+)*?)[\d_ -]*", base_name)
+            prefix = base_name
+            if match:
+                prefix = match.group(1).strip()
+                prefix = re.sub(r"[_ -]+$", "", prefix)
+
+            if not prefix:
+                prefix = base_name.split('_')[0].split('-')[0].strip()
+
+            if prefix not in file_groups:
+                file_groups[prefix] = []
+            file_groups[prefix].append(os.path.join(folder_path, filename))
+        debug_print(f"Grouped CSV files: {file_groups}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self._clear_dynamic_buttons() # Clear any previous buttons
+
+        if not file_groups:
+            self.console_print_func("No identifiable groups of CSV files found.")
+            debug_print(f"Exiting {current_function} (no file groups)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        self.console_print_func(f"Found {len(file_groups)} groups of similar CSV files.")
+
+        self.grouped_csv_files = file_groups
+        self.selected_group_prefix = None
+
+        row_start = 0
+        for i, (prefix, files) in enumerate(file_groups.items()):
+            group_text = f"Group '{prefix}' ({len(files)} files)"
+            btn = ttk.Button(self.dynamic_avg_buttons_frame, text=group_text,
+                             command=lambda p=prefix: self._select_group_for_plotting(p))
+            btn.grid(row=row_start + i, column=0, padx=5, pady=2, sticky="ew")
+            btn.config(style='Orange.TButton')
+
+        try:
+            style = ttk.Style()
+            style.configure('Orange.TButton', background='orange', foreground='black')
+        except Exception as e:
+            debug_print(f"Could not apply orange style: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _select_group_for_plotting(self, prefix):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function} with prefix: {prefix}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self.selected_group_prefix = prefix
+        self.console_print_func(f"Selected group for plotting: '{prefix}'")
+        debug_print(f"Selected group for plotting: '{prefix}'", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        for widget in self.dynamic_avg_buttons_frame.winfo_children():
+            if isinstance(widget, ttk.Button):
+                if widget.cget("text").startswith(f"Group '{prefix}'"):
+                    widget.config(relief="sunken", style='SelectedOrange.TButton')
+                    debug_print(f"Highlighted button for group: {prefix}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                else:
+                    widget.config(relief="raised", style='Orange.TButton')
+        try:
+            style = ttk.Style()
+            style.configure('SelectedOrange.TButton', background='darkorange', foreground='white')
+        except Exception as e:
+            debug_print(f"Could not apply selected orange style: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _clear_dynamic_buttons(self):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        for widget in self.dynamic_avg_buttons_frame.winfo_children():
+            widget.destroy()
+        debug_print(f"Cleared dynamic buttons.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
+    def _generate_selected_average_plot(self):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not hasattr(self, 'grouped_csv_files') or not self.grouped_csv_files:
+            messagebox.showwarning("No Data", "Please select a folder and identify CSV file groups first.")
+            debug_print(f"Exiting {current_function} (no grouped_csv_files)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        if not self.selected_group_prefix:
+            messagebox.showwarning("No Group Selected", "Please click on one of the group buttons to select files for averaging.")
+            debug_print(f"Exiting {current_function} (no selected_group_prefix)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        files_to_average = self.grouped_csv_files[self.selected_group_prefix]
+        debug_print(f"Files to average for selected group '{self.selected_group_prefix}': {files_to_average}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        if not files_to_average:
+            messagebox.showerror("Error", "No files found for the selected group.")
+            debug_print(f"Exiting {current_function} (files_to_average is empty)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        selected_avg_types = [
+            avg_type for avg_type, var in self.avg_type_vars.items() if var.get()
+        ]
+        debug_print(f"Selected average types: {selected_avg_types}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not selected_avg_types:
+            messagebox.showwarning("No Average Type Selected", "Please select at least one type of average to plot (e.g., Average, Median).")
+            debug_print(f"Exiting {current_function} (no selected_avg_types)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        output_dir = self.app_instance.config.get('Paths', 'output_directory')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            debug_print(f"Created output directory: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        plot_base_name = f"{self.selected_group_prefix}_averaged_plot"
+        html_filename = os.path.join(output_dir, f"{plot_base_name}.html")
+        debug_print(f"Output HTML filename: {html_filename}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        self.console_print_func(f"Generating plot for group '{self.selected_group_prefix}' with types: {', '.join(selected_avg_types)}")
+        debug_print(f"Calling generate_multi_file_average_and_plot with files: {files_to_average} and types: {selected_avg_types}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        fig, plot_html_path_return = generate_multi_file_average_and_plot(
+            file_paths=files_to_average,
+            selected_avg_types=selected_avg_types,
+            plot_title_prefix=self.selected_group_prefix,
+            include_tv_markers=self.include_tv_markers_var.get(),
+            include_gov_markers=self.include_gov_markers_var.get(),
+            output_html_path=html_filename,
+            open_html_after_complete=self.open_html_after_complete_var.get(),
+            console_print_func=self.console_print_func
+        )
+
+        if fig:
+            self.current_plot_file = plot_html_path_return
+            self.console_print_func(f"✅ Multi-file averaged plot saved to: {self.current_plot_file}")
+            debug_print(f"Multi-file averaged plot saved to: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        else:
+            self.console_print_func("🚫 Plotly figure was not generated for multi-file averaged data.")
+            debug_print("Plotly figure not generated for multi-file averaged data.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
     def _on_tab_selected(self, event):
@@ -271,17 +400,16 @@ class PlottingTab(ttk.Frame):
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
+        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
         debug_print("Plotting Tab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        
-        # Enable plot button if there's data to plot
+
         if self.app_instance.collected_scans_dataframes:
             self.plot_button.config(state=tk.NORMAL)
             self.plot_average_button.config(state=tk.NORMAL)
+            debug_print("Plotting buttons enabled (data available).", file=current_file, function=current_function, console_print_func=self.console_print_func)
         else:
             self.plot_button.config(state=tk.DISABLED)
             self.plot_average_button.config(state=tk.DISABLED)
-        
-        # Keep open plot button state as is, it's enabled when a plot is generated
-        
-        # Removed: Update API button states when the tab is selected (now handled by JsonApiTab)
-        # self._update_api_button_states()
+            debug_print("Plotting buttons disabled (no data available).", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)

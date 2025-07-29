@@ -245,10 +245,10 @@ class ScanControlTab(ttk.Frame):
                     if not scan_df.empty:
                         # Ensure column names are correct for plotting functions
                         # Assuming the first column is Frequency and second is Level
-                        if scan_df.columns.empty or (scan_df.columns[0] != 'Frequency (MHz)' or scan_df.columns[1] != 'Level (dBm)'):
+                        if scan_df.columns.empty or (scan_df.columns[0] != 'Frequency (MHz)' or scan_df.columns[1] != 'Amplitude (dBm)'):
                             if scan_df.shape[1] >= 2:
-                                scan_df.rename(columns={scan_df.columns[0]: 'Frequency (MHz)', scan_df.columns[1]: 'Level (dBm)'}, inplace=True)
-                                debug_print("Renamed DataFrame columns to 'Frequency (MHz)' and 'Level (dBm)'.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                                scan_df.rename(columns={scan_df.columns[0]: 'Frequency (MHz)', scan_df.columns[1]: 'Amplitude (dBm)'}, inplace=True) # Changed to Amplitude (dBm) for consistency
+                                debug_print("Renamed DataFrame columns to 'Frequency (MHz)' and 'Amplitude (dBm)'.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                             else:
                                 self.app_instance.after(0, lambda: self.console_print_func(f"❌ Error: Stitched scan data has fewer than 2 columns. Cannot plot."))
                                 debug_print(f"Stitched scan data has fewer than 2 columns: {scan_df.shape[1]}", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -270,10 +270,10 @@ class ScanControlTab(ttk.Frame):
                         fig, html_path = plot_single_scan_data(
                             scan_df,
                             f"{scan_name} - Cycle {cycle + 1} - {timestamp}",
-                            include_tv_markers,
-                            include_gov_markers,
-                            include_markers,
-                            output_dir,  # Pass output_dir as output_folder_for_markers
+                            include_tv_markers=include_tv_markers,
+                            include_gov_markers=include_gov_markers,
+                            include_markers_from_csv=include_markers,
+                            markers_csv_path=os.path.join(output_dir, "MARKERS.CSV"), # Corrected: Pass the full path to MARKERS.CSV
                             output_html_path=plot_filename
                         )
                         if fig:

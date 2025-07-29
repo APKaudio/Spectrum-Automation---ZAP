@@ -64,6 +64,16 @@ def load_config(app_instance):
         'default_num_scan_cycles': '1',
         'default_include_markers': 'True', # New default setting
         'default_selected_visa_resource': 'N/A', # New default for VISA resource
+        # --- NEW META SCAN DEFAULTS (Updated with provided values) ---
+        'default_operator_name': 'Anthony Peter Kuzub',
+        'default_operator_contact': 'I@Like.audio',
+        'default_venue_name': 'Garage',
+        'default_city': 'Whitby',
+        'default_map_location': '', # This was left blank in your provided defaults
+        'default_scanner_type': 'Unknown', # This will be updated by IDN query
+        'default_antenna_type': 'Omnidirectional',
+        'default_antenna_amplifier': 'Ground Plane', # Updated from 'Passive' to 'Ground Plane'
+        'default_notes': '',
     }
 
     # Ensure all default settings are present
@@ -98,6 +108,12 @@ def load_config(app_instance):
         return value_str.lower() == 'true'
 
     # Load settings into Tkinter variables using the mapping
+    # First, ensure the new Tkinter variables are initialized in App's __init__
+    # (as per the previous tab_scan_configuration.py update)
+    # Then, extend the setting_var_map in App to include these.
+    # For now, we'll manually load them here as well.
+
+    # --- Load existing settings using the map ---
     for var_name, (last_key, default_key, tk_var) in app_instance.setting_var_map.items():
         if isinstance(tk_var, tk.BooleanVar):
             tk_var.set(_get_boolean_config(last_key, default_key))
@@ -137,15 +153,27 @@ def load_config(app_instance):
     # Load the last selected bands and update Tkinter BooleanVars
     last_selected_bands_str = _get_config_value('LAST_USED_SETTINGS', 'last_selected_bands', 'default_selected_bands', '')
     debug_print(f"Loading 'last_selected_bands': '{last_selected_bands_str}'", file=current_file, function=current_function)
-    
+
     selected_bands_list = [band.strip() for band in last_selected_bands_str.split(',') if band.strip()]
-    
+
     # Update app_instance.band_vars based on loaded selection
     for band_item in app_instance.band_vars:
         if band_item["band"]["Band Name"] in selected_bands_list:
             band_item["var"].set(True)
         else:
             band_item["var"].set(False)
+
+    # --- Load NEW Meta Scan settings ---
+    app_instance.operator_name_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_operator_name', 'default_operator_name', ''))
+    app_instance.operator_contact_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_operator_contact', 'default_operator_contact', ''))
+    app_instance.venue_name_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_venue_name', 'default_venue_name', ''))
+    app_instance.city_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_city', 'default_city', ''))
+    app_instance.map_location_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_map_location', 'default_map_location', ''))
+    app_instance.scanner_type_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_scanner_type', 'default_scanner_type', 'Unknown'))
+    app_instance.antenna_type_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_antenna_type', 'default_antenna_type', 'Omnidirectional'))
+    app_instance.antenna_amplifier_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_antenna_amplifier', 'default_antenna_amplifier', 'Passive'))
+    app_instance.notes_var.set(_get_config_value('LAST_USED_SETTINGS', 'last_notes', 'default_notes', ''))
+
 
     debug_print("Configuration loaded.", file=current_file, function=current_function)
     debug_print("--- Current ConfigParser Contents (After Loading) ---", file=current_file, function=current_function)
@@ -188,16 +216,27 @@ def save_config(app_instance):
         if last_key and var_name != 'selected_bands_str_var': # Skip the string version as we handle bands separately
             app_instance.config['LAST_USED_SETTINGS'][last_key] = str(tk_var.get())
             debug_print(f"Saving '{last_key}': '{tk_var.get()}'", file=current_file, function=current_function)
-    
+
     # Save selected bands
     selected_band_names = [item["band"]["Band Name"] for item in app_instance.band_vars if item["var"].get()]
     bands_to_save = ",".join(selected_band_names)
     app_instance.config['LAST_USED_SETTINGS']['last_selected_bands'] = bands_to_save
     debug_print(f"Saving 'last_selected_bands': '{bands_to_save}'", file=current_file, function=current_function)
-    
+
     # Save the currently selected VISA resource
     app_instance.config['LAST_USED_SETTINGS']['last_selected_visa_resource'] = app_instance.selected_resource.get()
     debug_print(f"Saving 'last_selected_visa_resource': '{app_instance.selected_resource.get()}'", file=current_file, function=current_function)
+
+    # --- Save NEW Meta Scan settings ---
+    app_instance.config['LAST_USED_SETTINGS']['last_operator_name'] = app_instance.operator_name_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_operator_contact'] = app_instance.operator_contact_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_venue_name'] = app_instance.venue_name_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_city'] = app_instance.city_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_map_location'] = app_instance.map_location_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_scanner_type'] = app_instance.scanner_type_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_antenna_type'] = app_instance.antenna_type_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_antenna_amplifier'] = app_instance.antenna_amplifier_var.get()
+    app_instance.config['LAST_USED_SETTINGS']['last_notes'] = app_instance.notes_var.get()
 
     # Force update of window geometry before saving
     app_instance.update_idletasks() # IMPORTANT: Ensure geometry is up-to-date
@@ -213,7 +252,7 @@ def save_config(app_instance):
         debug_print(f"❌ Error saving configuration to {app_instance.CONFIG_FILE}: {e}", file=current_file, function=current_function)
     except Exception as e:
         debug_print(f"❌ An unexpected error occurred while saving configuration: {e}", file=current_file, function=current_function)
-    
+
     debug_print("--- Current ConfigParser Contents (After Saving) ---", file=current_file, function=current_function)
     # Print all sections and their items
     for section in app_instance.config.sections():

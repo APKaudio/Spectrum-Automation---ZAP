@@ -46,6 +46,7 @@ from tabs.tab_plotting import PlottingTab
 from tabs.tab_report_converter import ReportConverterTab
 from tabs.tab_scan_configuration import ScanTab
 from tabs.tab_JSON_api import JsonApiTab # Import the new JSON API tab
+from tabs.tab_intermod import InterModTab # NEW: Import the InterModTab
 
 from tabs.tab_instrument_connection import InstrumentTab
 from tabs.tab_visa_interpreter import VisaInterpreterTab
@@ -73,7 +74,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("RF Spectrum Analyzer Controller")
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
-        
+
         self.config = configparser.ConfigParser()
         self.config.read(self.CONFIG_FILE)
 
@@ -97,9 +98,9 @@ class App(tk.Tk):
         self.MHZ_TO_HZ = MHZ_TO_HZ
         self.VBW_RBW_RATIO = VBW_RBW_RATIO
 
-        self._setup_tkinter_vars()
+        self._setup_tkinter_vars() # Initialize Tkinter variables BEFORE loading config
 
-        load_config(self)
+        load_config(self) # Now load_config will find the variables
         self._apply_saved_geometry()
 
         set_debug_mode(self.general_debug_enabled_var.get())
@@ -108,9 +109,9 @@ class App(tk.Tk):
         self._create_widgets()
         self._setup_styles()
         self._redirect_stdout_to_console()
-        
+
         self.update_connection_status(self.inst is not None)
-        
+
         print_art()
 
         if hasattr(self, 'scan_tab'):
@@ -198,6 +199,17 @@ class App(tk.Tk):
         self.resource_names = tk.StringVar(self) # Holds the list of available VISA resources
         self.selected_resource = tk.StringVar(self) # Holds the currently selected VISA resource
 
+        # --- NEW META SCAN VARIABLES (Initialized here) ---
+        self.operator_name_var = tk.StringVar(self, value="")
+        self.operator_contact_var = tk.StringVar(self, value="")
+        self.venue_name_var = tk.StringVar(self, value="")
+        self.city_var = tk.StringVar(self, value="")
+        self.map_location_var = tk.StringVar(self, value="")
+        self.scanner_type_var = tk.StringVar(self, value="Unknown")
+        self.antenna_type_var = tk.StringVar(self, value="Omnidirectional")
+        self.antenna_amplifier_var = tk.StringVar(self, value="Passive")
+        self.notes_var = tk.StringVar(self, value="")
+
 
         # Map Tkinter variables to config.ini keys for easy loading/saving
         self.setting_var_map = {
@@ -220,7 +232,17 @@ class App(tk.Tk):
             'log_visa_commands_enabled_var': ('last_log_visa_commands_enabled', 'default_log_visa_commands_enabled', self.log_visa_commands_enabled_var),
             'scan_name_var': ('last_scan_name', 'default_scan_name', self.scan_name_var),
             'output_folder_var': ('last_scan_directory', 'default_scan_directory', self.output_folder_var),
-            'num_scan_cycles_var': ('last_num_scan_cycles', 'default_num_scan_cycles', self.num_scan_cycles_var)
+            'num_scan_cycles_var': ('last_num_scan_cycles', 'default_num_scan_cycles', self.num_scan_cycles_var),
+            # --- Add NEW Meta Scan variables to the map ---
+            'operator_name_var': ('last_operator_name', 'default_operator_name', self.operator_name_var),
+            'operator_contact_var': ('last_operator_contact', 'default_operator_contact', self.operator_contact_var),
+            'venue_name_var': ('last_venue_name', 'default_venue_name', self.venue_name_var),
+            'city_var': ('last_city', 'default_city', self.city_var),
+            'map_location_var': ('last_map_location', 'default_map_location', self.map_location_var),
+            'scanner_type_var': ('last_scanner_type', 'default_scanner_type', self.scanner_type_var),
+            'antenna_type_var': ('last_antenna_type', 'default_antenna_type', self.antenna_type_var),
+            'antenna_amplifier_var': ('last_antenna_amplifier', 'default_antenna_amplifier', self.antenna_amplifier_var),
+            'notes_var': ('last_notes', 'default_notes', self.notes_var),
         }
 
         # Tkinter variables for band selection checkboxes
@@ -252,7 +274,7 @@ class App(tk.Tk):
         Creates and arranges all GUI widgets in the main application window.
         """
         debug_print("Creating main application widgets...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        
+
         # Configure grid for the main window - 50/50 split, single row
         self.grid_columnconfigure(0, weight=1) # Left column
         self.grid_columnconfigure(1, weight=1) # Right column
@@ -261,7 +283,7 @@ class App(tk.Tk):
         # --- Left Column: Notebook for Settings and Tabs ---
         self.left_notebook = ttk.Notebook(self)
         self.left_notebook.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-        
+
         # Instantiate InstrumentTab and add it to the notebook
         self.instrument_tab = InstrumentTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.instrument_tab, text="Instrument Connection")
@@ -293,6 +315,10 @@ class App(tk.Tk):
         self.visa_interpreter_tab = VisaInterpreterTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.visa_interpreter_tab, text="VISA Interpreter")
 
+        # --- NEW: Inter Mod Tab ---
+        self.intermod_tab = InterModTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.intermod_tab, text="Inter Mod")
+
 
         # Bind tab selection event to update specific tab contents for the left notebook
         self.left_notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
@@ -320,7 +346,7 @@ class App(tk.Tk):
         self.console_text = scrolledtext.ScrolledText(console_frame, wrap="word", bg="#2b2b2b", fg="#cccccc", insertbackground="white")
         self.console_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.console_text.config(state=tk.DISABLED)
-        
+
         debug_print("Main application widgets created.", file=__file__, function=inspect.currentframe().f_code.co_name)
 
 
@@ -412,7 +438,7 @@ class App(tk.Tk):
         style.map('Treeview',
                 background=[('selected', ACCENT_BLUE)],
                 foreground=[('selected', 'white')])
-        
+
         style.configure('Treeview.Heading',
                         background="#4a4a4a",
                         foreground="white",
@@ -494,7 +520,7 @@ class App(tk.Tk):
         if overwrite:
             last_line_start = self.console_text.index("end-1c linestart")
             self.console_text.delete(last_line_start, tk.END)
-        
+
         self.console_text.insert(tk.END, message + "\n")
         self.console_text.see(tk.END)
         self.console_text.config(state=tk.DISABLED)
@@ -665,7 +691,7 @@ class App(tk.Tk):
         but only if the application is fully initialized.
         """
         debug_print("Application closing. Performing cleanup...", file=__file__, function=inspect.currentframe().f_code.co_name)
-        
+
         if self.is_ready_to_save:
             debug_print("--- State of band_vars before saving ---", file=__file__, function=inspect.currentframe().f_code.co_name)
             for i, band_item in enumerate(self.band_vars):
@@ -685,7 +711,7 @@ class App(tk.Tk):
         """
         selected_tab_id = self.left_notebook.select()
         selected_tab_widget = self.left_notebook.nametowidget(selected_tab_id)
-        
+
         if hasattr(selected_tab_widget, '_on_tab_selected'):
             selected_tab_widget._on_tab_selected(event)
             debug_print(f"Tab changed to {selected_tab_widget.winfo_class()}. Calling _on_tab_selected.", file=__file__, function=inspect.currentframe().f_code.co_name)

@@ -31,6 +31,30 @@ class ScanTab(ttk.Frame):
         self.app_instance = app_instance
         self.console_print_func = console_print_func if console_print_func else print
 
+        # Initialize Tkinter variables for new fields
+        # These should ideally be initialized in the main App class if they need to be globally accessible
+        # and persisted, but for demonstration, they are here.
+        # Ensure these are also added to your App's __init__ and its setting_var_map for proper config management.
+        if not hasattr(self.app_instance, 'operator_name_var'):
+            self.app_instance.operator_name_var = tk.StringVar(value="")
+        if not hasattr(self.app_instance, 'operator_contact_var'):
+            self.app_instance.operator_contact_var = tk.StringVar(value="")
+        if not hasattr(self.app_instance, 'venue_name_var'):
+            self.app_instance.venue_name_var = tk.StringVar(value="")
+        if not hasattr(self.app_instance, 'city_var'):
+            self.app_instance.city_var = tk.StringVar(value="")
+        if not hasattr(self.app_instance, 'map_location_var'):
+            self.app_instance.map_location_var = tk.StringVar(value="") # For the text field
+        if not hasattr(self.app_instance, 'scanner_type_var'):
+            self.app_instance.scanner_type_var = tk.StringVar(value="Unknown") # Will be updated by IDN query
+        if not hasattr(self.app_instance, 'antenna_type_var'):
+            self.app_instance.antenna_type_var = tk.StringVar(value="Omnidirectional")
+        if not hasattr(self.app_instance, 'antenna_amplifier_var'):
+            self.app_instance.antenna_amplifier_var = tk.StringVar(value="Passive")
+        if not hasattr(self.app_instance, 'notes_var'):
+            self.app_instance.notes_var = tk.StringVar(value="") # For the long notes field
+
+
         self._create_widgets()
 
     def _create_widgets(self):
@@ -46,30 +70,37 @@ class ScanTab(ttk.Frame):
         # We will dynamically adjust row weights later if needed, but for now,
         # settings and actions will be fixed, and bands will expand.
         self.grid_rowconfigure(0, weight=0) # Scan Settings frame
+        self.grid_rowconfigure(1, weight=0) # Meta Scan frame (new)
         # Placeholder for bands (will be dynamically configured)
-        self.grid_rowconfigure(1, weight=1) # Bands will occupy this row and potentially more
-        self.grid_rowconfigure(2, weight=0) # Configuration Actions frame
+        self.grid_rowconfigure(2, weight=1) # Bands will occupy this row and potentially more
+        self.grid_rowconfigure(3, weight=0) # Configuration Actions frame
+
+        # Helper to create labeled entry/checkbox/optionmenu rows
+        def create_setting_row(parent, label_text, tk_var, row_num, column=0, columnspan=2, is_checkbox=False, is_button=False, command=None, options=None, is_dropdown=False, sticky_val="ew"):
+            if is_button:
+                button = ttk.Button(parent, text=label_text, command=command, style='Blue.TButton')
+                button.grid(row=row_num, column=column, columnspan=columnspan, pady=2, padx=5, sticky=sticky_val)
+                return button
+            elif is_checkbox:
+                checkbox = ttk.Checkbutton(parent, text=label_text, variable=tk_var, style='TCheckbutton')
+                checkbox.grid(row=row_num, column=column, columnspan=columnspan, pady=2, padx=5, sticky="w")
+                return checkbox
+            elif is_dropdown and options:
+                ttk.Label(parent, text=label_text, style='TLabel').grid(row=row_num, column=column, sticky="w", padx=5, pady=2)
+                option_menu = ttk.OptionMenu(parent, tk_var, tk_var.get(), *options)
+                option_menu.config(style='Dark.TMenubutton') # Apply custom style
+                option_menu.grid(row=row_num, column=column+1, sticky="ew", padx=5, pady=2)
+                return option_menu
+            else:
+                ttk.Label(parent, text=label_text, style='TLabel').grid(row=row_num, column=column, sticky="w", padx=5, pady=2)
+                entry = ttk.Entry(parent, textvariable=tk_var, style='TEntry')
+                entry.grid(row=row_num, column=column+1, sticky=sticky_val, padx=5, pady=2)
+                return entry
 
         # --- Scan Settings Frame ---
         settings_frame = ttk.LabelFrame(self, text="Scan Settings", style='Dark.TLabelframe')
         settings_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         settings_frame.grid_columnconfigure(1, weight=1) # Make entry fields expand
-
-        # Helper to create labeled entry/checkbox rows
-        def create_setting_row(parent, label_text, tk_var, row_num, is_checkbox=False, is_button=False, command=None):
-            if is_button:
-                button = ttk.Button(parent, text=label_text, command=command, style='Blue.TButton')
-                button.grid(row=row_num, column=0, columnspan=2, pady=2, padx=5, sticky="ew")
-                return button
-            elif is_checkbox:
-                checkbox = ttk.Checkbutton(parent, text=label_text, variable=tk_var, style='TCheckbutton')
-                checkbox.grid(row=row_num, column=0, columnspan=2, pady=2, padx=5, sticky="w")
-                return checkbox
-            else:
-                ttk.Label(parent, text=label_text, style='TLabel').grid(row=row_num, column=0, sticky="w", padx=5, pady=2)
-                entry = ttk.Entry(parent, textvariable=tk_var, style='TEntry')
-                entry.grid(row=row_num, column=1, sticky="ew", padx=5, pady=2)
-                return entry
 
         row = 0
         create_setting_row(settings_frame, "RBW Step Size (Hz):", self.app_instance.rbw_step_size_hz_var, row); row += 1
@@ -84,8 +115,7 @@ class ScanTab(ttk.Frame):
         create_setting_row(settings_frame, "Scan RBW Segmentation (Hz):", self.app_instance.scan_rbw_segmentation_var, row); row += 1
         create_setting_row(settings_frame, "Default Focus Width (Hz):", self.app_instance.desired_default_focus_width_var, row); row += 1
         create_setting_row(settings_frame, "Number of Scan Cycles:", self.app_instance.num_scan_cycles_var, row); row += 1
-        create_setting_row(settings_frame, "Scan Name:", self.app_instance.scan_name_var, row); row += 1
-        
+
         # "Scan Export Folder" label and "Choose output directory" button
         ttk.Label(settings_frame, text="Scan Export Folder:", style='TLabel').grid(row=row, column=0, sticky="w", padx=5, pady=2)
         output_folder_entry = ttk.Entry(settings_frame, textvariable=self.app_instance.output_folder_var, style='TEntry')
@@ -99,15 +129,78 @@ class ScanTab(ttk.Frame):
         ttk.Button(settings_frame, text="Browse Export Folder", command=self._open_export_folder, style='Blue.TButton').grid(row=row, column=0, columnspan=3, pady=2, padx=5, sticky="ew")
         row += 1
 
+        # --- Meta Scan Frame (NEW) ---
+        meta_scan_frame = ttk.LabelFrame(self, text="Meta Scan", style='Dark.TLabelframe')
+        meta_scan_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        meta_scan_frame.grid_columnconfigure(1, weight=1) # Make entry fields expand
+
+        meta_row = 0
+        create_setting_row(meta_scan_frame, "Scan Name:", self.app_instance.scan_name_var, meta_row); meta_row += 1 # Moved from settings_frame
+        create_setting_row(meta_scan_frame, "Operator Name:", self.app_instance.operator_name_var, meta_row); meta_row += 1
+        create_setting_row(meta_scan_frame, "Operator Contact Info:", self.app_instance.operator_contact_var, meta_row); meta_row += 1
+        create_setting_row(meta_scan_frame, "Venue Name:", self.app_instance.venue_name_var, meta_row); meta_row += 1
+        create_setting_row(meta_scan_frame, "City:", self.app_instance.city_var, meta_row); meta_row += 1
+        create_setting_row(meta_scan_frame, "Map Location:", self.app_instance.map_location_var, meta_row); meta_row += 1
+        create_setting_row(meta_scan_frame, "Scanner Type:", self.app_instance.scanner_type_var, meta_row); meta_row += 1 # Will be updated by IDN query
+
+        # Antenna Type Dropdown
+        antenna_types = [
+                "Omnidirectional",
+                "Directional",
+                "Ground Plane",
+                "Whip",
+                "Dipole",
+                "Yagi-Uda",
+                "Log-Periodic",
+                "LPDA",
+                "Panel",
+                "Shark Fin",
+                "Patch",
+                "Helical",
+                "Parabolic",
+                "Blade",
+                "Monopole",
+                "Stubby",
+                "Loop",
+                "Turnstile",
+                "Corner Reflector"
+                  ]
+        create_setting_row(meta_scan_frame, "Antenna Type:", self.app_instance.antenna_type_var, meta_row, is_dropdown=True, options=antenna_types); meta_row += 1
+
+        # Antenna Amplifier Dropdown
+        antenna_amps = [
+            "Passive",         # No amplification
+            "Active",          # Amplified at antenna or inline
+            "Distribution",    # RF distro with gain, often multi-output
+            "Inline",          # Standalone amp inserted between antenna and receiver
+            "Masthead",        # Mounted near antenna (to minimize cable loss)
+            "Low-Noise (LNA)", # Specifically optimized for minimal added noise
+            "Broadband",       # Wide frequency coverage, often in coordination setups
+            "Filtered",        # Includes bandpass or notch filtering
+            "Switched",        # Amplifier can be remotely toggled (on/off/bypass)
+            "Bias-T Powered",  # Powered via coaxial cable (phantom voltage)
+            "Adjustable Gain"  # User-settable gain stages
+        ]
+        create_setting_row(meta_scan_frame, "Antenna Amplifier:", self.app_instance.antenna_amplifier_var, meta_row, is_dropdown=True, options=antenna_amps); meta_row += 1
+
+        # Notes - Multiline Text Box
+        ttk.Label(meta_scan_frame, text="Notes:", style='TLabel').grid(row=meta_row, column=0, sticky="nw", padx=5, pady=2)
+        notes_text = tk.Text(meta_scan_frame, height=3, width=40, wrap="word", font=("Helvetica", 10))
+        notes_text.grid(row=meta_row, column=1, sticky="ew", padx=5, pady=2, columnspan=2)
+        self.notes_text_widget = notes_text # Store reference for later access
+        meta_scan_frame.grid_columnconfigure(2, weight=0) # Don't let browse button column expand (if any in this frame)
+        meta_row += 1
+
+
         # --- Bands to Scan (Directly in ScanTab, no LabelFrame) ---
         # Create a canvas and scrollbar for the band selection checkboxes
         # This canvas will now be a direct child of ScanTab
         bands_canvas = tk.Canvas(self, bg="#2b2b2b", highlightthickness=0)
-        # Place it in row 1, spanning all columns if necessary
-        bands_canvas.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        # Place it in row 2, spanning all columns if necessary (adjusted row number)
+        bands_canvas.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
 
         bands_scrollbar = ttk.Scrollbar(self, orient="vertical", command=bands_canvas.yview)
-        bands_scrollbar.grid(row=1, column=1, sticky="ns", pady=10) # Place scrollbar next to canvas
+        bands_scrollbar.grid(row=2, column=1, sticky="ns", pady=10) # Place scrollbar next to canvas
 
         bands_canvas.configure(yscrollcommand=bands_scrollbar.set)
 
@@ -127,7 +220,7 @@ class ScanTab(ttk.Frame):
         for i, band_item in enumerate(self.app_instance.band_vars):
             band_info = band_item["band"]
             band_var = band_item["var"]
-            
+
             # Format the display text for each band
             display_text = (
                 f"{band_info['Band Name']} - "
@@ -145,8 +238,8 @@ class ScanTab(ttk.Frame):
 
         # --- Configuration Actions Frame ---
         button_frame = ttk.LabelFrame(self, text="Configuration Actions", style='Dark.TLabelframe')
-        # This frame will now be in row 2, below the bands
-        button_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+        # This frame will now be in row 3, below the bands (adjusted row number)
+        button_frame.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
         button_frame.grid_columnconfigure(0, weight=1) # Allow buttons to expand
 
         # Add buttons to the new frame
@@ -166,6 +259,10 @@ class ScanTab(ttk.Frame):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("Saving last used settings from ScanTab...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        # Update the notes_var from the Text widget before saving
+        self.app_instance.notes_var.set(self.notes_text_widget.get("1.0", tk.END).strip())
+
         save_config(self.app_instance)
         self.console_print_func("✅ Current settings saved to config.ini.")
 
@@ -179,6 +276,9 @@ class ScanTab(ttk.Frame):
         current_file = __file__
         debug_print("Restoring default settings from ScanTab... (delegating to logic)", file=current_file, function=current_function, console_print_func=self.console_print_func)
         restore_default_settings_logic(self.app_instance, self.console_print_func)
+        # After restoring, update the Text widget
+        self.notes_text_widget.delete("1.0", tk.END)
+        self.notes_text_widget.insert("1.0", self.app_instance.notes_var.get())
 
     def _restore_last_used_settings(self):
         """
@@ -189,6 +289,9 @@ class ScanTab(ttk.Frame):
         current_file = __file__
         debug_print("Restoring last used settings from ScanTab... (delegating to logic)", file=current_file, function=current_function, console_print_func=self.console_print_func)
         restore_last_used_settings_logic(self.app_instance, self.console_print_func)
+        # After restoring, update the Text widget
+        self.notes_text_widget.delete("1.0", tk.END)
+        self.notes_text_widget.insert("1.0", self.app_instance.notes_var.get())
 
     def _open_config_file(self):
         """
@@ -264,6 +367,10 @@ class ScanTab(ttk.Frame):
         # if settings are changed elsewhere or if the tab is revisited.
         self._load_band_selections_from_config()
 
+        # Also, update the Notes Text widget with the current notes_var value
+        self.notes_text_widget.delete("1.0", tk.END)
+        self.notes_text_widget.insert("1.0", self.app_instance.notes_var.get())
+
 
     def _load_band_selections_from_config(self):
         """
@@ -273,7 +380,7 @@ class ScanTab(ttk.Frame):
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
         debug_print("Loading band selections from config.ini...", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        
+
         # Get the last used selected bands from config
         last_selected_bands_str = self.app_instance.config.get('LAST_USED_SETTINGS', 'last_selected_bands', fallback='')
         last_selected_band_names = [name.strip() for name in last_selected_bands_str.split(',') if name.strip()]
@@ -283,4 +390,3 @@ class ScanTab(ttk.Frame):
             band_name = band_item["band"]["Band Name"]
             band_item["var"].set(band_name in last_selected_band_names)
         debug_print(f"Loaded selected bands from config: {last_selected_band_names}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-

@@ -25,7 +25,7 @@ import re
 # from tkinter import messagebox # Removed
 
 # Import plotting functions and constants
-from utils.plotting_utils import plot_multi_trace_data, _open_plot_in_browser
+from utils.plotting_utils import plot_multi_trace_data, _open_plot_in_browser # Changed to utils.plotting_utils
 from ref.frequency_bands import (
     MHZ_TO_HZ,
     TV_PLOT_BAND_MARKERS,
@@ -34,148 +34,208 @@ from ref.frequency_bands import (
 from utils.instrument_control import debug_print # Import debug_print
 import inspect # Import inspect module
 
-def generate_current_cycle_average_csv_and_plot(collected_scans_dataframes, scan_name_var, output_folder_var, open_html_after_complete_var, include_tv_markers_var, include_gov_markers_var, include_markers_var, console_print_func):
-    """
-    Generates an averaged CSV and an interactive HTML plot from collected scan data.
-    This function processes multiple scan dataframes, calculates various statistics
-    (average, median, range, std dev, variance, PSD), saves them to CSV, and generates a plot.
-
-    Inputs:
-        collected_scans_dataframes (list): A list of pandas DataFrames, each representing a scan cycle.
-        scan_name_var (tk.StringVar): Tkinter variable for the base name of the scan.
-        output_folder_var (tk.StringVar): Tkinter variable for the output directory.
-        open_html_after_complete_var (tk.BooleanVar): Tkinter variable to open HTML plot after generation.
-        include_tv_markers_var (tk.BooleanVar): Tkinter variable to include TV markers on plot.
-        include_gov_markers_var (tk.BooleanVar): Tkinter variable to include Government markers on plot.
-        include_markers_var (tk.BooleanVar): Tkinter variable to include extracted markers on plot.
-        console_print_func (function): Function to use for console output.
-    """
+def generate_current_cycle_average_csv_and_plot(
+    collected_scans_dataframes,
+    output_dir,
+    include_tv_markers_var,
+    include_gov_markers_var,
+    open_html_after_complete_var,
+    console_print_func,
+    include_markers_var=None # Ensure this is compatible with plotting_utils.py if used
+):
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    debug_print("Generating averaged CSV and plot...", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Input collected_scans_dataframes (keys): {collected_scans_dataframes.keys() if collected_scans_dataframes else 'None'}", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Input output_dir: {output_dir}", file=current_file, function=current_function, console_print_func=console_print_func)
 
     if not collected_scans_dataframes:
-        console_print_func("⚠️ Warning: No scan data available to generate average plot.")
-        debug_print("No scan data for average plot.", file=current_file, function=current_function, console_print_func=console_print_func)
-        return
+        console_print_func("No scan dataframes provided for averaging.")
+        debug_print("No scan dataframes for current cycle averaging.", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Exiting {current_function} (no dataframes)", file=current_file, function=current_function, console_print_func=console_print_func)
+        return None, None
 
-    scan_name = scan_name_var.get()
-    output_folder = output_folder_var.get()
+    last_scan_name = list(collected_scans_dataframes.keys())[-1]
+    plot_title_only_datetime = datetime.now().strftime("%Y-%m-%d %H%M%S")
+    scan_name = f"Cycle_{plot_title_only_datetime}"
+    debug_print(f"Scan name for current cycle: {scan_name}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        console_print_func(f"Created output directory: {output_folder}")
-        debug_print(f"Created output directory: {output_folder}", file=current_file, function=current_function, console_print_func=console_print_func)
+    aligned_dfs = []
+    first_df_freq = collected_scans_dataframes[list(collected_scans_dataframes.keys())[0]]['Frequency (Hz)']
+    debug_print(f"Reference frequency axis from first dataframe (first few points): {first_df_freq.head().tolist()}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Ensure all dataframes have the same frequency points for aggregation
-    # This assumes frequency is the first column and is consistent.
-    # A more robust solution might involve resampling or merging.
-    base_df = collected_scans_dataframes[0].copy()
-    frequencies = base_df.iloc[:, 0]
+    for df_name, df in collected_scans_dataframes.items():
+        if 'Frequency (Hz)' in df.columns and 'Power (dBm)' in df.columns:
+            aligned_df = df.set_index('Frequency (Hz)').reindex(first_df_freq).reset_index()
+            aligned_dfs.append(aligned_df.set_index('Frequency (Hz)')['Power (dBm)'])
+            debug_print(f"Aligned {df_name} for power levels.", file=current_file, function=current_function, console_print_func=console_print_func)
+        else:
+            console_print_func(f"Skipping {df_name}: Missing 'Frequency (Hz)' or 'Power (dBm)' column.")
+            debug_print(f"Skipping {df_name} due to missing columns.", file=current_file, function=current_function, console_print_func=console_print_func)
+            continue
 
-    # Extract all power level columns
-    all_power_levels = [df.iloc[:, 1] for df in collected_scans_dataframes] # Assuming power is second column
+    if not aligned_dfs:
+        console_print_func("No valid scan data to average after alignment.")
+        debug_print("No valid scan data to average after alignment.", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Exiting {current_function} (no aligned data)", file=current_file, function=current_function, console_print_func=console_print_func)
+        return None, None
 
-    # Convert list of Series to a DataFrame for easier aggregation
-    power_levels_df = pd.DataFrame(all_power_levels).T
-    power_levels_df.columns = [f'Cycle_{i+1}' for i in range(len(collected_scans_dataframes))]
+    power_levels_df = pd.concat(aligned_dfs, axis=1)
+    power_levels_df.columns = [f"Scan_{i+1}" for i in range(len(aligned_dfs))]
+    debug_print(f"Combined power_levels_df shape: {power_levels_df.shape}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Calculate statistics
     average_levels = power_levels_df.mean(axis=1)
     median_levels = power_levels_df.median(axis=1)
     range_levels = power_levels_df.max(axis=1) - power_levels_df.min(axis=1)
     std_dev_levels = power_levels_df.std(axis=1)
     variance_levels = power_levels_df.var(axis=1)
+    debug_print("Calculated average, median, range, std dev, variance.", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Calculate Power Spectral Density (PSD)
-    # Assuming the frequency step is constant for PSD calculation
-    if len(frequencies) > 1:
-        freq_step_hz = (frequencies.iloc[1] - frequencies.iloc[0]) * MHZ_TO_HZ
-    else:
-        freq_step_hz = 1 # Default to 1 Hz if only one frequency point
-        console_print_func("⚠️ Warning: Only one frequency point, PSD calculation may not be meaningful.")
-        debug_print("Single frequency point, PSD may be inaccurate.", file=current_file, function=current_function, console_print_func=console_print_func)
-
-    # Convert dBm to Watts for linear averaging, then to dBm/Hz for PSD
-    power_watts = 10**((average_levels - 30) / 10) # Convert dBm to Watts
-    psd_dbm_per_hz = 10 * np.log10(power_watts / freq_step_hz) + 30 # Convert to dBm/Hz
-
-    # Create aggregated DataFrame
     aggregated_df = pd.DataFrame({
-        'Frequency (MHz)': frequencies,
-        'Average Power (dBm)': average_levels,
-        'Median Power (dBm)': median_levels,
-        'Range (dB)': range_levels,
-        'Standard Deviation (dB)': std_dev_levels,
-        'Variance (dB^2)': variance_levels,
-        'PSD (dBm/Hz)': psd_dbm_per_hz
-    })
+        'Frequency (Hz)': power_levels_df.index,
+        'Average (dBm)': average_levels,
+        'Median (dBm)': median_levels,
+        'Range (dBm)': range_levels,
+        'Std Dev (dBm)': std_dev_levels,
+        'Variance (dBm^2)': variance_levels,
+    }).reset_index(drop=True)
+    debug_print(f"Aggregated DataFrame columns: {aggregated_df.columns.tolist()}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Prepare historical data for plotting overlays
-    historical_dfs_for_overlays = []
-    for i, df in enumerate(collected_scans_dataframes):
-        historical_dfs_for_overlays.append({
-            'name': f'Cycle {i+1} (Raw)',
-            'df': df,
-            'x_col': df.columns[0], # Frequency column
-            'y_col': df.columns[1]  # Power level column
-        })
+    csv_filename = os.path.join(output_dir, f"{scan_name}_aggregated_data.csv")
+    aggregated_df.to_csv(csv_filename, index=False)
+    console_print_func(f"✅ Aggregated data saved to: {csv_filename}")
+    debug_print(f"Aggregated data saved to: {csv_filename}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Save aggregated data to CSV
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = os.path.join(output_folder, f"{scan_name}_averaged_data_{timestamp}.csv")
-    try:
-        aggregated_df.to_csv(csv_filename, index=False)
-        console_print_func(f"✅ Averaged data saved to: {csv_filename}")
-        debug_print(f"Averaged data saved: {csv_filename}", file=current_file, function=current_function, console_print_func=console_print_func)
-    except Exception as e:
-        console_print_func(f"❌ Failed to save averaged CSV: {e}")
-        debug_print(f"Failed to save averaged CSV: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-        # messagebox.showerror("CSV Save Error", f"Could not save averaged CSV: {e}") # Removed
-        return
+    html_filename = os.path.join(output_dir, f"{scan_name}_aggregated_plot.html")
+    debug_print(f"Plot HTML filename: {html_filename}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Save historical raw data to separate CSVs if there's more than one cycle
-    if len(collected_scans_dataframes) > 1:
-        historical_csv_folder = os.path.join(output_folder, f"{scan_name}_raw_cycles_{timestamp}")
-        os.makedirs(historical_csv_folder, exist_ok=True)
-        debug_print(f"Created historical CSV folder: {historical_csv_folder}", file=current_file, function=current_function, console_print_func=console_print_func)
+    historical_dfs_for_overlays = [
+        {'name': df_name, 'df': df}
+        for df_name, df in collected_scans_dataframes.items()
+    ]
+    debug_print(f"Prepared {len(historical_dfs_for_overlays)} historical dataframes for overlays.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    fig, plot_html_path_return = plot_multi_trace_data(
+        aggregated_df,
+        f"{scan_name} - Averaged, Median, Range, Std Dev, Variance & PSD (Historical {plot_title_only_datetime})",
+        include_tv_markers_var.get(),
+        include_gov_markers_var.get(),
+        historical_dfs_with_names=historical_dfs_for_overlays,
+        output_html_path=html_filename,
+        console_print_func=console_print_func
+    )
+
+    if fig:
+        fig.write_html(plot_html_path_return, auto_open=False)
+        console_print_func(f"✅ Historical averaged plot saved to: {plot_html_path_return}")
+        if open_html_after_complete_var.get():
+            _open_plot_in_browser(plot_html_path_return, console_print_func)
+            debug_print(f"Opened plot in browser: {plot_html_path_return}", file=current_file, function=current_function, console_print_func=console_print_func)
+    else:
+        console_print_func("🚫 Plotly figure was not generated for historical averaged data.")
+        debug_print("Plotly figure not generated for historical averaged data.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=console_print_func)
+    return fig, plot_html_path_return
+
+
+def generate_multi_file_average_and_plot(
+    file_paths,
+    selected_avg_types,
+    plot_title_prefix,
+    include_tv_markers,
+    include_gov_markers,
+    output_html_path,
+    open_html_after_complete,
+    console_print_func
+):
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Input file_paths ({len(file_paths)} files): {file_paths}", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Input selected_avg_types: {selected_avg_types}", file=current_file, function=current_function, console_print_func=console_print_func)
+    debug_print(f"Input output_html_path: {output_html_path}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    if not file_paths:
+        console_print_func("No file paths provided for multi-file averaging.")
+        debug_print("No file paths provided for multi-file averaging.", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Exiting {current_function} (no file paths)", file=current_file, function=current_function, console_print_func=console_print_func)
+        return None, None
+
+    all_scans_dfs = []
+    for f_path in file_paths:
         try:
-            for i, df in enumerate(collected_scans_dataframes):
-                raw_csv_path = os.path.join(historical_csv_folder, f"{scan_name}_raw_cycle_{i+1}.csv")
-                df.to_csv(raw_csv_path, index=False)
-                debug_print(f"Saved raw cycle {i+1} to: {raw_csv_path}", file=current_file, function=current_function, console_print_func=console_print_func)
-            console_print_func(f"✅ Historical raw scan data saved to: {historical_csv_folder}")
+            df = pd.read_csv(f_path)
+            if 'Frequency (Hz)' in df.columns and 'Power (dBm)' in df.columns:
+                all_scans_dfs.append(df)
+                debug_print(f"Successfully read file: {os.path.basename(f_path)}", file=current_file, function=current_function, console_print_func=console_print_func)
+            else:
+                console_print_func(f"Skipping {os.path.basename(f_path)}: Missing 'Frequency (Hz)' or 'Power (dBm)' columns.")
+                debug_print(f"Skipping {os.path.basename(f_path)} due to missing columns.", file=current_file, function=current_function, console_print_func=console_print_func)
         except Exception as e:
-            console_print_func(f"❌ Failed to save historical CSVs: {e}")
-            debug_print(f"Failed to save historical CSVs: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-            # messagebox.showerror("CSV Save Error", f"Could not save historical CSVs: {e}") # Removed
-            return
+            console_print_func(f"Error reading {os.path.basename(f_path)}: {e}")
+            debug_print(f"Error reading {os.path.basename(f_path)}: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
 
-    # Plotting the historical averaged, median, and range data, PLUS historical overlays
-    try:
-        plot_title_only_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # Use only date and time for title
-        html_filename = os.path.join(output_folder, f"{scan_name}_averaged_plot_{timestamp}.html")
-        fig, plot_html_path_return = plot_multi_trace_data(
-            aggregated_df,
-            f"{scan_name} - Averaged, Median, Range, Std Dev, Variance & PSD (Historical {plot_title_only_datetime})", # Updated plot title
-            include_tv_markers_var.get(),
-            include_gov_markers_var.get(),
-            include_markers_var.get(), # Pass include_markers_var
-            historical_dfs_with_names=historical_dfs_for_overlays, # Pass historical data for overlays
-            output_html_path=html_filename, # Pass the desired full path for the HTML file
-            console_print_func=console_print_func # Pass console_print_func
-        )
+    if not all_scans_dfs:
+        console_print_func("No valid scan data could be loaded from the selected files for averaging.")
+        debug_print("No valid scan data could be loaded from the selected files for averaging.", file=current_file, function=current_function, console_print_func=console_print_func)
+        debug_print(f"Exiting {current_function} (no valid data)", file=current_file, function=current_function, console_print_func=console_print_func)
+        return None, None
 
-        if fig:
-            fig.write_html(plot_html_path_return, auto_open=False)
-            console_print_func(f"✅ Historical averaged plot saved to: {plot_html_path_return}")
-            if open_html_after_complete_var.get():
-                _open_plot_in_browser(plot_html_path_return, console_print_func) # Pass console_print_func
-        else:
-            console_print_func("🚫 Plotly figure was not generated for historical averaged data.")
+    reference_freq = all_scans_dfs[0]['Frequency (Hz)']
+    debug_print(f"Reference frequency axis from first loaded file (first few points): {reference_freq.head().tolist()}", file=current_file, function=current_function, console_print_func=console_print_func)
+    power_levels_aligned = []
 
-    except Exception as e:
-        console_print_func(f"❌ Error generating historical averaged plot: {e}")
-        debug_print(f"Error generating historical averaged plot: {e}", file=current_file, function=current_function, console_print_func=console_print_func)
-        # messagebox.showerror("Plotting Error", f"An error occurred while generating the historical averaged plot: {e}") # Removed
+    for df in all_scans_dfs:
+        aligned_power_series = df.set_index('Frequency (Hz)')['Power (dBm)'].reindex(reference_freq)
+        power_levels_aligned.append(aligned_power_series)
+        debug_print(f"Aligned one dataframe's power levels.", file=current_file, function=current_function, console_print_func=console_print_func)
 
+    power_levels_df = pd.concat(power_levels_aligned, axis=1)
+    power_levels_df.columns = [f"File_{i+1}" for i in range(len(power_levels_aligned))]
+    debug_print(f"Combined and aligned power_levels_df shape: {power_levels_df.shape}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    aggregated_df_columns = {'Frequency (Hz)': reference_freq}
+    debug_print(f"Calculating selected average types: {selected_avg_types}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    if "Average" in selected_avg_types:
+        aggregated_df_columns['Average (dBm)'] = power_levels_df.mean(axis=1)
+    if "Median" in selected_avg_types:
+        aggregated_df_columns['Median (dBm)'] = power_levels_df.median(axis=1)
+    if "Range" in selected_avg_types:
+        aggregated_df_columns['Range (dBm)'] = power_levels_df.max(axis=1) - power_levels_df.min(axis=1)
+    if "Std Dev" in selected_avg_types:
+        aggregated_df_columns['Std Dev (dBm)'] = power_levels_df.std(axis=1)
+    if "Variance" in selected_avg_types:
+        aggregated_df_columns['Variance (dBm^2)'] = power_levels_df.var(axis=1)
+    if "PSD (dBm/Hz)" in selected_avg_types:
+        console_print_func("Warning: PSD (dBm/Hz) calculation requires Resolution Bandwidth (RBW) which is not available from CSVs. Plotting Average as a proxy.")
+        debug_print("PSD selected, using Average as proxy.", file=current_file, function=current_function, console_print_func=console_print_func)
+        aggregated_df_columns['PSD (dBm/Hz)'] = power_levels_df.mean(axis=1)
+
+    aggregated_df = pd.DataFrame(aggregated_df_columns).reset_index(drop=True)
+    debug_print(f"Final aggregated_df columns: {aggregated_df.columns.tolist()}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    plot_title_suffix = ", ".join(selected_avg_types)
+    plot_title = f"{plot_title_prefix} - {plot_title_suffix} (Multi-File Average)"
+    debug_print(f"Generated plot title: {plot_title}", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    fig, plot_html_path_return = plot_multi_trace_data(
+        aggregated_df,
+        plot_title,
+        include_tv_markers,
+        include_gov_markers,
+        historical_dfs_with_names=None,
+        output_html_path=output_html_path,
+        console_print_func=console_print_func
+    )
+
+    if fig and open_html_after_complete:
+        _open_plot_in_browser(plot_html_path_return, console_print_func)
+        debug_print(f"Opened plot in browser: {plot_html_path_return}", file=current_file, function=current_function, console_print_func=console_print_func)
+    elif not fig:
+        console_print_func("🚫 Plotly figure was not generated for multi-file averaged data.")
+        debug_print("Plotly figure not generated for multi-file averaged data.", file=current_file, function=current_function, console_print_func=console_print_func)
+
+    debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=console_print_func)
+    return fig, plot_html_path_return
