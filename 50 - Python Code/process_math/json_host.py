@@ -54,11 +54,24 @@ except ImportError as e:
 
 app = Flask(__name__)
 
+# --- Flask Configuration for Pretty JSON Output ---
+# This setting tells Flask to pretty-print JSON responses in the browser
+# when not in debug mode (or when JSONIFY_PRETTYPRINT_REGULAR is True).
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
+# This setting prevents Flask from sorting JSON keys alphabetically,
+# which often results in a more natural order for human readability.
+app.config['JSON_SORT_KEYS'] = False
+# This setting ensures that non-ASCII characters are output directly
+# instead of being escaped to \uXXXX sequences.
+app.config['JSON_AS_ASCII'] = False
+
+
 # Define the base directory where scan CSVs are stored.
 # This should match the 'output_folder' setting in main_app.py, which defaults to 'scan_data'.
 # It's assumed to be a sibling of the 'src' directory, at the project root level.
 SCAN_DATA_FOLDER = os.path.join(project_root, 'scan_data')
-MARKERS_FILE = os.path.join(project_root, 'ref', 'MARKERS.csv') # Assuming MARKERS.csv is in ref/
+MARKERS_FILE = os.path.join(project_root, 'scan_data', 'MARKERS.csv') # Assuming MARKERS.csv is in ref/
+CURRENT_SCAN_FILENAME_FILE = os.path.join(SCAN_DATA_FOLDER, '_current_scan_in_progress.txt') # File to store current scan filename
 
 # Ensure the scan data directory exists. This is primarily for robustness;
 # the main application should create it during scans.
@@ -98,57 +111,37 @@ def _read_markers_data():
     return markers_data
 
 
-@app.route('/api/scan_data/<filename>', methods=['GET'])
-def get_scan_data(filename):
+def _get_scan_data_from_file(file_path):
     """
-    API endpoint to retrieve scan data from a specified CSV file.
-    The data is returned as a JSON object containing headers, scan data, and marker data.
-
-    Example usage:
-    GET /api/scan_data/MyScan_RBW10K_HOLD3_Offset0_20231027_103000.csv
-
-    Returns:
-        JSON response: An object with "headers", "data", and "markers" arrays, or an error message.
+    Helper function to read scan data from a given CSV file path.
+    Returns a dictionary with "headers", "data", and "markers".
     """
+    scan_data = []
     current_function = inspect.currentframe().f_code.co_name
     current_file = __file__
-    debug_print(f"Received request for file: {filename}", file=current_file, function=current_function)
-
-    # Construct the full path to the requested CSV file
-    file_path = os.path.join(SCAN_DATA_FOLDER, filename)
-
-    # Validate filename to prevent directory traversal attacks
-    if not os.path.abspath(file_path).startswith(os.path.abspath(SCAN_DATA_FOLDER)):
-        debug_print(f"Attempted directory traversal detected: {filename}", file=current_file, function=current_function)
-        return jsonify({"error": "Invalid filename or path"}), 400
 
     if not os.path.exists(file_path):
         debug_print(f"File not found: {file_path}", file=current_file, function=current_function)
-        return jsonify({"error": "File not found"}), 404
+        return {"error": "File not found"}, 404
 
-    scan_data = []
     try:
         with open(file_path, 'r', newline='') as csv_file:
             csv_reader = csv.reader(csv_file)
-            # As per previous instructions, CSVs are written without headers.
-            # The headers "Frequency_MHz" and "Power_dBm" are fixed.
-            
             for row in csv_reader:
-                if len(row) == 2: # Expecting two columns: Frequency_MHz, Power_dBm
+                if len(row) == 2:
                     try:
                         freq_mhz = float(row[0])
                         power_dbm = float(row[1])
-                        scan_data.append([freq_mhz, power_dbm]) # Append as a list of values
+                        scan_data.append([freq_mhz, power_dbm])
                     except ValueError:
-                        debug_print(f"Skipping malformed row in {filename}: {row}", file=current_file, function=current_function)
+                        debug_print(f"Skipping malformed row in {os.path.basename(file_path)}: {row}", file=current_file, function=current_function)
                         continue
                 else:
-                    debug_print(f"Skipping row with incorrect number of columns in {filename}: {row}", file=current_file, function=current_function)
+                    debug_print(f"Skipping row with incorrect number of columns in {os.path.basename(file_path)}: {row}", file=current_file, function=current_function)
                     continue
 
-        debug_print(f"Successfully read {len(scan_data)} data points from {filename}", file=current_file, function=current_function)
+        debug_print(f"Successfully read {len(scan_data)} data points from {os.path.basename(file_path)}", file=current_file, function=current_function)
 
-        # Read marker data
         markers_data = _read_markers_data()
 
         response_data = {
@@ -156,11 +149,101 @@ def get_scan_data(filename):
             "data": scan_data,
             "markers": markers_data
         }
-        return jsonify(response_data), 200
+        return response_data, 200
 
     except Exception as e:
         debug_print(f"Error reading CSV file {file_path}: {e}", file=current_file, function=current_function)
-        return jsonify({"error": f"Error processing file: {e}"}), 500
+        return {"error": f"Error processing file: {e}"}, 500
+
+
+@app.route('/api/scan_data/<filename>', methods=['GET'])
+def get_scan_data(filename):
+    """
+    API endpoint to retrieve scan data from a specified CSV file.
+    The data is returned as a JSON object containing headers, scan data, and marker data.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print(f"Received request for file: {filename}", file=current_file, function=current_function)
+
+    file_path = os.path.join(SCAN_DATA_FOLDER, filename)
+
+    # Validate filename to prevent directory traversal attacks
+    if not os.path.abspath(file_path).startswith(os.path.abspath(SCAN_DATA_FOLDER)):
+        debug_print(f"Attempted directory traversal detected: {filename}", file=current_file, function=current_function)
+        return jsonify({"error": "Invalid filename or path"}), 400
+
+    response, status_code = _get_scan_data_from_file(file_path)
+    return jsonify(response), status_code
+
+
+@app.route('/api/latest_scan_data', methods=['GET'])
+def get_latest_scan_data():
+    """
+    API endpoint to retrieve data from the latest (most recently modified) CSV scan file.
+    The data is returned in the same JSON format as /api/scan_data/<filename>.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print("Received request for latest scan data.", file=current_file, function=current_function)
+
+    try:
+        csv_files = [f for f in os.listdir(SCAN_DATA_FOLDER) if f.endswith('.csv')]
+        if not csv_files:
+            debug_print("No CSV scan files found for latest scan.", file=current_file, function=current_function)
+            return jsonify({"error": "No scan files found."}), 404
+
+        # Sort files by modification time (latest first)
+        csv_files.sort(key=lambda f: os.path.getmtime(os.path.join(SCAN_DATA_FOLDER, f)), reverse=True)
+        latest_csv_filename = csv_files[0]
+        latest_file_path = os.path.join(SCAN_DATA_FOLDER, latest_csv_filename)
+
+        debug_print(f"Serving latest scan data from: {latest_csv_filename}", file=current_file, function=current_function)
+        response, status_code = _get_scan_data_from_file(latest_file_path)
+        return jsonify(response), status_code
+
+    except Exception as e:
+        debug_print(f"Error getting latest scan data: {e}", file=current_file, function=current_function)
+        return jsonify({"error": f"Error retrieving latest scan data: {e}"}), 500
+
+
+@app.route('/api/scan_in_progress_data', methods=['GET'])
+def get_scan_in_progress_data():
+    """
+    API endpoint to retrieve data from the currently active scan file.
+    The filename is read from a temporary file (_current_scan_in_progress.txt).
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print("Received request for scan in progress data.", file=current_file, function=current_function)
+
+    if not os.path.exists(CURRENT_SCAN_FILENAME_FILE):
+        debug_print(f"Current scan filename file not found: {CURRENT_SCAN_FILENAME_FILE}", file=current_file, function=current_function)
+        return jsonify({"error": "No scan currently in progress or filename not available."}), 404
+
+    try:
+        with open(CURRENT_SCAN_FILENAME_FILE, 'r') as f:
+            current_scan_filename = f.read().strip()
+        
+        if not current_scan_filename:
+            debug_print("Current scan filename file is empty.", file=current_file, function=current_function)
+            return jsonify({"error": "Current scan filename is empty."}), 404
+
+        current_scan_file_path = os.path.join(SCAN_DATA_FOLDER, current_scan_filename)
+        
+        # Validate filename to prevent directory traversal attacks
+        if not os.path.abspath(current_scan_file_path).startswith(os.path.abspath(SCAN_DATA_FOLDER)):
+            debug_print(f"Attempted directory traversal detected for in-progress scan: {current_scan_filename}", file=current_file, function=current_function)
+            return jsonify({"error": "Invalid in-progress scan filename or path"}), 400
+
+        debug_print(f"Serving scan in progress data from: {current_scan_filename}", file=current_file, function=current_function)
+        response, status_code = _get_scan_data_from_file(current_scan_file_path)
+        return jsonify(response), status_code
+
+    except Exception as e:
+        debug_print(f"Error getting scan in progress data: {e}", file=current_file, function=current_function)
+        return jsonify({"error": f"Error retrieving scan in progress data: {e}"}), 500
+
 
 @app.route('/api/list_scans', methods=['GET'])
 def list_scans():
@@ -183,6 +266,25 @@ def list_scans():
     except Exception as e:
         debug_print(f"Error listing scan files: {e}", file=current_file, function=current_function)
         return jsonify({"error": f"Error listing files: {e}"}), 500
+
+@app.route('/api/markers_data', methods=['GET'])
+def get_markers_data():
+    """
+    API endpoint to retrieve all marker data from MARKERS.csv.
+    Returns the data as a JSON array of marker objects.
+    """
+    current_function = inspect.currentframe().f_code.co_name
+    current_file = __file__
+    debug_print("Received request for markers data.", file=current_file, function=current_function)
+    
+    markers_data = _read_markers_data()
+    if markers_data:
+        debug_print(f"Returning {len(markers_data)} markers.", file=current_file, function=current_function)
+        return jsonify(markers_data), 200
+    else:
+        debug_print("No markers data found or error reading markers file.", file=current_file, function=current_function)
+        return jsonify({"error": "No markers data found or an error occurred."}), 404
+
 
 @app.route('/')
 def index():

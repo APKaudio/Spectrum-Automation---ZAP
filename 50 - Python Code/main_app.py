@@ -45,6 +45,7 @@ from tabs.tab_marker_display import MarkersDisplayTab
 from tabs.tab_plotting import PlottingTab
 from tabs.tab_report_converter import ReportConverterTab
 from tabs.tab_scan_configuration import ScanTab
+from tabs.tab_JSON_api import JsonApiTab # Import the new JSON API tab
 
 from tabs.tab_instrument_connection import InstrumentTab
 from tabs.tab_visa_interpreter import VisaInterpreterTab
@@ -280,6 +281,10 @@ class App(tk.Tk):
 
         self.plotting_tab = PlottingTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.plotting_tab, text="Plotting")
+
+        # Add the new JSON API Tab
+        self.json_api_tab = JsonApiTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
+        self.left_notebook.add(self.json_api_tab, text="JSON API")
 
         self.report_converter_tab = ReportConverterTab(self.left_notebook, app_instance=self, console_print_func=self._print_to_gui_console)
         self.left_notebook.add(self.report_converter_tab, text="Report Converter")

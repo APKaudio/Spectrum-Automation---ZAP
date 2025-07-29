@@ -65,18 +65,22 @@ class JsonApiTab(ttk.Frame):
         self.view_all_scans_button = ttk.Button(self.api_control_frame, text="View All API Scans", command=self._open_all_api_scans, style='Purple.TButton', state=tk.DISABLED)
         self.view_all_scans_button.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
+        # Updated: This button now points to the static /api/latest_scan_data endpoint
         self.view_latest_scan_api_button = ttk.Button(self.api_control_frame, text="View Latest API Scan", command=self._open_latest_api_scan, style='Purple.TButton', state=tk.DISABLED)
         self.view_latest_scan_api_button.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
+        # New button for scan in progress
+        self.view_in_progress_api_button = ttk.Button(self.api_control_frame, text="View Scan In Progress API", command=self._open_scan_in_progress_api, style='Blue.TButton', state=tk.DISABLED)
+        self.view_in_progress_api_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
         self.view_markers_api_button = ttk.Button(self.api_control_frame, text="View Markers API", command=self._open_markers_api, style='Orange.TButton', state=tk.DISABLED)
-        self.view_markers_api_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.view_markers_api_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
         # Frame for dynamically generated scan buttons
+        # This frame's row is now adjusted to be below all static API control buttons
         self.dynamic_scan_buttons_frame = ttk.LabelFrame(self, text="Available API Scans", style='Dark.TLabelframe')
-        # This frame will be placed below the API controls, initially hidden
-        self.dynamic_scan_buttons_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # Placed below API controls
+        self.dynamic_scan_buttons_frame.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         self.dynamic_scan_buttons_frame.grid_columnconfigure(0, weight=1)
-        # Hide it initially
         self.dynamic_scan_buttons_frame.grid_remove()
 
         debug_print("JsonApiTab widgets created.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -89,14 +93,13 @@ class JsonApiTab(ttk.Frame):
         current_file = __file__
         debug_print("JSON API thread target started.", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        # Assuming json_host.py is in process_math/ relative to the main app's script directory
         script_path = os.path.join(self.app_instance._script_dir, 'process_math', 'json_host.py')
         
         try:
             self.json_api_process = subprocess.Popen(
                 [sys.executable, script_path],
-                stdout=subprocess.DEVNULL, # Redirect stdout to null
-                stderr=subprocess.DEVNULL, # Redirect stderr to null
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 creationflags=subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
             )
             self.app_instance.after(100, self._update_api_button_states)
@@ -169,10 +172,12 @@ class JsonApiTab(ttk.Frame):
         self.view_all_scans_button.config(state=tk.NORMAL if is_api_running else tk.DISABLED)
         self.view_markers_api_button.config(state=tk.NORMAL if is_api_running else tk.DISABLED)
         
-        # Enable "View Latest API Scan" only if API is running AND there are collected scans
-        # This requires access to app_instance.collected_scans_dataframes
-        has_scans = bool(self.app_instance.collected_scans_dataframes)
-        self.view_latest_scan_api_button.config(state=tk.NORMAL if is_api_running and has_scans else tk.DISABLED)
+        # Check if scan_control_tab exists and is_scanning is True
+        is_scanning = getattr(self.app_instance, 'scan_control_tab', None) and self.app_instance.scan_control_tab.is_scanning
+        self.view_in_progress_api_button.config(state=tk.NORMAL if is_api_running and is_scanning else tk.DISABLED)
+
+        # "View Latest API Scan" is always enabled if API is running, as the endpoint handles finding the latest.
+        self.view_latest_scan_api_button.config(state=tk.NORMAL if is_api_running else tk.DISABLED)
 
 
     def _open_all_api_scans(self):
@@ -281,8 +286,8 @@ class JsonApiTab(ttk.Frame):
 
     def _open_latest_api_scan(self):
         """
-        Determines the filename of the latest scan CSV and opens its API endpoint
-        in the browser.
+        Opens the API endpoint for the latest scan data in the browser.
+        This endpoint is static and the API handles finding the latest file.
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
@@ -293,29 +298,44 @@ class JsonApiTab(ttk.Frame):
             debug_print("JSON API not running for _open_latest_api_scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
         
-        output_dir = self.app_instance.output_folder_var.get()
-        if not os.path.exists(output_dir):
-            self.console_print_func(f"⚠️ Scan data directory not found: {output_dir}")
-            debug_print(f"Scan data directory not found: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return
-
-        csv_files = [f for f in os.listdir(output_dir) if f.endswith('.csv')]
-        if not csv_files:
-            self.console_print_func("⚠️ No CSV scan files found in the output directory.")
-            debug_print("No CSV scan files found.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-            return
-
-        csv_files.sort(key=lambda f: os.path.getmtime(os.path.join(output_dir, f)), reverse=True)
-        latest_csv_filename = csv_files[0]
-        
-        api_link = f"{self.json_api_url_base}/api/scan_data/{latest_csv_filename}"
+        api_link = f"{self.json_api_url_base}/api/latest_scan_data" # Static URL for latest scan
         try:
             webbrowser.open_new_tab(api_link)
-            self.console_print_func(f"✅ Opened API link for latest scan: {latest_csv_filename}")
+            self.console_print_func(f"✅ Opened API link for latest scan data.")
             debug_print(f"Opened {api_link}", file=current_file, function=current_function, console_print_func=self.console_print_func)
         except Exception as e:
             self.console_print_func(f"❌ Error opening latest API scan link: {e}")
             debug_print(f"Error opening latest API scan link: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _open_scan_in_progress_api(self):
+        """
+        Opens the API endpoint for the scan in progress data in the browser.
+        This endpoint is static.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to open scan in progress API link...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        if not (self.json_api_process and self.json_api_process.poll() is None):
+            self.console_print_func("⚠️ JSON API is not running. Please start it first.")
+            debug_print("JSON API not running for _open_scan_in_progress_api.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        # Check if a scan is actually in progress
+        is_scanning = getattr(self.app_instance, 'scan_control_tab', None) and self.app_instance.scan_control_tab.is_scanning
+        if not is_scanning:
+            self.console_print_func("ℹ️ No scan is currently in progress.")
+            debug_print("No scan in progress for _open_scan_in_progress_api.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        api_link = f"{self.json_api_url_base}/api/scan_in_progress_data" # Static URL for scan in progress
+        try:
+            webbrowser.open_new_tab(api_link)
+            self.console_print_func(f"✅ Opened API link for scan in progress data.")
+            debug_print(f"Opened {api_link}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        except Exception as e:
+            self.console_print_func(f"❌ Error opening scan in progress API link: {e}")
+            debug_print(f"Error opening scan in progress API link: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
     def _on_tab_selected(self, event):
@@ -325,17 +345,7 @@ class JsonApiTab(ttk.Frame):
         """
         current_function = inspect.currentframe().f_code.co_name
         current_file = __file__
-        debug_print("Plotting Tab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        
-        # Enable plot button if there's data to plot
-        if self.app_instance.collected_scans_dataframes:
-            self.plot_button.config(state=tk.NORMAL)
-            self.plot_average_button.config(state=tk.NORMAL)
-        else:
-            self.plot_button.config(state=tk.DISABLED)
-            self.plot_average_button.config(state=tk.DISABLED)
-        
-        # Keep open plot button state as is, it's enabled when a plot is generated
+        debug_print("JSON API Tab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         
         # Update API button states when the tab is selected
         self._update_api_button_states()
