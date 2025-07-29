@@ -157,17 +157,16 @@ def perform_segment_sweep(inst, segment_start_freq_hz, segment_stop_freq_hz, max
                 amplitudes_dbm = [float(val) for val in data_part.split(',') if val.strip()]
                 debug_print(f"Parsed {len(amplitudes_dbm)} amplitude points.", file=current_file, function=current_function, console_print_func=app_console_update_func)
 
-                # Query actual start/stop frequencies and number of points from instrument
-                # These queries are crucial for accurate frequency mapping
+                # Query actual start/stop frequencies from instrument
                 actual_center_freq_hz = float(query_safe(inst, ":SENSe:FREQuency:CENTer?"))
                 actual_span_hz = float(query_safe(inst, ":SENSe:FREQuency:SPAN?"))
-                # Query the number of sweep points from the instrument
-                num_points_str = query_safe(inst, ":SENSe:SWEep:POINts?")
-                num_points = int(num_points_str) if num_points_str and num_points_str.strip().isdigit() else len(amplitudes_dbm)
+                
+                # Derive num_points from the length of the amplitudes_dbm list
+                num_points = len(amplitudes_dbm)
 
                 if num_points == 0:
-                    app_console_update_func(f"⚠️ Warning: Instrument reported 0 sweep points for segment {segment_counter}. Skipping data processing.")
-                    debug_print("Instrument reported 0 sweep points.", file=current_file, function=current_function, console_print_func=app_console_update_func)
+                    app_console_update_func(f"⚠️ Warning: No amplitude data received for segment {segment_counter}. Skipping data processing.")
+                    debug_print("No amplitude data received.", file=current_file, function=current_function, console_print_func=app_console_update_func)
                     return []
 
                 if num_points > 1:
