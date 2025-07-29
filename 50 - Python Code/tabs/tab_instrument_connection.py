@@ -52,6 +52,16 @@ class InstrumentTab(ttk.Frame):
         # Automatically populate resources when the tab is initialized
         self._populate_resources()
 
+    def _toggle_general_debug(self):
+        """Toggles the global debug mode based on checkbox state."""
+        set_debug_mode(self.app_instance.general_debug_enabled_var.get())
+        self.console_print_func(f"Debug Mode: {'Enabled' if self.app_instance.general_debug_enabled_var.get() else 'Disabled'}")
+
+    def _toggle_visa_logging(self):
+        """Toggles the global VISA command logging based on checkbox state."""
+        log_visa_command(self.app_instance.log_visa_commands_enabled_var.get())
+        self.console_print_func(f"VISA Command Logging: {'Enabled' if self.app_instance.log_visa_commands_enabled_var.get() else 'Disabled'}")
+
     def _create_widgets(self):
         """
         Creates and arranges the widgets for the Instrument Connection tab.
@@ -274,10 +284,9 @@ class InstrumentTab(ttk.Frame):
         current_file = __file__
         debug_print("Instrument Tab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         # Ensure buttons are in the correct state when tab is selected
-        # Pass the buttons from this tab to the update_connection_status_logic
         self.app_instance.update_connection_status(self.app_instance.inst is not None)
         
-        # Also, query and display current settings if connected
+        # Query and display current settings if connected
         if self.app_instance.inst:
             self._query_settings_display()
         else:
@@ -287,16 +296,5 @@ class InstrumentTab(ttk.Frame):
         self.general_debug_checkbox.config(variable=self.app_instance.general_debug_enabled_var)
         self.log_visa_commands_checkbox.config(variable=self.app_instance.log_visa_commands_enabled_var)
 
-        # Populate resources when the tab is selected
-        self._populate_resources()
-
-    def _toggle_general_debug(self):
-        """Toggles the global debug mode based on checkbox state."""
-        set_debug_mode(self.app_instance.general_debug_enabled_var.get())
-        self.console_print_func(f"Debug Mode: {'Enabled' if self.app_instance.general_debug_enabled_var.get() else 'Disabled'}")
-
-    def _toggle_visa_logging(self):
-        """Toggles the global VISA command logging based on checkbox state."""
-        log_visa_command(self.app_instance.log_visa_commands_enabled_var.get())
-        self.console_print_func(f"VISA Command Logging: {'Enabled' if self.app_instance.log_visa_commands_enabled_var.get() else 'Disabled'}")
-
+        # Removed: _populate_resources() is now only called in __init__ and by the "Refresh Devices" button
+        # self._populate_resources() 

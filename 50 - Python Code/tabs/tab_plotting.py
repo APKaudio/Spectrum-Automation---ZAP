@@ -103,15 +103,14 @@ class PlottingTab(ttk.Frame):
 
         try:
             # Assuming plot_single_scan_data returns the path to the generated HTML file
-            # Removed console_print_func as it's not expected by plot_single_scan_data
             # Corrected the argument for output_folder_for_markers
             fig, plot_path = plot_single_scan_data(
                 last_df,
                 f"{scan_name} - Last Scan", # Title for the plot
-                self.app_instance.include_tv_markers_var.get(),
-                self.app_instance.include_gov_markers_var.get(),
-                self.app_instance.include_markers_var.get(),
-                output_dir, # This is the output_folder_for_markers argument
+                include_tv_markers=self.app_instance.include_tv_markers_var.get(),
+                include_gov_markers=self.app_instance.include_gov_markers_var.get(),
+                include_markers_from_csv=self.app_instance.include_markers_var.get(),
+                markers_csv_path=os.path.join(output_dir, "MARKERS.CSV"), # Pass the correct path to MARKERS.CSV
                 output_html_path=os.path.join(output_dir, f"{scan_name}_LastScan_Plot.html") # Explicit path
             )
             if fig: # Check if figure was successfully created
@@ -201,7 +200,7 @@ class PlottingTab(ttk.Frame):
                 debug_print("Insufficient columns in CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
                 return
 
-            df.rename(columns={0: 'Frequency (MHz)', 1: 'Level (dBm)'}, inplace=True)
+            df.rename(columns={0: 'Frequency (MHz)', 1: 'Amplitude (dBm)'}, inplace=True) # Changed to Amplitude (dBm) for consistency
 
             output_dir = self.app_instance.output_folder_var.get()
             # Use the filename (without extension) as part of the plot title and output file name
@@ -210,10 +209,10 @@ class PlottingTab(ttk.Frame):
             fig, plot_path = plot_single_scan_data(
                 df,
                 f"{scan_name} - Imported Scan", # Title for the plot
-                self.app_instance.include_tv_markers_var.get(),
-                self.app_instance.include_gov_markers_var.get(),
-                self.app_instance.include_markers_var.get(),
-                output_dir, # This is the output_folder_for_markers argument
+                include_tv_markers=self.app_instance.include_tv_markers_var.get(),
+                include_gov_markers=self.app_instance.include_gov_markers_var.get(),
+                include_markers_from_csv=self.app_instance.include_markers_var.get(),
+                markers_csv_path=os.path.join(output_dir, "MARKERS.CSV"), # Pass the correct path to MARKERS.CSV
                 output_html_path=os.path.join(output_dir, f"{scan_name}_ImportedScan_Plot.html") # Explicit path
             )
 
