@@ -60,12 +60,16 @@ class PlottingTab(ttk.Frame):
         self.plot_average_button = ttk.Button(plot_control_frame, text="Plot Average Scan", command=self._plot_average_scan, style='Blue.TButton')
         self.plot_average_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
+        # New button for opening a scan from a file
+        self.open_scan_button = ttk.Button(plot_control_frame, text="Open Scan to Plot (CSV)", command=self._open_scan_to_plot, style='Blue.TButton')
+        self.open_scan_button.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
         self.open_plot_button = ttk.Button(plot_control_frame, text="Open Last Plot in Browser", command=self._open_last_plot_in_browser, state=tk.DISABLED, style='Blue.TButton')
-        self.open_plot_button.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.open_plot_button.grid(row=1, column=1, padx=5, pady=5, sticky="ew") # Adjusted row/column for new button
 
         # Plotting Options (Moved from main_app)
         plotting_options_frame = ttk.LabelFrame(self, text="Plotting Options", style='Dark.TLabelframe')
-        plotting_options_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        plotting_options_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew") # Adjusted row for new button
         plotting_options_frame.grid_columnconfigure(0, weight=1)
 
         ttk.Checkbutton(plotting_options_frame, text="Include Government Markers", variable=self.app_instance.include_gov_markers_var, style='TCheckbutton').grid(row=0, column=0, sticky="w", padx=5, pady=2)
@@ -99,14 +103,16 @@ class PlottingTab(ttk.Frame):
 
         try:
             # Assuming plot_single_scan_data returns the path to the generated HTML file
+            # Removed console_print_func as it's not expected by plot_single_scan_data
+            # Corrected the argument for output_folder_for_markers
             fig, plot_path = plot_single_scan_data(
                 last_df,
                 f"{scan_name} - Last Scan", # Title for the plot
                 self.app_instance.include_tv_markers_var.get(),
                 self.app_instance.include_gov_markers_var.get(),
                 self.app_instance.include_markers_var.get(),
-                output_html_path=os.path.join(output_dir, f"{scan_name}_LastScan_Plot.html"), # Explicit path
-                console_print_func=self.console_print_func
+                output_dir, # This is the output_folder_for_markers argument
+                output_html_path=os.path.join(output_dir, f"{scan_name}_LastScan_Plot.html") # Explicit path
             )
             if fig: # Check if figure was successfully created
                 self.last_plot_path = plot_path
@@ -164,6 +170,75 @@ class PlottingTab(ttk.Frame):
             debug_print(f"Error plotting average scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
 
+    def _open_scan_to_plot(self):
+        """
+        Opens a file dialog to select a CSV scan file and plots its data.
+        Reads CSV without headers and assigns 'Frequency (MHz)' and 'Level (dBm)' columns.
+        """
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        debug_print("Attempting to open scan from file...", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        file_path = filedialog.askopenfilename(
+            title="Select Scan CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+
+        if not file_path:
+            self.console_print_func("ℹ️ No file selected for plotting.")
+            debug_print("No file selected for plotting.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        try:
+            # Read the CSV file into a DataFrame, assuming no headers
+            df = pd.read_csv(file_path, header=None)
+
+            # Assign column names explicitly
+            # Assuming the 1st column (index 0) is Frequency (MHz)
+            # Assuming the 2nd column (index 1) is Level (dBm)
+            if df.shape[1] < 2:
+                self.console_print_func("❌ Error: Selected CSV file does not contain at least two columns for Frequency and Level data.")
+                debug_print("Insufficient columns in CSV.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                return
+
+            df.rename(columns={0: 'Frequency (MHz)', 1: 'Level (dBm)'}, inplace=True)
+
+            output_dir = self.app_instance.output_folder_var.get()
+            # Use the filename (without extension) as part of the plot title and output file name
+            scan_name = os.path.splitext(os.path.basename(file_path))[0]
+
+            fig, plot_path = plot_single_scan_data(
+                df,
+                f"{scan_name} - Imported Scan", # Title for the plot
+                self.app_instance.include_tv_markers_var.get(),
+                self.app_instance.include_gov_markers_var.get(),
+                self.app_instance.include_markers_var.get(),
+                output_dir, # This is the output_folder_for_markers argument
+                output_html_path=os.path.join(output_dir, f"{scan_name}_ImportedScan_Plot.html") # Explicit path
+            )
+
+            if fig:
+                self.last_plot_path = plot_path
+                self.open_plot_button.config(state=tk.NORMAL)
+                self.console_print_func(f"✅ Imported scan plotted to: {plot_path}")
+                debug_print(f"Imported scan plotted to: {plot_path}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                if self.app_instance.open_html_after_complete_var.get():
+                    self._open_last_plot_in_browser()
+            else:
+                self.console_print_func("❌ Error: Failed to generate plot for the imported scan.")
+                debug_print("Failed to generate plot for imported scan.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+        except pd.errors.EmptyDataError:
+            self.console_print_func("❌ Error: Selected CSV file is empty.")
+            debug_print("Empty CSV file selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        except FileNotFoundError:
+            self.console_print_func("❌ Error: File not found.")
+            debug_print("File not found during import.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        except Exception as e:
+            self.console_print_func(f"❌ Error processing imported scan: {e}")
+            debug_print(f"Error processing imported scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+
     def _open_last_plot_in_browser(self):
         """
         Opens the last generated HTML plot in the default web browser.
@@ -211,4 +286,3 @@ class PlottingTab(ttk.Frame):
         
         # Removed: Update API button states when the tab is selected (now handled by JsonApiTab)
         # self._update_api_button_states()
-

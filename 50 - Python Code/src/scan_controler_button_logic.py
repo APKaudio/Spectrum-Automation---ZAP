@@ -243,6 +243,18 @@ class ScanControlTab(ttk.Frame):
                     )
 
                     if not scan_df.empty:
+                        # Ensure column names are correct for plotting functions
+                        # Assuming the first column is Frequency and second is Level
+                        if scan_df.columns.empty or (scan_df.columns[0] != 'Frequency (MHz)' or scan_df.columns[1] != 'Level (dBm)'):
+                            if scan_df.shape[1] >= 2:
+                                scan_df.rename(columns={scan_df.columns[0]: 'Frequency (MHz)', scan_df.columns[1]: 'Level (dBm)'}, inplace=True)
+                                debug_print("Renamed DataFrame columns to 'Frequency (MHz)' and 'Level (dBm)'.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                            else:
+                                self.app_instance.after(0, lambda: self.console_print_func(f"❌ Error: Stitched scan data has fewer than 2 columns. Cannot plot."))
+                                debug_print(f"Stitched scan data has fewer than 2 columns: {scan_df.shape[1]}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+                                # Skip plotting and continue to next cycle or exit
+                                continue # Skip the rest of the current cycle and proceed to next or break loop
+
                         self.app_instance.collected_scans_dataframes.append(scan_df)
                         self.app_instance.last_scan_markers = markers_data # Store markers from this scan (still placeholder)
                         self.app_instance.after(0, lambda: self.console_print_func(f"✅ Data collected and stitched for cycle {cycle + 1}. ({scan_df.shape[0]} points)"))
@@ -261,8 +273,8 @@ class ScanControlTab(ttk.Frame):
                             include_tv_markers,
                             include_gov_markers,
                             include_markers,
-                            output_html_path=plot_filename,
-                            console_print_func=self.console_print_func
+                            output_dir,  # Pass output_dir as output_folder_for_markers
+                            output_html_path=plot_filename
                         )
                         if fig:
                             self.app_instance.after(0, lambda: self.console_print_func(f"✅ Plot saved to: {html_path}"))
@@ -270,7 +282,7 @@ class ScanControlTab(ttk.Frame):
                             if hasattr(self.app_instance, 'plotting_tab') and hasattr(self.app_instance.plotting_tab, 'last_plot_path'):
                                 self.app_instance.plotting_tab.last_plot_path = html_path
                             if open_html_after_complete:
-                                self.app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p, self.console_print_func))
+                                self.app_instance.after(0, lambda p=html_path: _open_plot_in_browser(p)) # Removed console_print_func
                         else:
                             self.app_instance.after(0, lambda: self.console_print_func(f"🚫 Failed to generate plot for cycle {cycle + 1}."))
                             debug_print(f"Failed to generate plot for cycle {cycle + 1}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
@@ -315,4 +327,3 @@ class ScanControlTab(ttk.Frame):
             self.app_instance.after(0, lambda: self.console_print_func(f"❌ An error occurred during scan: {e}"))
             debug_print(f"Error during scan: {e}", file=current_file, function=current_function, console_print_func=self.console_print_func)
             self.app_instance.after(0, self.app_instance.update_connection_status, self.app_instance.inst is not None)
-
