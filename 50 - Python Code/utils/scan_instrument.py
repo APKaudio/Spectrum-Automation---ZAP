@@ -400,10 +400,10 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
                         filtered_segment_data_for_csv.append((freq_hz, amp_value))
 
                 if filtered_segment_data_for_csv:
-                    header = ["Frequency_MHz", "Power_dBm"] # Define header for this CSV
-                    # Convert frequencies to MHz for the CSV
+                    # Removed the header from the CSV write call as requested.
+                    # The write_scan_data_to_csv function will now be called with header=None.
                     csv_data_to_write = [(f / MHZ_TO_HZ, amp) for f, amp in filtered_segment_data_for_csv]
-                    write_scan_data_to_csv(csv_filename_current_cycle, header, csv_data_to_write, append_mode=True, console_print_func=app_console_update_func)
+                    write_scan_data_to_csv(csv_filename_current_cycle, header=None, data=csv_data_to_write, append_mode=True, console_print_func=app_console_update_func)
                     debug_print(f"Appended {len(filtered_segment_data_for_csv)} points to {csv_filename_current_cycle}", file=current_file, function=current_function, console_print_func=app_console_update_func)
                 else:
                     debug_print("No data to append to CSV after filtering for this segment.", file=current_file, function=current_function, console_print_func=app_console_update_func)
@@ -424,4 +424,3 @@ def scan_bands(app_instance_ref, inst, selected_bands, rbw_hz, ref_level_dbm, fr
     debug_print(f"Exiting {current_function} function. Result: {last_successful_band_index}, raw_data, Markers Data", file=current_file, function=current_function, console_print_func=app_console_update_func)
     # Return raw_scan_data_for_current_sweep for further processing in scan_controler_button_logic
     return last_successful_band_index, raw_scan_data_for_current_sweep, markers_data_from_scan # markers_data_from_scan is still a placeholder
-

@@ -22,9 +22,7 @@ import threading
 import time
 import pyvisa
 import configparser
-# import pandas as pd # Removed: Pandas is now primarily used in scan_stitch.py and scan_controler_button_logic.py
-# import csv # Removed: CSV writing is now encapsulated in csv_utils.py
-import subprocess
+import subprocess # For BeautifulSoup installation check
 import inspect
 
 
@@ -124,14 +122,15 @@ class App(tk.Tk):
 
     def _check_and_install_dependencies(self):
         """
-        Checks for necessary Python packages (pyvisa, pandas, beautifulsoup4, pdfplumber)
+        Checks for necessary Python packages (pyvisa, pandas, beautifulsoup4, pdfplumber, requests)
         and attempts to install them if missing.
         """
         dependencies = {
             "pyvisa": "pyvisa",
             "pandas": "pandas",
             "bs4": "beautifulsoup4", # For BeautifulSoup
-            "pdfplumber": "pdfplumber"
+            "pdfplumber": "pdfplumber",
+            "requests": "requests" # Added requests to the dependency check
         }
         missing_dependencies = []
 
@@ -435,17 +434,6 @@ class App(tk.Tk):
         style.map("SelectedSpan.TButton",
                 background=[('active', '#e05038')])
 
-        style.configure("Markers.Inner.Treeview",
-                    background="#2b2b2b",
-                    foreground="#cccccc",
-                    fieldbackground="#2b2b2b")
-        style.map("Markers.Inner.Treeview",
-              background=[("selected", "#0056b3")],
-              foreground=[("selected", "white")])
-    
-        style.configure("TLabelFrame", background="#1e1e1e", foreground="#cccccc")
-        style.configure("TLabelFrame.Label", background="#1e1e1e", foreground="#cccccc")
-        
         style.configure("LargePreset.TButton",
                         background="#4a4a4a",
                         foreground="white",
@@ -710,4 +698,3 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
-
