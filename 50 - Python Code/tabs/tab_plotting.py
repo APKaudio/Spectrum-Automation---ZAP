@@ -1,6 +1,6 @@
 # src/tab_plotting.py
 import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext, messagebox
+from tkinter import ttk, filedialog, scrolledtext # Removed messagebox import
 import os
 import pandas as pd
 import inspect
@@ -85,22 +85,22 @@ class PlottingTab(ttk.Frame):
 
         # Checkboxes for average types (before dynamic buttons)
         self.avg_type_vars = {
-            "Average": tk.BooleanVar(value=True),
-            "Median": tk.BooleanVar(value=False),
-            "Range": tk.BooleanVar(value=False),
-            "Std Dev": tk.BooleanVar(value=False),
-            "Variance": tk.BooleanVar(value=False),
-            "PSD (dBm/Hz)": tk.BooleanVar(value=False) # Assuming PSD is also a statistical measure here
+            "Average": tk.BooleanVar(value=True), # Set to True by default
+            "Median": tk.BooleanVar(value=True), # Set to True by default
+            "Range": tk.BooleanVar(value=True), # Set to True by default
+            "Std Dev": tk.BooleanVar(value=True), # Set to True by default
+            "Variance": tk.BooleanVar(value=True), # Set to True by default
+            "PSD (dBm/Hz)": tk.BooleanVar(value=True) # Set to True by default
         }
 
         row_offset = 1 # Starting row for checkboxes
         for i, (text, var) in enumerate(self.avg_type_vars.items()):
-            ttk.Checkbutton(self.averaging_folder_frame, text=text, variable=var).grid(row=row_offset + i, column=0, padx=5, pady=2, sticky="w")
+            ttk.Checkbutton(self.averaging_folder_frame, text=text, variable=var,
+                            command=self._on_avg_type_checkbox_changed).grid(row=row_offset + i, column=0, padx=5, pady=2, sticky="w")
 
         self.generate_avg_button = ttk.Button(self.averaging_folder_frame, text="Generate Selected Average Plot", command=self._generate_selected_average_plot)
         self.generate_avg_button.grid(row=row_offset + len(self.avg_type_vars), column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         self.generate_avg_button.config(state=tk.DISABLED)
-
 
         self.dynamic_avg_buttons_frame = ttk.Frame(self.averaging_folder_frame)
         self.dynamic_avg_buttons_frame.grid(row=row_offset + len(self.avg_type_vars) + 1, column=0, columnspan=2, sticky="ew", pady=(10,0))
@@ -113,6 +113,13 @@ class PlottingTab(ttk.Frame):
         self.dynamic_avg_buttons_frame.grid_columnconfigure(0, weight=1)
 
         debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+
+    def _on_avg_type_checkbox_changed(self):
+        current_function = inspect.currentframe().f_code.co_name
+        current_file = __file__
+        selected_types = [avg_type for avg_type, var in self.avg_type_vars.items() if var.get()]
+        debug_print(f"Checkbox changed. Currently selected average types: {selected_types}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        self.console_print_func(f"Selected average types: {', '.join(selected_types) if selected_types else 'None'}")
 
 
     def _plot_single_scan(self):
@@ -178,7 +185,16 @@ class PlottingTab(ttk.Frame):
             os.makedirs(output_dir)
             debug_print(f"Created output directory: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-        debug_print(f"Calling generate_current_cycle_average_csv_and_plot with {len(self.app_instance.collected_scans_dataframes)} dataframes.", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        # Get selected average types for current cycle plot
+        selected_avg_types = [
+            avg_type for avg_type, var in self.avg_type_vars.items() if var.get()
+        ]
+        if not selected_avg_types:
+            self.console_print_func("Warning: No average type selected for current cycle plot. Please select at least one type.")
+            debug_print(f"Exiting {current_function} (no selected_avg_types for current cycle)", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            return
+
+        debug_print(f"Calling generate_current_cycle_average_csv_and_plot with {len(self.app_instance.collected_scans_dataframes)} dataframes and selected types: {selected_avg_types}.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         # Pass all relevant variables to the averaging utility
         fig, plot_html_path_return = generate_current_cycle_average_csv_and_plot(
             self.app_instance.collected_scans_dataframes,
@@ -187,12 +203,13 @@ class PlottingTab(ttk.Frame):
             self.include_gov_markers_var,
             self.open_html_after_complete_var, # Pass the Tkinter BooleanVar directly
             self.console_print_func,
-            include_markers_var=tk.BooleanVar(value=True) # Assuming MARKERS.CSV is always included for historical plots
+            selected_avg_types=selected_avg_types, # Pass the selected average types
+            scan_rbw_hz=self.app_instance.config.getfloat('Instrument', 'rbw_hz') if self.app_instance.config.has_option('Instrument', 'rbw_hz') else None
         )
 
         if fig:
             self.current_plot_file = plot_html_path_return
-            self.console_print_func(f"✅ Historical averaged plot saved to: {self.current_plot_file}")
+            self.console_print_func(f"✅ Current cycle averaged plot saved to: {self.current_plot_file}")
             debug_print(f"Current cycle averaged plot saved to: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
             # The function itself opens the browser if open_html_after_complete_var is True
         else:
@@ -211,7 +228,7 @@ class PlottingTab(ttk.Frame):
             webbrowser.open_new_tab(self.current_plot_file)
             debug_print(f"Opened last plot: {self.current_plot_file}", file=current_file, function=current_function, console_print_func=self.console_print_func)
         else:
-            messagebox.showinfo("Error", "No plot available or file not found. Please generate a plot first.")
+            self.console_print_func("Error: No plot available or file not found. Please generate a plot first.")
             debug_print("No plot available or file not found.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
@@ -252,14 +269,26 @@ class PlottingTab(ttk.Frame):
         file_groups = {}
         for filename in csv_files:
             base_name = os.path.splitext(filename)[0]
-            match = re.match(r"([^\d_ -]+(?:[_ -]?[^\d_ -]+)*?)[\d_ -]*", base_name)
-            prefix = base_name
+            # Updated regex for grouping: be more flexible with the ending part before date/time
+            # It tries to capture the main prefix before any RBW/HOLD/Offset/timestamp.
+            match = re.match(r"([^\d_ -]+(?:[_ -][^\d_ -]+)*?)_RBW\d+K?_HOLD\d+.*", base_name)
+            prefix = base_name # Default to full base name if no clear pattern
             if match:
-                prefix = match.group(1).strip()
+                prefix = match.group(1).strip() # Get the part before RBW/HOLD
+                # Refine prefix: remove trailing underscores/hyphens if they were part of the non-digit group
                 prefix = re.sub(r"[_ -]+$", "", prefix)
+            else:
+                # Fallback if the more specific pattern doesn't match (e.g., for INTERMOD.csv or simpler names)
+                # Try to split by common delimiters if no complex pattern is found
+                if '_' in base_name:
+                    prefix = base_name.split('_')[0]
+                elif '-' in base_name:
+                    prefix = base_name.split('-')[0]
+                else:
+                    prefix = base_name # Use full name if no common delimiters
 
-            if not prefix:
-                prefix = base_name.split('_')[0].split('-')[0].strip()
+            if not prefix: # Ensure prefix is not empty
+                prefix = base_name # Fallback to full base name
 
             if prefix not in file_groups:
                 file_groups[prefix] = []
@@ -334,36 +363,37 @@ class PlottingTab(ttk.Frame):
         debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         if not hasattr(self, 'grouped_csv_files') or not self.grouped_csv_files:
-            messagebox.showwarning("No Data", "Please select a folder and identify CSV file groups first.")
+            self.console_print_func("Warning: No data. Please select a folder and identify CSV file groups first.")
             debug_print(f"Exiting {current_function} (no grouped_csv_files)", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
         if not self.selected_group_prefix:
-            messagebox.showwarning("No Group Selected", "Please click on one of the group buttons to select files for averaging.")
+            self.console_print_func("Warning: No group selected. Please click on one of the group buttons to select files for averaging.")
             debug_print(f"Exiting {current_function} (no selected_group_prefix)", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
         files_to_average = self.grouped_csv_files[self.selected_group_prefix]
         debug_print(f"Files to average for selected group '{self.selected_group_prefix}': {files_to_average}", file=current_file, function=current_function, console_print_func=self.console_print_func)
         if not files_to_average:
-            messagebox.showerror("Error", "No files found for the selected group.")
+            self.console_print_func("Error: No files found for the selected group.")
             debug_print(f"Exiting {current_function} (files_to_average is empty)", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
         selected_avg_types = [
             avg_type for avg_type, var in self.avg_type_vars.items() if var.get()
         ]
-        debug_print(f"Selected average types: {selected_avg_types}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+        debug_print(f"Selected average types BEFORE check: {selected_avg_types}", file=current_file, function=current_function, console_print_func=self.console_print_func) 
 
         if not selected_avg_types:
-            messagebox.showwarning("No Average Type Selected", "Please select at least one type of average to plot (e.g., Average, Median).")
+            self.console_print_func("Warning: No average type selected. Please select at least one type of average to plot (e.g., Average, Median).")
             debug_print(f"Exiting {current_function} (no selected_avg_types)", file=current_file, function=current_function, console_print_func=self.console_print_func)
             return
 
-        output_dir = self.app_instance.config.get('Paths', 'output_directory')
+        # Use the last_opened_folder as the base output directory for multi-file averages
+        output_dir = self.last_opened_folder 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            debug_print(f"Created output directory: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
+            debug_print(f"Ensured base output directory exists: {output_dir}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
         plot_base_name = f"{self.selected_group_prefix}_averaged_plot"
         html_filename = os.path.join(output_dir, f"{plot_base_name}.html")
@@ -378,7 +408,7 @@ class PlottingTab(ttk.Frame):
             plot_title_prefix=self.selected_group_prefix,
             include_tv_markers=self.include_tv_markers_var.get(),
             include_gov_markers=self.include_gov_markers_var.get(),
-            output_html_path=html_filename,
+            output_html_path_base=output_dir, # Pass the base output directory
             open_html_after_complete=self.open_html_after_complete_var.get(),
             console_print_func=self.console_print_func
         )
@@ -392,24 +422,3 @@ class PlottingTab(ttk.Frame):
             debug_print("Plotly figure not generated for multi-file averaged data.", file=current_file, function=current_function, console_print_func=self.console_print_func)
         debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
 
-
-    def _on_tab_selected(self, event):
-        """
-        Callback for when this tab is selected.
-        This can be used to refresh data or update UI elements specific to this tab.
-        """
-        current_function = inspect.currentframe().f_code.co_name
-        current_file = __file__
-        debug_print(f"Entering {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        debug_print("Plotting Tab selected.", file=current_file, function=current_function, console_print_func=self.console_print_func)
-
-        if self.app_instance.collected_scans_dataframes:
-            self.plot_button.config(state=tk.NORMAL)
-            self.plot_average_button.config(state=tk.NORMAL)
-            debug_print("Plotting buttons enabled (data available).", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        else:
-            self.plot_button.config(state=tk.DISABLED)
-            self.plot_average_button.config(state=tk.DISABLED)
-            debug_print("Plotting buttons disabled (no data available).", file=current_file, function=current_function, console_print_func=self.console_print_func)
-        debug_print(f"Exiting {current_function}", file=current_file, function=current_function, console_print_func=self.console_print_func)
